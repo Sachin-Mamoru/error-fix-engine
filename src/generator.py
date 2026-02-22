@@ -15,6 +15,7 @@ from typing import Optional
 
 from google import genai
 
+from src.authors import pick_author
 from src.logger import get_logger
 from src.models import ErrorEntry, GeneratedArticle
 
@@ -55,14 +56,20 @@ def _is_permanent(exc: BaseException) -> bool:
     return any(code in msg for code in ("404", "400", "403", "NOT_FOUND", "INVALID_ARGUMENT"))
 
 
-def _build_prompt(entry: ErrorEntry, related_slugs: list[str]) -> str:
+def _build_prompt(
+    entry: ErrorEntry,
+    related_slugs: list[str],
+    author_name: str,
+    author_title: str,
+) -> str:
     """Build the Gemini prompt for a single error entry."""
     related_links_md = "\n".join(
         f"- [{slug}](/errors/{slug}.html)" for slug in related_slugs[:4]
     )
 
-    return f"""You are a senior software engineer writing a practical, SEO-optimised
-troubleshooting guide. Write a complete Markdown article for the error below.
+    return f"""You are {author_name}, a {author_title}, writing a practical,
+SEO-optimised troubleshooting guide from personal experience.
+Write a complete Markdown article for the error below.
 
 **Error:** {entry.error_name}
 **Tool / Platform:** {entry.tool}
@@ -88,6 +95,9 @@ troubleshooting guide. Write a complete Markdown article for the error below.
 7. Include at least two code blocks with syntax highlighting hints (e.g. ```bash or ```python).
 8. Do NOT include any YAML front-matter.
 9. Do NOT include any HTML tags.
+10. Occasionally use first-person phrases like "In my experience…" or "I've seen this in production when…" — it should read like a real engineer wrote it.
+11. Do NOT mention AI, do NOT say this article was generated, do NOT say "As an AI" or anything similar.
+12. End the article body before any author signature — the byline is handled separately.
 
 Write only the Markdown article — no preamble, no commentary outside the article.
 """
@@ -199,7 +209,8 @@ class ArticleGenerator:
         # Build related slugs from entry.related list (match against known slugs)
         related_slugs = [s for s in entry.related if s in all_slugs]
 
-        prompt = _build_prompt(entry, related_slugs)
+        author = pick_author(entry.slug)
+        prompt = _build_prompt(entry, related_slugs, author["name"], author["title"])
         log.info("Generating article", slug=entry.slug, tool=entry.tool)
 
         try:

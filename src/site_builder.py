@@ -19,6 +19,7 @@ from pathlib import Path
 import markdown as md_lib
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
+from src.authors import pick_author
 from src.logger import get_logger
 from src.models import ErrorEntry
 
@@ -126,11 +127,16 @@ class SiteBuilder:
         slug_map = {e.slug: e for e in all_entries}
         related_entries = [slug_map[s] for s in entry.related if s in slug_map]
 
+        # Determine the stable fake author for this article
+        author = pick_author(entry.slug)
+
         template = self.env.get_template("error_page.html")
         html = template.render(
             entry=entry,
             html_body=html_body,
             related_entries=related_entries,
+            author_name=author["name"],
+            author_title=author["title"],
             page_title=f"{entry.error_name} – How to Fix | error-fix-engine",
             meta_description=(
                 f"How to fix {entry.error_name} in {entry.tool}. "
