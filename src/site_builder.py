@@ -36,7 +36,7 @@ MD_EXTENSIONS = [
 
 MD_EXTENSION_CONFIGS = {
     "codehilite": {"guess_lang": False, "css_class": "highlight"},
-    "toc": {"permalink": True},
+    "toc": {"permalink": False},
 }
 
 

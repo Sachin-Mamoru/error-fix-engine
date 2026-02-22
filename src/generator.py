@@ -97,8 +97,10 @@ Write a complete Markdown article for the error below.
 
 ### Article requirements
 1. Open with an H1 that is exactly: `# {entry.error_name}`
-2. Right after H1, add a short one-sentence meta-description as a blockquote
-   (starts with `> `) — used for SEO preview.
+2. Right after H1, on the VERY NEXT LINE (no blank line between them), write a
+   one-sentence meta-description as a Markdown blockquote, like this:
+   `> Encountering X means Y; this guide explains how to fix it.`
+   The `>` and the sentence MUST be on the same line with no blank line after the H1.
 3. Include ALL of the following H2 sections in this order:
    - `## What This Error Means`
    - `## Why It Happens`
