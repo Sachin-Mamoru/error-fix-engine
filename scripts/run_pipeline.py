@@ -38,9 +38,9 @@ GENERATED_IDX  = CONTENT_DIR / "generated.yaml"
 DEFAULT_BASE_URL = "https://errorfix.dev"
 
 # Max articles to generate per pipeline run.
-# Free tier: 1500 RPD, 12 runs/day → 125/run budget.
-# We keep 100 to leave room for the discovery call + model probe.
-MAX_ARTICLES_PER_RUN = 100
+# Paid tier 1: Gemini 2 Flash has unlimited RPD and 2K RPM.
+# At 3s/article, 500 articles = ~27 min — fits easily in the 2-hour cron window.
+MAX_ARTICLES_PER_RUN = 500
 
 
 def parse_args() -> argparse.Namespace:

@@ -26,18 +26,18 @@ log = get_logger(__name__)
 # The pipeline calls ListModels to find what this API key can actually reach,
 # then picks the highest-ranked model from that live list.
 GEMINI_MODEL_PREFERENCE = [
-    # 2025-2026 generation (try newest first)
-    "gemini-2.5-pro",
-    "gemini-2.5-pro-preview-03-25",
-    "gemini-2.5-flash",
-    "gemini-2.5-flash-preview-04-17",
+    # Paid tier 1 – prioritise by RPD budget first, then quality
+    # Gemini 2 Flash & Lite have UNLIMITED RPD → ideal for bulk generation
     "gemini-2.0-flash",
     "gemini-2.0-flash-001",
     "gemini-2.0-flash-lite",
     "gemini-2.0-flash-lite-001",
-    "gemini-2.0-flash-exp",
-    "gemini-2.0-pro-exp",
-    # 1.5 generation (widely available)
+    "gemini-2.5-flash",
+    "gemini-2.5-flash-preview-04-17",
+    # 2.5 Pro last – only 1K RPD, burns budget fast
+    "gemini-2.5-pro",
+    "gemini-2.5-pro-preview-03-25",
+    # 1.5 generation fallbacks
     "gemini-1.5-pro",
     "gemini-1.5-pro-001",
     "gemini-1.5-pro-002",
@@ -51,12 +51,12 @@ GEMINI_MODEL_PREFERENCE = [
     "gemini-pro",
 ]
 
-# ── Rate-limit constants (free tier: 15 RPM, 1500 RPD) ───────────────────────
-# 15 RPM = one request every 4 s minimum.
-# We use 15 s between articles so retries still fit inside the minute window.
-INTER_ARTICLE_DELAY_S = 15       # seconds between successful generations
-BATCH_SIZE = 10                  # pause after every N articles
-BATCH_PAUSE_S = 70               # seconds to pause between batches (> 1 min)
+# ── Rate-limit constants (Paid tier 1: Gemini 2 Flash = 2K RPM, unlimited RPD)
+# 3 s between articles = 20 RPM, comfortably inside the 2K RPM budget.
+# No batch pause needed (unlimited RPD), but we keep a short one as courtesy.
+INTER_ARTICLE_DELAY_S = 3        # seconds between successful generations
+BATCH_SIZE = 50                  # pause after every N articles
+BATCH_PAUSE_S = 10               # short pause between batches
 RETRY_429_WAIT_S = 65            # wait after a 429 before retrying
 
 # ── Article generation parameters ────────────────────────────────────────────

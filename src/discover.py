@@ -29,8 +29,9 @@ log = get_logger(__name__)
 DISCOVERED_YAML = Path(__file__).parent.parent / "config" / "discovered_errors.yaml"
 
 # How many new topics to request per pipeline run.
-# 30 topics/run × 12 runs/day = 360 new topics/day → always ahead of articles.
-TOPICS_PER_RUN = 30
+# Paid tier 1 with unlimited RPD: 100 topics/run × 12 runs/day = 1200 new
+# topics/day, keeping the backlog well ahead of the 500 articles/run queue.
+TOPICS_PER_RUN = 100
 
 # Broad technology categories rotated per run to keep topics diverse.
 CATEGORY_WHEEL = [
