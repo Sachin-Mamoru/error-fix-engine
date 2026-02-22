@@ -240,8 +240,13 @@ class ArticleGenerator:
         entries: list[ErrorEntry],
         already_done: set[str],
         content_dir: Path,
+        max_count: int = 0,
     ) -> list[GeneratedArticle]:
         """Generate articles for entries not yet in already_done.
+
+        Args:
+            max_count: If > 0, stop after this many successful generations
+                       (used to respect free-tier RPD quota per run).
 
         Saves each Markdown file immediately so progress survives partial runs.
         """
@@ -249,11 +254,15 @@ class ArticleGenerator:
         results: list[GeneratedArticle] = []
 
         pending = [e for e in entries if e.slug not in already_done]
+        if max_count > 0:
+            pending = pending[:max_count]
+
         log.info(
             "Batch generation starting",
             total=len(entries),
             pending=len(pending),
             already_done=len(already_done),
+            cap=max_count or "none",
         )
 
         for i, entry in enumerate(pending):

@@ -24,6 +24,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.logger import configure_logging, get_logger
 from src.config_loader import load_errors, load_generated_index, save_generated_index
+from src.discover import discover_new_topics
 from src.generator import ArticleGenerator
 from src.site_builder import SiteBuilder
 
@@ -35,6 +36,11 @@ TEMPLATES_DIR  = PROJECT_ROOT / "templates"
 GENERATED_IDX  = CONTENT_DIR / "generated.yaml"
 
 DEFAULT_BASE_URL = "https://errorfix.dev"
+
+# Max articles to generate per pipeline run.
+# Free tier: 1500 RPD, 12 runs/day → 125/run budget.
+# We keep 100 to leave room for the discovery call + model probe.
+MAX_ARTICLES_PER_RUN = 100
 
 
 def parse_args() -> argparse.Namespace:
@@ -48,6 +54,11 @@ def parse_args() -> argparse.Namespace:
         "--dry-run",
         action="store_true",
         help="Print what would be generated without making API calls.",
+    )
+    parser.add_argument(
+        "--no-discover",
+        action="store_true",
+        help="Skip the topic-discovery step (useful for build-only or debug runs).",
     )
     return parser.parse_args()
 
@@ -67,7 +78,7 @@ def main() -> int:
         base_url=base_url,
     )
 
-    # ── 1. Load error definitions ─────────────────────────────────────────────
+    # ── 1. Load error definitions (seed + previously discovered) ─────────────
     try:
         all_entries = load_errors(CONFIG_PATH)
     except FileNotFoundError as exc:
@@ -80,7 +91,25 @@ def main() -> int:
 
     log.info("Error entries loaded", count=len(all_entries))
 
-    # ── 2. Content generation ─────────────────────────────────────────────────
+    # ── 2. Discover new topics (runs before generation every time) ────────────
+    if not args.build_only and not args.dry_run and not args.no_discover:
+        generator = ArticleGenerator()          # also resolves the best model
+        new_topics = discover_new_topics(
+            client=generator.client,
+            model=generator.model,
+            all_known_entries=all_entries,
+        )
+        if new_topics:
+            all_entries = all_entries + new_topics
+            log.info(
+                "Topic list extended for this run",
+                new_topics=len(new_topics),
+                total=len(all_entries),
+            )
+    else:
+        generator = None  # will be created below if needed
+
+    # ── 3. Content generation ─────────────────────────────────────────────────
     if not args.build_only:
         already_done = load_generated_index(GENERATED_IDX)
         pending = [e for e in all_entries if e.slug not in already_done]
@@ -92,14 +121,26 @@ def main() -> int:
                 slugs=[e.slug for e in pending],
             )
         else:
-            if not pending:
+            # Cap per-run volume to respect free-tier RPD quota
+            capped_pending = pending[:MAX_ARTICLES_PER_RUN]
+            if len(pending) > MAX_ARTICLES_PER_RUN:
+                log.info(
+                    "Capping generation to per-run limit",
+                    pending=len(pending),
+                    cap=MAX_ARTICLES_PER_RUN,
+                    deferred=len(pending) - MAX_ARTICLES_PER_RUN,
+                )
+
+            if not capped_pending:
                 log.info("All articles already generated — skipping API calls")
             else:
-                generator = ArticleGenerator()
+                if generator is None:
+                    generator = ArticleGenerator()
                 new_articles = generator.generate_batch(
                     entries=all_entries,
                     already_done=already_done,
                     content_dir=CONTENT_DIR,
+                    max_count=MAX_ARTICLES_PER_RUN,
                 )
 
                 new_slugs = {a.error.slug for a in new_articles}
@@ -112,7 +153,7 @@ def main() -> int:
                     total_done=len(updated_done),
                 )
 
-    # ── 3. Site build ─────────────────────────────────────────────────────────
+    # ── 4. Site build ─────────────────────────────────────────────────────────
     if not args.dry_run:
         builder = SiteBuilder(
             content_dir=CONTENT_DIR,
