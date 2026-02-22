@@ -20,10 +20,16 @@ from src.models import ErrorEntry, GeneratedArticle
 
 log = get_logger(__name__)
 
-# ── Gemini model name (free tier as of 2026) ─────────────────────────────────
-# gemini-2.0-flash is restricted to existing users; gemini-2.0-flash-lite is
-# the current free-tier model open to all new API keys.
-GEMINI_MODEL = "gemini-2.0-flash-lite"
+# ── Gemini model preference list ─────────────────────────────────────────────
+# The pipeline tries each model in order and uses the first one that responds.
+# gemini-1.5-flash is available to ALL API keys including brand-new free tier.
+# Newer flash models are listed first so existing users benefit automatically.
+GEMINI_MODEL_CANDIDATES = [
+    "gemini-2.0-flash",
+    "gemini-2.0-flash-lite",
+    "gemini-1.5-flash",
+    "gemini-1.5-flash-8b",
+]
 
 # ── Rate-limit constants (free tier: 15 RPM, 1500 RPD) ───────────────────────
 # 15 RPM = one request every 4 s minimum.
@@ -97,11 +103,28 @@ def _configure_client() -> genai.Client:
         )
     # Never log the key value
     client = genai.Client(api_key=api_key)
-    log.info("Gemini client configured", model=GEMINI_MODEL)
+    log.info("Gemini client configured")
     return client
 
 
-def _call_gemini(client: genai.Client, prompt: str) -> str:
+def _resolve_model(client: genai.Client) -> str:
+    """Return the first model in GEMINI_MODEL_CANDIDATES that this API key
+    can actually reach, so new users and existing users both get the best
+    available model automatically."""
+    probe = "Reply with one word: OK"
+    for model in GEMINI_MODEL_CANDIDATES:
+        try:
+            client.models.generate_content(model=model, contents=probe)
+            log.info("Model resolved", model=model)
+            return model
+        except Exception as exc:  # noqa: BLE001
+            log.debug("Model probe failed", model=model, reason=str(exc)[:80])
+    fallback = GEMINI_MODEL_CANDIDATES[-1]
+    log.warning("All model probes failed, using last candidate", model=fallback)
+    return fallback
+
+
+def _call_gemini(client: genai.Client, prompt: str, model: str) -> str:
     """Call Gemini with 429-aware retry logic.
 
     Strategy:
@@ -115,7 +138,7 @@ def _call_gemini(client: genai.Client, prompt: str) -> str:
     for attempt in range(1, 6):
         try:
             response = client.models.generate_content(
-                model=GEMINI_MODEL,
+                model=model,
                 contents=prompt,
             )
             return response.text
@@ -151,12 +174,21 @@ class ArticleGenerator:
 
     def __init__(self) -> None:
         self._client: Optional[genai.Client] = None
+        self._model: Optional[str] = None
 
     @property
     def client(self) -> genai.Client:
         if self._client is None:
             self._client = _configure_client()
+            # Resolve the best available model for this API key once
+            self._model = _resolve_model(self._client)
         return self._client
+
+    @property
+    def model(self) -> str:
+        # Ensure client (and model resolution) has run
+        _ = self.client
+        return self._model  # type: ignore[return-value]
 
     def generate_one(
         self,
@@ -171,7 +203,7 @@ class ArticleGenerator:
         log.info("Generating article", slug=entry.slug, tool=entry.tool)
 
         try:
-            markdown_text = _call_gemini(self.client, prompt)
+            markdown_text = _call_gemini(self.client, prompt, self.model)
         except Exception as exc:  # noqa: BLE001
             log.error(
                 "All retries exhausted for article",
