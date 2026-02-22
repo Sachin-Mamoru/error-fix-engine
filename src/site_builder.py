@@ -76,11 +76,12 @@ class SiteBuilder:
     # ── Public API ────────────────────────────────────────────────────────────
 
     def build(self, all_entries: list[ErrorEntry]) -> None:
-        """Full build: individual pages → homepage → sitemap → robots."""
+        """Full build: individual pages → homepage → sitemap → robots → CNAME."""
         self.site_dir.mkdir(parents=True, exist_ok=True)
         (self.site_dir / "errors").mkdir(parents=True, exist_ok=True)
 
         self._copy_assets()
+        self._write_cname()
 
         # Build pages for entries that have generated Markdown
         built_entries: list[ErrorEntry] = []
@@ -95,6 +96,7 @@ class SiteBuilder:
         self._build_homepage(built_entries)
         self._build_sitemap(built_entries)
         self._build_robots()
+        self._build_404()
 
         log.info(
             "Site build complete",
@@ -181,3 +183,23 @@ class SiteBuilder:
         )
         (self.site_dir / "robots.txt").write_text(content, encoding="utf-8")
         log.info("robots.txt written")
+
+    def _write_cname(self) -> None:
+        """Write the CNAME file so GitHub Pages keeps the custom domain after
+        every automated deploy.  Derives the hostname from base_url."""
+        from urllib.parse import urlparse
+        hostname = urlparse(self.base_url).netloc
+        if hostname:
+            (self.site_dir / "CNAME").write_text(hostname + "\n", encoding="utf-8")
+            log.info("CNAME written", hostname=hostname)
+
+    def _build_404(self) -> None:
+        """GitHub Pages serves 404.html automatically for missing pages."""
+        template = self.env.get_template("404.html")
+        html = template.render(
+            page_title="Page Not Found – Error Fix Engine",
+            meta_description="The page you're looking for doesn't exist.",
+            canonical_url=self.base_url + "/",
+        )
+        (self.site_dir / "404.html").write_text(html, encoding="utf-8")
+        log.info("404.html written")

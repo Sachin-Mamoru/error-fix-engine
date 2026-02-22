@@ -286,3 +286,352 @@ errors:
     context: process management
     tags: [linux, oom, process]
     related: [docker-oomkilled, linux-disk-full]
+
+  # ─── Node.js / npm ───────────────────────────────────────────────────────────
+  - tool: Node.js
+    error_code: "ENOENT"
+    error_name: "Node.js Error: ENOENT no such file or directory"
+    description: "Node cannot find the file or directory specified in the operation"
+    context: runtime
+    tags: [nodejs, filesystem, runtime]
+    related: [linux-no-such-file, python-modulenotfounderror]
+
+  - tool: Node.js
+    error_code: "EADDRINUSE"
+    error_name: "Node.js Error: EADDRINUSE port already in use"
+    description: "The port your app is trying to bind to is already occupied"
+    context: runtime / networking
+    tags: [nodejs, networking, ports]
+    related: [linux-address-in-use, docker-port-already-allocated]
+
+  - tool: Node.js
+    error_code: "MODULE_NOT_FOUND"
+    error_name: "Node.js Error: Cannot find module 'X'"
+    description: "The required Node module is missing from node_modules"
+    context: runtime
+    tags: [nodejs, modules, npm]
+    related: [npm-missing-package, python-modulenotfounderror]
+
+  - tool: Node.js
+    error_code: "heap-out-of-memory"
+    error_name: "Node.js FATAL ERROR: Reached heap limit – JavaScript heap out of memory"
+    description: "The Node.js process exceeded its default V8 heap size limit"
+    context: runtime
+    tags: [nodejs, memory, v8]
+    related: [docker-oomkilled, linux-killed]
+
+  - tool: npm
+    error_code: "ERESOLVE"
+    error_name: "npm ERR! ERESOLVE unable to resolve dependency tree"
+    description: "npm cannot find a compatible version for a dependency"
+    context: CLI
+    tags: [npm, dependencies, version-conflict]
+    related: [npm-missing-package, nodejs-module-not-found]
+
+  - tool: npm
+    error_code: "EACCES"
+    error_name: "npm ERR! EACCES permission denied"
+    description: "npm lacks write permission to the global node_modules directory"
+    context: CLI
+    tags: [npm, permissions, global-install]
+    related: [linux-permission-denied, docker-permission-denied]
+
+  - tool: npm
+    error_code: "missing-package"
+    error_name: "npm ERR! 404 Not Found – package not found in registry"
+    description: "The package name does not exist in the npm registry"
+    context: CLI
+    tags: [npm, registry, packages]
+    related: [npm-eresolve, docker-image-not-found]
+
+  # ─── Git ─────────────────────────────────────────────────────────────────────
+  - tool: Git
+    error_code: "merge-conflict"
+    error_name: "Git merge conflict – Automatic merge failed; fix conflicts"
+    description: "Two branches have incompatible changes to the same lines"
+    context: CLI
+    tags: [git, merge, conflicts]
+    related: [git-detached-head, git-push-rejected]
+
+  - tool: Git
+    error_code: "push-rejected"
+    error_name: "Git error: failed to push some refs – remote contains work you do not have"
+    description: "The remote branch has commits not in your local branch"
+    context: CLI
+    tags: [git, push, rebase]
+    related: [git-merge-conflict, git-detached-head]
+
+  - tool: Git
+    error_code: "detached-head"
+    error_name: "Git warning: You are in 'detached HEAD' state"
+    description: "HEAD points directly to a commit instead of a branch"
+    context: CLI
+    tags: [git, head, branches]
+    related: [git-merge-conflict, git-push-rejected]
+
+  - tool: Git
+    error_code: "permission-denied-publickey"
+    error_name: "Git error: Permission denied (publickey)"
+    description: "SSH key is missing, not added to agent, or not registered on the remote"
+    context: CLI / SSH
+    tags: [git, ssh, authentication]
+    related: [linux-permission-denied, aws-access-denied]
+
+  # ─── TypeScript ──────────────────────────────────────────────────────────────
+  - tool: TypeScript
+    error_code: "TS2345"
+    error_name: "TypeScript TS2345: Argument of type 'X' is not assignable to parameter of type 'Y'"
+    description: "A value of the wrong type is passed to a function parameter"
+    context: compile
+    tags: [typescript, types, compile-error]
+    related: [typescript-ts2339, python-typeerror]
+
+  - tool: TypeScript
+    error_code: "TS2339"
+    error_name: "TypeScript TS2339: Property 'X' does not exist on type 'Y'"
+    description: "Accessing a property that is not defined in the type declaration"
+    context: compile
+    tags: [typescript, types, properties]
+    related: [typescript-ts2345, python-attributeerror]
+
+  - tool: TypeScript
+    error_code: "TS2307"
+    error_name: "TypeScript TS2307: Cannot find module 'X' or its corresponding type declarations"
+    description: "The module is missing or has no @types package installed"
+    context: compile
+    tags: [typescript, modules, types]
+    related: [nodejs-module-not-found, npm-missing-package]
+
+  # ─── React / Next.js ─────────────────────────────────────────────────────────
+  - tool: React
+    error_code: "hydration-error"
+    error_name: "React Hydration Error: server HTML does not match client render"
+    description: "The server-rendered HTML differs from what React renders on the client"
+    context: runtime / SSR
+    tags: [react, nextjs, hydration, ssr]
+    related: [nextjs-build-error, react-invalid-hook]
+
+  - tool: React
+    error_code: "invalid-hook"
+    error_name: "React Error: Invalid hook call – Hooks can only be called inside a function component"
+    description: "A React hook is called outside of a component or inside a class component"
+    context: runtime
+    tags: [react, hooks, rules-of-hooks]
+    related: [react-hydration-error, typescript-ts2345]
+
+  - tool: Next.js
+    error_code: "build-error"
+    error_name: "Next.js Build Error: Failed to compile"
+    description: "The Next.js production build fails due to type or syntax errors"
+    context: build
+    tags: [nextjs, build, compilation]
+    related: [react-hydration-error, typescript-ts2307]
+
+  - tool: Next.js
+    error_code: "module-not-found"
+    error_name: "Next.js Module not found: Can't resolve 'X'"
+    description: "A module imported in a Next.js page cannot be located"
+    context: build / runtime
+    tags: [nextjs, modules, webpack]
+    related: [nodejs-module-not-found, typescript-ts2307]
+
+  # ─── PostgreSQL ──────────────────────────────────────────────────────────────
+  - tool: PostgreSQL
+    error_code: "connection-refused"
+    error_name: "PostgreSQL: connection refused – could not connect to server"
+    description: "PostgreSQL is not running, wrong port, or firewall is blocking the connection"
+    context: database
+    tags: [postgresql, database, connectivity]
+    related: [kubernetes-connection-refused, linux-address-in-use]
+
+  - tool: PostgreSQL
+    error_code: "auth-failed"
+    error_name: "PostgreSQL error: password authentication failed for user"
+    description: "Wrong password or pg_hba.conf rejects the authentication method"
+    context: database
+    tags: [postgresql, authentication, database]
+    related: [postgresql-connection-refused, aws-access-denied]
+
+  - tool: PostgreSQL
+    error_code: "too-many-connections"
+    error_name: "PostgreSQL FATAL: remaining connection slots are reserved"
+    description: "The database has hit its max_connections limit"
+    context: database
+    tags: [postgresql, connections, performance]
+    related: [postgresql-connection-refused, redis-max-clients]
+
+  # ─── MySQL ───────────────────────────────────────────────────────────────────
+  - tool: MySQL
+    error_code: "1045"
+    error_name: "MySQL ERROR 1045: Access denied for user"
+    description: "Wrong username, password, or host not allowed in MySQL user grants"
+    context: database
+    tags: [mysql, auth, database]
+    related: [postgresql-auth-failed, aws-access-denied]
+
+  - tool: MySQL
+    error_code: "1049"
+    error_name: "MySQL ERROR 1049: Unknown database 'X'"
+    description: "The specified database does not exist on this MySQL server"
+    context: database
+    tags: [mysql, database, schema]
+    related: [mysql-1045, postgresql-connection-refused]
+
+  - tool: MySQL
+    error_code: "2003"
+    error_name: "MySQL ERROR 2003: Can't connect to MySQL server on 'host'"
+    description: "MySQL server is not running or the host/port is incorrect"
+    context: database
+    tags: [mysql, connectivity, database]
+    related: [postgresql-connection-refused, linux-address-in-use]
+
+  # ─── MongoDB ─────────────────────────────────────────────────────────────────
+  - tool: MongoDB
+    error_code: "connection-string"
+    error_name: "MongoDB MongoParseError: Invalid connection string"
+    description: "The MongoDB URI is malformed or missing required components"
+    context: client / SDK
+    tags: [mongodb, connection, uri]
+    related: [mongodb-auth-failed, postgresql-connection-refused]
+
+  - tool: MongoDB
+    error_code: "auth-failed"
+    error_name: "MongoDB MongoServerError: Authentication failed"
+    description: "Wrong credentials or the user does not have access to the database"
+    context: client / SDK
+    tags: [mongodb, authentication, database]
+    related: [mongodb-connection-string, mysql-1045]
+
+  # ─── Redis ───────────────────────────────────────────────────────────────────
+  - tool: Redis
+    error_code: "connection-refused"
+    error_name: "Redis Error: connect ECONNREFUSED 127.0.0.1:6379"
+    description: "Redis server is not running or bound to a different address"
+    context: client / runtime
+    tags: [redis, connectivity, cache]
+    related: [postgresql-connection-refused, linux-address-in-use]
+
+  - tool: Redis
+    error_code: "max-clients"
+    error_name: "Redis ERR max number of clients reached"
+    description: "Redis has hit its maxclients limit; new connections are rejected"
+    context: server
+    tags: [redis, connections, performance]
+    related: [postgresql-too-many-connections, redis-connection-refused]
+
+  # ─── Nginx ───────────────────────────────────────────────────────────────────
+  - tool: Nginx
+    error_code: "502"
+    error_name: "Nginx 502 Bad Gateway"
+    description: "Nginx received an invalid response from the upstream server"
+    context: reverse proxy
+    tags: [nginx, proxy, http]
+    related: [nginx-504, kubernetes-crashloopbackoff]
+
+  - tool: Nginx
+    error_code: "504"
+    error_name: "Nginx 504 Gateway Timeout"
+    description: "The upstream server did not respond in time"
+    context: reverse proxy
+    tags: [nginx, proxy, timeout]
+    related: [nginx-502, aws-throttlingexception]
+
+  - tool: Nginx
+    error_code: "permission-denied"
+    error_name: "Nginx error: permission denied while connecting to upstream"
+    description: "SELinux or filesystem permissions block Nginx from reaching the socket"
+    context: server / Linux
+    tags: [nginx, permissions, selinux]
+    related: [linux-permission-denied, docker-permission-denied]
+
+  # ─── SSL / TLS ───────────────────────────────────────────────────────────────
+  - tool: SSL/TLS
+    error_code: "cert-expired"
+    error_name: "SSL certificate has expired"
+    description: "The TLS certificate's notAfter date is in the past"
+    context: HTTPS / networking
+    tags: [ssl, tls, certificate, https]
+    related: [ssl-self-signed, nginx-502]
+
+  - tool: SSL/TLS
+    error_code: "self-signed"
+    error_name: "SSL certificate error: self-signed certificate in certificate chain"
+    description: "The certificate is not issued by a trusted CA"
+    context: HTTPS / networking
+    tags: [ssl, tls, certificate]
+    related: [ssl-cert-expired, git-permission-denied-publickey]
+
+  - tool: SSL/TLS
+    error_code: "handshake-failure"
+    error_name: "SSL handshake failure: TLSv1 Alert"
+    description: "Client and server cannot agree on a TLS version or cipher suite"
+    context: HTTPS / networking
+    tags: [ssl, tls, handshake]
+    related: [ssl-cert-expired, nginx-502]
+
+  # ─── GitHub Actions ──────────────────────────────────────────────────────────
+  - tool: GitHub Actions
+    error_code: "secret-not-found"
+    error_name: "GitHub Actions Error: secret not found or empty"
+    description: "A workflow references a secret that is not defined in repo settings"
+    context: CI/CD
+    tags: [github-actions, secrets, ci]
+    related: [openai-401, gemini-401]
+
+  - tool: GitHub Actions
+    error_code: "permission-denied"
+    error_name: "GitHub Actions Error: Resource not accessible by integration"
+    description: "The GITHUB_TOKEN lacks required permissions for the action"
+    context: CI/CD
+    tags: [github-actions, permissions, token]
+    related: [linux-permission-denied, aws-access-denied]
+
+  - tool: GitHub Actions
+    error_code: "timeout"
+    error_name: "GitHub Actions Error: The job running has exceeded the maximum execution time"
+    description: "The workflow job exceeded the 6-hour (or custom) timeout limit"
+    context: CI/CD
+    tags: [github-actions, timeout, ci]
+    related: [kubernetes-pending, nginx-504]
+
+  # ─── Terraform ───────────────────────────────────────────────────────────────
+  - tool: Terraform
+    error_code: "state-lock"
+    error_name: "Terraform Error: Error locking state – state file is already locked"
+    description: "Another Terraform process holds the state lock, or a previous run crashed"
+    context: IaC / CLI
+    tags: [terraform, state, iac]
+    related: [terraform-no-such-host, aws-access-denied]
+
+  - tool: Terraform
+    error_code: "no-such-host"
+    error_name: "Terraform Error: dial tcp: no such host"
+    description: "Terraform cannot resolve the DNS name of the provider endpoint"
+    context: IaC / networking
+    tags: [terraform, dns, networking]
+    related: [terraform-state-lock, kubernetes-connection-refused]
+
+  # ─── HTTP / REST APIs ────────────────────────────────────────────────────────
+  - tool: HTTP
+    error_code: "CORS"
+    error_name: "CORS Error: Access-Control-Allow-Origin missing or blocked"
+    description: "The browser blocked a cross-origin request due to missing CORS headers"
+    context: browser / API
+    tags: [http, cors, browser, api]
+    related: [http-401, nginx-502]
+
+  - tool: HTTP
+    error_code: "401"
+    error_name: "HTTP 401 Unauthorized"
+    description: "The request lacks valid authentication credentials"
+    context: API
+    tags: [http, auth, api]
+    related: [openai-401, aws-access-denied]
+
+  - tool: HTTP
+    error_code: "403"
+    error_name: "HTTP 403 Forbidden"
+    description: "The server understood the request but refuses to authorise it"
+    context: API
+    tags: [http, permissions, api]
+    related: [http-401, aws-s3-403]
