@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+
+{% block title %}{{ page_title }}{% endblock %}
+
+{% block head_extra %}
+<!-- JSON-LD structured data for Google rich results -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "{{ entry.error_name | e }}",
+  "description": "{{ meta_description | e }}",
+  "url": "{{ canonical_url }}",
+  "keywords": "{{ entry.tags | join(', ') }}",
+  "inLanguage": "en",
+  "publisher": {
+    "@type": "Organization",
+    "name": "Error Fix Engine",
+    "url": "{{ base_url }}"
+  }
+}
+</script>
+{% endblock %}
+
+{% block content %}
+<div class="page-layout">
+
+  <!-- ── Main article ──────────────────────────────────────────────────────── -->
+  <article class="article-body">
+
+    <!-- Breadcrumb -->
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <a href="{{ base_url }}/">Home</a>
+      <span aria-hidden="true"> › </span>
+      <span>{{ entry.tool }}</span>
+      <span aria-hidden="true"> › </span>
+      <span>{{ entry.error_code or entry.error_name }}</span>
+    </nav>
+
+    <!-- Tool + context badge -->
+    <div class="meta-badges">
+      <span class="badge badge-tool">{{ entry.tool }}</span>
+      <span class="badge badge-context">{{ entry.context }}</span>
+      {% for tag in entry.tags[:4] %}
+        <span class="badge">{{ tag }}</span>
+      {% endfor %}
+    </div>
+
+    <!-- ── AdSense placement 1 – top of article ──────────────────────────── -->
+    <!-- Paste your ad unit code here (leaderboard 728×90 or responsive)      -->
+    <div class="ad-slot ad-slot--top" aria-label="Advertisement">
+      <!-- ins class="adsbygoogle" ... -->
+    </div>
+
+    <!-- Article HTML rendered from Markdown -->
+    <div class="article-content">
+      {{ html_body | safe }}
+    </div>
+
+    <!-- ── AdSense placement 2 – bottom of article ───────────────────────── -->
+    <div class="ad-slot ad-slot--bottom" aria-label="Advertisement">
+      <!-- ins class="adsbygoogle" ... -->
+    </div>
+
+  </article>
+
+  <!-- ── Sidebar ─────────────────────────────────────────────────────────── -->
+  <aside class="sidebar">
+
+    <!-- Quick info card -->
+    <div class="sidebar-card">
+      <h3>Quick Info</h3>
+      <dl>
+        <dt>Tool</dt>     <dd>{{ entry.tool }}</dd>
+        <dt>Context</dt>  <dd>{{ entry.context }}</dd>
+        {% if entry.error_code %}
+        <dt>Code</dt>     <dd><code>{{ entry.error_code }}</code></dd>
+        {% endif %}
+      </dl>
+    </div>
+
+    <!-- Related errors -->
+    {% if related_entries %}
+    <div class="sidebar-card">
+      <h3>Related Errors</h3>
+      <ul class="related-list">
+        {% for rel in related_entries %}
+        <li>
+          <a href="{{ base_url }}/errors/{{ rel.slug }}.html">
+            {{ rel.error_name }}
+          </a>
+          <span class="badge">{{ rel.tool }}</span>
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+
+    <!-- ── AdSense placement 3 – sidebar ─────────────────────────────────── -->
+    <div class="ad-slot ad-slot--sidebar" aria-label="Advertisement">
+      <!-- ins class="adsbygoogle" ... -->
+    </div>
+
+    <!-- Affiliate CTA -->
+    <div class="sidebar-card sidebar-card--cta">
+      <h3>Manage Cloud Costs</h3>
+      <p>Compare pricing and get credits on top cloud platforms.</p>
+      <!-- Replace href with your affiliate URL -->
+      <a href="#" class="btn" rel="nofollow sponsored" target="_blank">
+        Get $200 free credit →
+      </a>
+    </div>
+
+  </aside>
+</div>
+{% endblock %}

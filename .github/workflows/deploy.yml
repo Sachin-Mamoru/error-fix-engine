@@ -1,0 +1,101 @@
+name: Generate & Deploy
+
+# ── Triggers ───────────────────────────────────────────────────────────────────
+on:
+  # Run daily at 06:00 UTC (adjust to taste)
+  schedule:
+    - cron: "0 6 * * *"
+
+  # Allow a one-click manual run from the GitHub Actions UI
+  workflow_dispatch:
+
+  # Also run on every push to main (useful during initial setup)
+  push:
+    branches: [main]
+    paths:
+      - "config/errors.yaml"
+      - "src/**"
+      - "scripts/**"
+      - "templates/**"
+      - ".github/workflows/deploy.yml"
+
+# ── Permissions needed by actions/deploy-pages ─────────────────────────────────
+permissions:
+  contents: write          # push generated content back to main
+  pages: write             # deploy to GitHub Pages
+  id-token: write          # OIDC token for Pages deployment
+
+# ── Prevent overlapping runs ───────────────────────────────────────────────────
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+# ── Environment ────────────────────────────────────────────────────────────────
+env:
+  PYTHON_VERSION: "3.11"
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────────────────
+  generate_and_build:
+    name: Generate articles & build site
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Checkout the full repo (including previously committed content/)
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0        # needed so we can push back to main
+
+      # 2. Set up Python
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
+
+      # 3. Install dependencies
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # 4. Run the pipeline
+      #    GEMINI_API_KEY comes from repo secrets (Settings → Secrets → Actions)
+      #    BASE_URL is set to the actual GitHub Pages URL for your repo
+      - name: Run pipeline
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          BASE_URL: "https://${{ github.repository_owner }}.github.io/error-fix-engine"
+          LOG_LEVEL: "INFO"
+        run: python -m scripts.run_pipeline
+
+      # 5. Commit newly generated Markdown + HTML back to main
+      #    This ensures content/ and site/ are always in sync with the repo.
+      - name: Commit generated files
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add content/ site/ logs/
+          # Only commit if there are changes
+          git diff --staged --quiet || git commit -m "chore: auto-generate articles [skip ci]"
+          git push
+
+      # 6. Upload site/ as the GitHub Pages artifact
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site/
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: generate_and_build
+    runs-on: ubuntu-latest
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

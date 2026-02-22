@@ -1,0 +1,288 @@
+errors:
+
+  # ─── OpenAI ──────────────────────────────────────────────────────────────────
+  - tool: OpenAI
+    error_code: "429"
+    error_name: "RateLimitError: 429 Too Many Requests"
+    description: "OpenAI API rate limit exceeded for your current plan tier"
+    context: API
+    tags: [openai, rate-limit, api]
+    related: [openai-503, openai-401, gemini-429]
+
+  - tool: OpenAI
+    error_code: "401"
+    error_name: "AuthenticationError: 401 Unauthorized"
+    description: "Invalid or missing OpenAI API key"
+    context: API
+    tags: [openai, auth, api-key]
+    related: [openai-429, gemini-401]
+
+  - tool: OpenAI
+    error_code: "503"
+    error_name: "ServiceUnavailableError: 503 Service Unavailable"
+    description: "OpenAI API is temporarily overloaded or down"
+    context: API
+    tags: [openai, outage, availability]
+    related: [openai-429, openai-500]
+
+  - tool: OpenAI
+    error_code: "500"
+    error_name: "InternalServerError: 500 Internal Server Error"
+    description: "An unexpected error occurred on OpenAI's server side"
+    context: API
+    tags: [openai, server-error, api]
+    related: [openai-503, openai-429]
+
+  - tool: OpenAI
+    error_code: "context_length_exceeded"
+    error_name: "InvalidRequestError: context_length_exceeded"
+    description: "The prompt exceeds the maximum token limit for the model"
+    context: API
+    tags: [openai, tokens, context-window]
+    related: [openai-429, openai-400]
+
+  - tool: OpenAI
+    error_code: "400"
+    error_name: "BadRequestError: 400 Bad Request"
+    description: "Malformed request body or invalid parameters sent to the API"
+    context: API
+    tags: [openai, bad-request, api]
+    related: [openai-context-length, openai-401]
+
+  # ─── Gemini API ──────────────────────────────────────────────────────────────
+  - tool: Gemini
+    error_code: "429"
+    error_name: "ResourceExhausted: 429 Quota Exceeded"
+    description: "Google Gemini API free-tier quota exhausted"
+    context: API
+    tags: [gemini, rate-limit, google-ai]
+    related: [openai-429, gemini-403]
+
+  - tool: Gemini
+    error_code: "403"
+    error_name: "PermissionDenied: 403 Forbidden"
+    description: "API key lacks permission or the model is restricted in your region"
+    context: API
+    tags: [gemini, permissions, google-ai]
+    related: [gemini-429, gemini-401]
+
+  - tool: Gemini
+    error_code: "401"
+    error_name: "Unauthenticated: 401 API key invalid"
+    description: "The provided Gemini API key is missing or malformed"
+    context: API
+    tags: [gemini, auth, api-key]
+    related: [openai-401, gemini-403]
+
+  - tool: Gemini
+    error_code: "SAFETY"
+    error_name: "BlockedBySafetySettings"
+    description: "The response was blocked by Gemini content safety filters"
+    context: API
+    tags: [gemini, safety, content-filter]
+    related: [gemini-403, gemini-429]
+
+  # ─── Docker ──────────────────────────────────────────────────────────────────
+  - tool: Docker
+    error_code: "exit-code-1"
+    error_name: "Docker container exited with code 1"
+    description: "Container process terminated with a general error"
+    context: CLI / runtime
+    tags: [docker, container, exit-code]
+    related: [docker-oom, docker-permission-denied]
+
+  - tool: Docker
+    error_code: "OOMKilled"
+    error_name: "Docker OOMKilled – container killed due to out of memory"
+    description: "The container exceeded its memory limit and was killed by the kernel"
+    context: runtime
+    tags: [docker, memory, oom]
+    related: [docker-exit-code-1, kubernetes-oomkilled]
+
+  - tool: Docker
+    error_code: "permission-denied"
+    error_name: "Docker permission denied while connecting to daemon socket"
+    description: "Current user is not in the docker group or daemon is not running"
+    context: CLI
+    tags: [docker, permissions, daemon]
+    related: [linux-permission-denied, docker-exit-code-1]
+
+  - tool: Docker
+    error_code: "image-not-found"
+    error_name: "Docker pull – image not found (manifest unknown)"
+    description: "The specified Docker image or tag does not exist in the registry"
+    context: CLI
+    tags: [docker, registry, pull]
+    related: [docker-permission-denied, docker-exit-code-1]
+
+  - tool: Docker
+    error_code: "port-already-allocated"
+    error_name: "Docker Error: port is already allocated"
+    description: "The host port is already in use by another process or container"
+    context: CLI
+    tags: [docker, networking, ports]
+    related: [docker-exit-code-1, linux-address-in-use]
+
+  # ─── Kubernetes ──────────────────────────────────────────────────────────────
+  - tool: Kubernetes
+    error_code: "CrashLoopBackOff"
+    error_name: "Kubernetes CrashLoopBackOff"
+    description: "Pod keeps crashing and Kubernetes is backing off restart attempts"
+    context: cluster
+    tags: [kubernetes, pod, restart]
+    related: [kubernetes-oomkilled, kubernetes-imagepullbackoff]
+
+  - tool: Kubernetes
+    error_code: "ImagePullBackOff"
+    error_name: "Kubernetes ImagePullBackOff"
+    description: "Kubernetes cannot pull the container image from the registry"
+    context: cluster
+    tags: [kubernetes, image, registry]
+    related: [kubernetes-crashloopbackoff, docker-image-not-found]
+
+  - tool: Kubernetes
+    error_code: "OOMKilled"
+    error_name: "Kubernetes OOMKilled – pod terminated due to memory limit"
+    description: "The container exceeded its memory limit and was killed by Kubernetes"
+    context: cluster
+    tags: [kubernetes, memory, oom]
+    related: [kubernetes-crashloopbackoff, docker-oomkilled]
+
+  - tool: Kubernetes
+    error_code: "pending"
+    error_name: "Kubernetes pod stuck in Pending state"
+    description: "Pod cannot be scheduled due to resource constraints or node issues"
+    context: cluster
+    tags: [kubernetes, scheduling, resources]
+    related: [kubernetes-crashloopbackoff, kubernetes-oomkilled]
+
+  - tool: Kubernetes
+    error_code: "connection-refused"
+    error_name: "Kubernetes kubectl connection refused to API server"
+    description: "kubectl cannot reach the Kubernetes API server"
+    context: CLI
+    tags: [kubernetes, kubectl, networking]
+    related: [kubernetes-pending, aws-eks-auth]
+
+  # ─── AWS ─────────────────────────────────────────────────────────────────────
+  - tool: AWS
+    error_code: "AccessDenied"
+    error_name: "AWS AccessDeniedException: User is not authorized"
+    description: "IAM user or role lacks the required permission for the requested action"
+    context: CLI / SDK
+    tags: [aws, iam, permissions]
+    related: [aws-invalid-token, linux-permission-denied]
+
+  - tool: AWS
+    error_code: "InvalidClientTokenId"
+    error_name: "AWS InvalidClientTokenId: The security token is invalid"
+    description: "AWS credentials are malformed, expired, or for the wrong region"
+    context: CLI / SDK
+    tags: [aws, credentials, auth]
+    related: [aws-access-denied, openai-401]
+
+  - tool: AWS
+    error_code: "ThrottlingException"
+    error_name: "AWS ThrottlingException: Rate exceeded"
+    description: "AWS API calls exceeded the allowed request rate for the account"
+    context: SDK / API
+    tags: [aws, throttling, rate-limit]
+    related: [aws-access-denied, openai-429]
+
+  - tool: AWS
+    error_code: "S3-403"
+    error_name: "AWS S3 403 Forbidden – Access Denied"
+    description: "S3 bucket policy or ACL blocks the requested operation"
+    context: S3 / CLI
+    tags: [aws, s3, permissions]
+    related: [aws-access-denied, linux-permission-denied]
+
+  - tool: AWS
+    error_code: "eks-auth"
+    error_name: "AWS EKS You must be logged in to the server (Unauthorized)"
+    description: "kubectl cannot authenticate to the EKS cluster"
+    context: EKS / CLI
+    tags: [aws, eks, kubernetes, auth]
+    related: [kubernetes-connection-refused, aws-invalid-token]
+
+  # ─── Python ──────────────────────────────────────────────────────────────────
+  - tool: Python
+    error_code: "ModuleNotFoundError"
+    error_name: "Python ModuleNotFoundError: No module named 'X'"
+    description: "The imported module is not installed in the active Python environment"
+    context: runtime
+    tags: [python, imports, virtual-env]
+    related: [python-importerror, python-venv]
+
+  - tool: Python
+    error_code: "ImportError"
+    error_name: "Python ImportError: cannot import name 'X' from 'Y'"
+    description: "The specific name being imported does not exist in the target module"
+    context: runtime
+    tags: [python, imports, packages]
+    related: [python-modulenotfounderror, python-attributeerror]
+
+  - tool: Python
+    error_code: "AttributeError"
+    error_name: "Python AttributeError: object has no attribute 'X'"
+    description: "Trying to access a method or property that doesn't exist on an object"
+    context: runtime
+    tags: [python, debugging, objects]
+    related: [python-typeerror, python-nameerror]
+
+  - tool: Python
+    error_code: "TypeError"
+    error_name: "Python TypeError: unsupported operand type(s)"
+    description: "An operation is applied to objects of incompatible types"
+    context: runtime
+    tags: [python, types, debugging]
+    related: [python-attributeerror, python-valueerror]
+
+  - tool: Python
+    error_code: "RecursionError"
+    error_name: "Python RecursionError: maximum recursion depth exceeded"
+    description: "A function calls itself too many times without a proper base case"
+    context: runtime
+    tags: [python, recursion, stack]
+    related: [python-stackoverflow, python-typeerror]
+
+  # ─── Linux ───────────────────────────────────────────────────────────────────
+  - tool: Linux
+    error_code: "permission-denied"
+    error_name: "Linux bash: Permission denied"
+    description: "The current user lacks execute or read permission on the file"
+    context: shell / CLI
+    tags: [linux, permissions, bash]
+    related: [docker-permission-denied, aws-access-denied]
+
+  - tool: Linux
+    error_code: "no-such-file"
+    error_name: "Linux bash: No such file or directory"
+    description: "The specified file or directory path does not exist"
+    context: shell / CLI
+    tags: [linux, filesystem, bash]
+    related: [linux-permission-denied, python-modulenotfounderror]
+
+  - tool: Linux
+    error_code: "address-in-use"
+    error_name: "Linux bind: Address already in use (EADDRINUSE)"
+    description: "A process is already listening on the requested port"
+    context: networking / runtime
+    tags: [linux, networking, ports]
+    related: [docker-port-already-allocated, kubernetes-connection-refused]
+
+  - tool: Linux
+    error_code: "disk-full"
+    error_name: "Linux No space left on device (ENOSPC)"
+    description: "The disk partition has no remaining free space"
+    context: filesystem
+    tags: [linux, disk, storage]
+    related: [docker-oomkilled, kubernetes-oomkilled]
+
+  - tool: Linux
+    error_code: "killed"
+    error_name: "Linux process Killed (signal 9 / SIGKILL)"
+    description: "The OOM killer or a user terminated the process forcefully"
+    context: process management
+    tags: [linux, oom, process]
+    related: [docker-oomkilled, linux-disk-full]

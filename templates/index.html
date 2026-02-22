@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+
+{% block title %}{{ page_title }}{% endblock %}
+
+{% block head_extra %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  "name": "Error Fix Engine",
+  "url": "{{ base_url }}",
+  "description": "{{ meta_description | e }}",
+  "potentialAction": {
+    "@type": "SearchAction",
+    "target": "{{ base_url }}/?q={search_term_string}",
+    "query-input": "required name=search_term_string"
+  }
+}
+</script>
+{% endblock %}
+
+{% block content %}
+<div class="home-hero">
+  <h1>Fix Software Errors, Fast.</h1>
+  <p class="hero-sub">
+    Engineer-written guides for <strong>{{ total_articles }}</strong>
+    real-world errors in OpenAI, Docker, Kubernetes, AWS, Python, Linux and more.
+  </p>
+</div>
+
+<!-- ── AdSense – homepage leaderboard ────────────────────────────────────── -->
+<div class="ad-slot ad-slot--top" aria-label="Advertisement">
+  <!-- ins class="adsbygoogle" ... -->
+</div>
+
+<!-- ── Error index grouped by tool ──────────────────────────────────────── -->
+{% for tool_name, entries in tools.items() | sort %}
+<section class="tool-section">
+  <h2 class="tool-heading" id="{{ tool_name | lower | replace(' ', '-') }}">
+    {{ tool_name }}
+    <span class="article-count">{{ entries | length }} articles</span>
+  </h2>
+  <ul class="error-grid">
+    {% for entry in entries %}
+    <li class="error-card">
+      <a href="{{ base_url }}/errors/{{ entry.slug }}.html" class="error-card__link">
+        <span class="error-card__name">{{ entry.error_name }}</span>
+        <span class="error-card__desc">{{ entry.description }}</span>
+        <span class="error-card__ctx">{{ entry.context }}</span>
+      </a>
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+{% else %}
+<p class="empty-state">
+  No articles published yet. The automation pipeline will generate them shortly.
+</p>
+{% endfor %}
+
+<!-- ── AdSense – homepage footer ─────────────────────────────────────────── -->
+<div class="ad-slot ad-slot--bottom" aria-label="Advertisement">
+  <!-- ins class="adsbygoogle" ... -->
+</div>
+{% endblock %}
