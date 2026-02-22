@@ -22,14 +22,33 @@ from src.models import ErrorEntry, GeneratedArticle
 log = get_logger(__name__)
 
 # ── Gemini model preference list ─────────────────────────────────────────────
-# The pipeline tries each model in order and uses the first one that responds.
-# gemini-1.5-flash is available to ALL API keys including brand-new free tier.
-# Newer flash models are listed first so existing users benefit automatically.
-GEMINI_MODEL_CANDIDATES = [
+# Used as a ranking guide when choosing among live available models.
+# The pipeline calls ListModels to find what this API key can actually reach,
+# then picks the highest-ranked model from that live list.
+GEMINI_MODEL_PREFERENCE = [
+    # 2025-2026 generation (try newest first)
+    "gemini-2.5-pro",
+    "gemini-2.5-pro-preview-03-25",
+    "gemini-2.5-flash",
+    "gemini-2.5-flash-preview-04-17",
     "gemini-2.0-flash",
+    "gemini-2.0-flash-001",
     "gemini-2.0-flash-lite",
+    "gemini-2.0-flash-lite-001",
+    "gemini-2.0-flash-exp",
+    "gemini-2.0-pro-exp",
+    # 1.5 generation (widely available)
+    "gemini-1.5-pro",
+    "gemini-1.5-pro-001",
+    "gemini-1.5-pro-002",
     "gemini-1.5-flash",
+    "gemini-1.5-flash-001",
+    "gemini-1.5-flash-002",
     "gemini-1.5-flash-8b",
+    "gemini-1.5-flash-8b-001",
+    # Legacy
+    "gemini-1.0-pro",
+    "gemini-pro",
 ]
 
 # ── Rate-limit constants (free tier: 15 RPM, 1500 RPD) ───────────────────────
@@ -118,20 +137,62 @@ def _configure_client() -> genai.Client:
 
 
 def _resolve_model(client: genai.Client) -> str:
-    """Return the first model in GEMINI_MODEL_CANDIDATES that this API key
-    can actually reach, so new users and existing users both get the best
-    available model automatically."""
+    """Return the best available generateContent model for this API key.
+
+    Strategy:
+    1. Call client.models.list() to get the live set of models the key can reach.
+    2. Keep only those that support generateContent.
+    3. Rank them against GEMINI_MODEL_PREFERENCE; pick the highest-ranked.
+    4. If list() fails (network issue etc.), fall back to probing each
+       preference-list entry directly.
+    """
+    # ── Step 1: fetch live model list ─────────────────────────────────────────
+    available: set[str] = set()
+    try:
+        for m in client.models.list():
+            name: str = getattr(m, "name", "") or ""
+            # Strip "models/" prefix that the API sometimes returns
+            short = name.removeprefix("models/")
+            # Only keep models that support generateContent
+            supported = getattr(m, "supported_generation_methods", []) or []
+            if "generateContent" in supported:
+                available.add(short)
+        log.info("Live model list fetched", count=len(available), models=sorted(available))
+    except Exception as exc:  # noqa: BLE001
+        log.warning("ListModels failed, falling back to probe", reason=str(exc)[:120])
+
+    # ── Step 2: pick best model from available set ────────────────────────────
+    if available:
+        for preferred in GEMINI_MODEL_PREFERENCE:
+            if preferred in available:
+                log.info("Model resolved via ListModels", model=preferred)
+                return preferred
+        # None of our preference list matched – just pick any available model
+        # that contains "flash" or "pro" in the name as a heuristic
+        for name in sorted(available, reverse=True):
+            if "flash" in name or "pro" in name:
+                log.info("Model resolved (heuristic)", model=name)
+                return name
+        # Last resort: first available model
+        fallback = sorted(available)[0]
+        log.info("Model resolved (first available)", model=fallback)
+        return fallback
+
+    # ── Step 3: ListModels unavailable – fall back to direct probes ───────────
+    log.warning("No models from ListModels – probing preference list directly")
     probe = "Reply with one word: OK"
-    for model in GEMINI_MODEL_CANDIDATES:
+    for model in GEMINI_MODEL_PREFERENCE:
         try:
             client.models.generate_content(model=model, contents=probe)
-            log.info("Model resolved", model=model)
+            log.info("Model resolved via probe", model=model)
             return model
         except Exception as exc:  # noqa: BLE001
             log.debug("Model probe failed", model=model, reason=str(exc)[:80])
-    fallback = GEMINI_MODEL_CANDIDATES[-1]
-    log.warning("All model probes failed, using last candidate", model=fallback)
-    return fallback
+
+    # Absolute fallback – shouldn't reach here under normal circumstances
+    last = GEMINI_MODEL_PREFERENCE[-1]
+    log.error("All resolution strategies failed, using last preference", model=last)
+    return last
 
 
 def _call_gemini(client: genai.Client, prompt: str, model: str) -> str:
