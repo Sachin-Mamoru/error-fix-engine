@@ -37,10 +37,11 @@ GENERATED_IDX  = CONTENT_DIR / "generated.yaml"
 
 DEFAULT_BASE_URL = "https://errorfix.dev"
 
-# Max articles to generate per pipeline run.
-# Paid tier 1: Gemini 2 Flash has unlimited RPD and 2K RPM.
-# At 3s/article, 500 articles = ~27 min — fits easily in the 2-hour cron window.
-MAX_ARTICLES_PER_RUN = 500
+# Max NEW articles to generate per pipeline run.
+# Override via the MAX_NEW_ARTICLES_PER_RUN environment variable.
+# Default is 1 for SEO-safe velocity (Google prefers steady drip over bursts).
+# Example: set to 10 in GitHub Actions env to publish 10 new pages per day.
+MAX_ARTICLES_PER_RUN = int(os.environ.get("MAX_NEW_ARTICLES_PER_RUN", "1"))
 
 
 def parse_args() -> argparse.Namespace:
@@ -121,7 +122,9 @@ def main() -> int:
                 slugs=[e.slug for e in pending],
             )
         else:
-            # Cap per-run volume to respect free-tier RPD quota
+            # Oldest-first: pending preserves seed-YAML order then discovery
+            # append order, so slicing always continues from where yesterday
+            # left off without any extra sorting.
             capped_pending = pending[:MAX_ARTICLES_PER_RUN]
             if len(pending) > MAX_ARTICLES_PER_RUN:
                 log.info(
