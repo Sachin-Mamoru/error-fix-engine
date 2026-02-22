@@ -12,6 +12,7 @@ Generates:
 from __future__ import annotations
 
 import json
+import re
 import shutil
 from datetime import datetime, timezone
 from pathlib import Path
@@ -40,10 +41,40 @@ MD_EXTENSION_CONFIGS = {
 }
 
 
+def _sanitise_markdown(text: str) -> str:
+    """Strip LLM formatting artefacts before rendering.
+
+    Fixes applied to every article, old and new, on every site build:
+    1. Empty blockquote lines (``> `` with nothing after) – render as blank
+       <blockquote> tags that look broken.
+    2. Blank line(s) between an H1 and its following blockquote – the TOC
+       extension breaks the blockquote association, producing an empty tag.
+    3. Stray pilcrow (\u00b6) characters that occasionally leak from some
+       Markdown processors or LLM outputs.
+    """
+    # 1. Remove stray pilcrow characters
+    text = text.replace("\u00b6", "")
+
+    # 2. Drop lines that are ONLY a blockquote marker with no content
+    lines = text.splitlines()
+    cleaned: list[str] = []
+    for line in lines:
+        if re.fullmatch(r">\s*", line):
+            continue          # skip empty blockquote line
+        cleaned.append(line)
+    text = "\n".join(cleaned)
+
+    # 3. Collapse blank lines between H1 and the following blockquote so the
+    #    meta-description is always immediately attached to the heading.
+    text = re.sub(r"(^# .+)\n{2,}(> )", r"\1\n\2", text, flags=re.MULTILINE)
+
+    return text
+
+
 def _render_markdown(text: str) -> str:
-    """Convert Markdown text to an HTML fragment (no <html>/<body> wrapper)."""
+    """Sanitise then convert Markdown to an HTML fragment."""
     return md_lib.markdown(
-        text,
+        _sanitise_markdown(text),
         extensions=MD_EXTENSIONS,
         extension_configs=MD_EXTENSION_CONFIGS,
     )

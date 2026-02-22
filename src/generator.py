@@ -18,6 +18,7 @@ from google import genai
 from src.authors import pick_author
 from src.logger import get_logger
 from src.models import ErrorEntry, GeneratedArticle
+from src.site_builder import _sanitise_markdown
 
 log = get_logger(__name__)
 
@@ -336,7 +337,12 @@ class ArticleGenerator:
                 # Persist Markdown immediately so progress survives partial runs
                 md_path = content_dir / "errors" / f"{entry.slug}.md"
                 md_path.parent.mkdir(parents=True, exist_ok=True)
-                md_path.write_text(article.markdown_content, encoding="utf-8")
+                # Sanitise immediately so stored markdown is always clean.
+                # This means old articles are also fixed when the site rebuilds.
+                md_path.write_text(
+                    _sanitise_markdown(article.markdown_content),
+                    encoding="utf-8",
+                )
                 log.info("Markdown saved", path=str(md_path))
                 results.append(article)
 
