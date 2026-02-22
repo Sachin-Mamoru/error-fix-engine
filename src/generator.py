@@ -14,13 +14,6 @@ from pathlib import Path
 from typing import Optional
 
 from google import genai
-from tenacity import (
-    RetryError,
-    retry,
-    stop_after_attempt,
-    wait_exponential,
-    retry_if_exception_type,
-)
 
 from src.logger import get_logger
 from src.models import ErrorEntry, GeneratedArticle
@@ -30,9 +23,22 @@ log = get_logger(__name__)
 # ── Gemini model name (free tier as of 2026) ─────────────────────────────────
 GEMINI_MODEL = "gemini-2.0-flash"
 
+# ── Rate-limit constants (free tier: 15 RPM, 1500 RPD) ───────────────────────
+# 15 RPM = one request every 4 s minimum.
+# We use 15 s between articles so retries still fit inside the minute window.
+INTER_ARTICLE_DELAY_S = 15       # seconds between successful generations
+BATCH_SIZE = 10                  # pause after every N articles
+BATCH_PAUSE_S = 70               # seconds to pause between batches (> 1 min)
+RETRY_429_WAIT_S = 65            # wait after a 429 before retrying
+
 # ── Article generation parameters ────────────────────────────────────────────
 TARGET_MIN_WORDS = 900
 TARGET_MAX_WORDS = 1200
+
+
+def _is_rate_limit(exc: BaseException) -> bool:
+    """Return True when the exception is a 429 / RESOURCE_EXHAUSTED."""
+    return "429" in str(exc) or "RESOURCE_EXHAUSTED" in str(exc)
 
 
 def _build_prompt(entry: ErrorEntry, related_slugs: list[str]) -> str:
@@ -87,19 +93,43 @@ def _configure_client() -> genai.Client:
     return client
 
 
-@retry(
-    retry=retry_if_exception_type(Exception),
-    wait=wait_exponential(multiplier=2, min=4, max=60),
-    stop=stop_after_attempt(4),
-    reraise=True,
-)
 def _call_gemini(client: genai.Client, prompt: str) -> str:
-    """Call Gemini with automatic retry on transient errors."""
-    response = client.models.generate_content(
-        model=GEMINI_MODEL,
-        contents=prompt,
-    )
-    return response.text
+    """Call Gemini with 429-aware retry logic.
+
+    Strategy:
+      - On 429 (quota exceeded): wait RETRY_429_WAIT_S seconds then retry.
+        The free-tier window resets every minute, so waiting > 60 s guarantees
+        the next attempt lands in a fresh window.
+      - On other transient errors: standard exponential back-off.
+      - Give up after 5 attempts total.
+    """
+    last_exc: Optional[Exception] = None
+    for attempt in range(1, 6):
+        try:
+            response = client.models.generate_content(
+                model=GEMINI_MODEL,
+                contents=prompt,
+            )
+            return response.text
+        except Exception as exc:  # noqa: BLE001
+            last_exc = exc
+            if _is_rate_limit(exc):
+                log.warning(
+                    "Rate limit hit – waiting before retry",
+                    attempt=attempt,
+                    wait_s=RETRY_429_WAIT_S,
+                )
+                time.sleep(RETRY_429_WAIT_S)
+            else:
+                wait = min(4 * (2 ** (attempt - 1)), 60)
+                log.warning(
+                    "Transient error – retrying",
+                    attempt=attempt,
+                    wait_s=wait,
+                    error=str(exc),
+                )
+                time.sleep(wait)
+    raise last_exc  # type: ignore[misc]
 
 
 class ArticleGenerator:
@@ -128,16 +158,9 @@ class ArticleGenerator:
 
         try:
             markdown_text = _call_gemini(self.client, prompt)
-        except RetryError as exc:
-            log.error(
-                "All retries exhausted for article",
-                slug=entry.slug,
-                error=str(exc),
-            )
-            return None
         except Exception as exc:  # noqa: BLE001
             log.error(
-                "Unexpected error generating article",
+                "All retries exhausted for article",
                 slug=entry.slug,
                 error=str(exc),
             )
@@ -149,8 +172,10 @@ class ArticleGenerator:
             slug=entry.slug,
             words=article.word_count,
         )
-        # Polite delay to avoid hammering the free-tier quota
-        time.sleep(2)
+        # Respect free-tier RPM (15 RPM → ≥4 s/request).
+        # 15 s gives headroom for occasional retries within the same minute.
+        log.debug("Rate-limit delay", wait_s=INTER_ARTICLE_DELAY_S)
+        time.sleep(INTER_ARTICLE_DELAY_S)
         return article
 
     def generate_batch(
@@ -174,19 +199,28 @@ class ArticleGenerator:
             already_done=len(already_done),
         )
 
-        for entry in pending:
+        for i, entry in enumerate(pending):
             article = self.generate_one(entry, list(all_slugs))
             if article is None:
                 log.warning("Skipping failed entry", slug=entry.slug)
-                continue
+            else:
+                # Persist Markdown immediately so progress survives partial runs
+                md_path = content_dir / "errors" / f"{entry.slug}.md"
+                md_path.parent.mkdir(parents=True, exist_ok=True)
+                md_path.write_text(article.markdown_content, encoding="utf-8")
+                log.info("Markdown saved", path=str(md_path))
+                results.append(article)
 
-            # Persist Markdown immediately
-            md_path = content_dir / "errors" / f"{entry.slug}.md"
-            md_path.parent.mkdir(parents=True, exist_ok=True)
-            md_path.write_text(article.markdown_content, encoding="utf-8")
-            log.info("Markdown saved", path=str(md_path))
-
-            results.append(article)
+            # Every BATCH_SIZE articles, pause longer to let the RPM window reset.
+            # This prevents accumulated quota debt across a large run.
+            if (i + 1) % BATCH_SIZE == 0 and (i + 1) < len(pending):
+                log.info(
+                    "Batch pause – letting quota window reset",
+                    completed=i + 1,
+                    remaining=len(pending) - (i + 1),
+                    wait_s=BATCH_PAUSE_S,
+                )
+                time.sleep(BATCH_PAUSE_S)
 
         log.info("Batch generation complete", generated=len(results))
         return results
