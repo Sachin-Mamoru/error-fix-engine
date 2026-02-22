@@ -14,8 +14,10 @@ Environment variables:
 from __future__ import annotations
 
 import argparse
+import random
 import sys
 import os
+from datetime import date
 from pathlib import Path
 
 # ── Make sure the project root is on sys.path ────────────────────────────────
@@ -42,6 +44,11 @@ DEFAULT_BASE_URL = "https://errorfix.dev"
 # Default is 1 for SEO-safe velocity (Google prefers steady drip over bursts).
 # Example: set to 10 in GitHub Actions env to publish 10 new pages per day.
 MAX_ARTICLES_PER_RUN = int(os.environ.get("MAX_NEW_ARTICLES_PER_RUN", "1"))
+
+# Max OLD articles to refresh (regenerate) per pipeline run.
+# Seeded by today's date so re-runs on the same day pick identical articles.
+# Set to 0 to disable refresh entirely.
+MAX_REFRESH_PER_RUN = int(os.environ.get("MAX_REFRESH_PER_RUN", "1"))
 
 
 def parse_args() -> argparse.Namespace:
@@ -155,6 +162,42 @@ def main() -> int:
                     new=len(new_slugs),
                     total_done=len(updated_done),
                 )
+
+    # ── 3b. Refresh old articles (random, date-seeded) ─────────────────────────
+    if not args.build_only and not args.dry_run and MAX_REFRESH_PER_RUN > 0:
+        # Reload already_done in case new articles were just added above
+        refreshable_slugs = list(load_generated_index(GENERATED_IDX))
+        if refreshable_slugs:
+            # Seed with today's date → stable within a day, different each day
+            rng = random.Random(date.today().isoformat())
+            rng.shuffle(refreshable_slugs)
+            refresh_slugs = set(refreshable_slugs[:MAX_REFRESH_PER_RUN])
+
+            # Build entry list for only the chosen slugs
+            slug_to_entry = {e.slug: e for e in all_entries}
+            refresh_entries = [
+                slug_to_entry[s] for s in refresh_slugs if s in slug_to_entry
+            ]
+
+            log.info(
+                "Refreshing old articles",
+                count=len(refresh_entries),
+                slugs=[e.slug for e in refresh_entries],
+            )
+
+            if generator is None:
+                generator = ArticleGenerator()
+
+            # Pass an empty already_done so generate_batch treats them as pending
+            generator.generate_batch(
+                entries=refresh_entries,
+                already_done=set(),           # force regeneration
+                content_dir=CONTENT_DIR,
+                max_count=MAX_REFRESH_PER_RUN,
+            )
+            log.info("Refresh complete", refreshed=len(refresh_entries))
+        else:
+            log.info("No published articles yet – skipping refresh")
 
     # ── 4. Site build ─────────────────────────────────────────────────────────
     if not args.dry_run:
