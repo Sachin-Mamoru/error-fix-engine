@@ -34,9 +34,7 @@ SITE_DIR       = PROJECT_ROOT / "site"
 TEMPLATES_DIR  = PROJECT_ROOT / "templates"
 GENERATED_IDX  = CONTENT_DIR / "generated.yaml"
 
-DEFAULT_BASE_URL = (
-    "https://YOUR_GITHUB_USERNAME.github.io/error-fix-engine"
-)
+DEFAULT_BASE_URL = "https://errorfix.dev"
 
 
 def parse_args() -> argparse.Namespace:

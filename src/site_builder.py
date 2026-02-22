@@ -56,7 +56,7 @@ class SiteBuilder:
         content_dir: Path,
         site_dir: Path,
         templates_dir: Path,
-        base_url: str = "https://YOUR_GITHUB_USERNAME.github.io/error-fix-engine",
+        base_url: str = "https://errorfix.dev",
     ) -> None:
         self.content_dir = content_dir
         self.site_dir = site_dir
