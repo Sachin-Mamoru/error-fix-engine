@@ -215,6 +215,10 @@ def _call_gemini(client: genai.Client, prompt: str, model: str) -> str:
                 model=model,
                 contents=prompt,
             )
+            if response.text is None:
+                raise ValueError(
+                    "Gemini returned None text (safety block or empty candidates)"
+                )
             return response.text
         except Exception as exc:  # noqa: BLE001
             last_exc = exc

@@ -37,5 +37,7 @@ class GeneratedArticle:
     word_count: int = 0
 
     def __post_init__(self) -> None:
+        if self.markdown_content is None:
+            self.markdown_content = ""
         if not self.word_count:
             self.word_count = len(self.markdown_content.split())
