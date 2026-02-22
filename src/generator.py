@@ -21,7 +21,9 @@ from src.models import ErrorEntry, GeneratedArticle
 log = get_logger(__name__)
 
 # ── Gemini model name (free tier as of 2026) ─────────────────────────────────
-GEMINI_MODEL = "gemini-2.0-flash"
+# gemini-2.0-flash is restricted to existing users; gemini-2.0-flash-lite is
+# the current free-tier model open to all new API keys.
+GEMINI_MODEL = "gemini-2.0-flash-lite"
 
 # ── Rate-limit constants (free tier: 15 RPM, 1500 RPD) ───────────────────────
 # 15 RPM = one request every 4 s minimum.
@@ -39,6 +41,12 @@ TARGET_MAX_WORDS = 1200
 def _is_rate_limit(exc: BaseException) -> bool:
     """Return True when the exception is a 429 / RESOURCE_EXHAUSTED."""
     return "429" in str(exc) or "RESOURCE_EXHAUSTED" in str(exc)
+
+
+def _is_permanent(exc: BaseException) -> bool:
+    """Return True for errors that will never succeed on retry (4xx non-429)."""
+    msg = str(exc)
+    return any(code in msg for code in ("404", "400", "403", "NOT_FOUND", "INVALID_ARGUMENT"))
 
 
 def _build_prompt(entry: ErrorEntry, related_slugs: list[str]) -> str:
@@ -113,6 +121,12 @@ def _call_gemini(client: genai.Client, prompt: str) -> str:
             return response.text
         except Exception as exc:  # noqa: BLE001
             last_exc = exc
+            if _is_permanent(exc):
+                log.error(
+                    "Permanent API error – not retrying",
+                    error=str(exc),
+                )
+                raise
             if _is_rate_limit(exc):
                 log.warning(
                     "Rate limit hit – waiting before retry",
