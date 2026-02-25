@@ -21,11 +21,41 @@
 
 {% block content %}
 <div class="home-hero">
-  <h1>Fix Software Errors, Fast.</h1>
+  <p class="hero-eyebrow"><span class="dot"></span> Engineer-written guides</p>
+  <h1><span class="highlight">Fix Software Errors</span>, Fast.</h1>
   <p class="hero-sub">
-    Engineer-written guides for <strong>{{ total_articles }}</strong>
+    Practical troubleshooting guides for <strong>{{ total_articles }}</strong>
     real-world errors in OpenAI, Docker, Kubernetes, AWS, Python, Linux and more.
   </p>
+
+  <!-- Search -->
+  <div class="hero-search">
+    <span class="hero-search-icon">🔍</span>
+    <input
+      id="error-search"
+      class="hero-search-input"
+      type="search"
+      placeholder="Search errors, tools, error codes…"
+      autocomplete="off"
+      spellcheck="false"
+    />
+  </div>
+
+  <!-- Stats -->
+  <div class="stats-bar">
+    <div class="stat-item">
+      <div class="stat-value">{{ total_articles }}</div>
+      <div class="stat-label">Articles</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-value">{{ tools | length }}</div>
+      <div class="stat-label">Tools covered</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-value">Free</div>
+      <div class="stat-label">Always</div>
+    </div>
+  </div>
 </div>
 
 <!-- ── AdSense – homepage leaderboard ────────────────────────────────────── -->
@@ -35,14 +65,15 @@
 
 <!-- ── Error index grouped by tool ──────────────────────────────────────── -->
 {% for tool_name, entries in tools.items() | sort %}
-<section class="tool-section">
+<section class="tool-section" data-tool="{{ tool_name | lower }}">
   <h2 class="tool-heading" id="{{ tool_name | lower | replace(' ', '-') }}">
+    <span class="tool-heading-icon" aria-hidden="true">▸</span>
     {{ tool_name }}
     <span class="article-count">{{ entries | length }} articles</span>
   </h2>
   <ul class="error-grid">
     {% for entry in entries %}
-    <li class="error-card">
+    <li class="error-card" data-search="{{ (entry.error_name ~ ' ' ~ entry.tool ~ ' ' ~ entry.description ~ ' ' ~ (entry.error_code or '')) | lower }}">
       <a href="{{ base_url }}/errors/{{ entry.slug }}.html" class="error-card__link">
         <span class="error-card__name">{{ entry.error_name }}</span>
         <span class="error-card__desc">{{ entry.description }}</span>
@@ -62,4 +93,24 @@
 <div class="ad-slot ad-slot--bottom" aria-label="Advertisement">
   <!-- ins class="adsbygoogle" ... -->
 </div>
+
+<!-- ── Live search ────────────────────────────────────────────────────────── -->
+<script>
+  (function () {
+    const input = document.getElementById('error-search');
+    if (!input) return;
+    input.addEventListener('input', function () {
+      const q = this.value.trim().toLowerCase();
+      document.querySelectorAll('.tool-section').forEach(function (section) {
+        let visibleCards = 0;
+        section.querySelectorAll('.error-card').forEach(function (card) {
+          const match = !q || card.dataset.search.includes(q);
+          card.style.display = match ? '' : 'none';
+          if (match) visibleCards++;
+        });
+        section.style.display = visibleCards === 0 ? 'none' : '';
+      });
+    });
+  })();
+</script>
 {% endblock %}
