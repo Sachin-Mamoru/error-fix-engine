@@ -125,7 +125,7 @@ class SiteBuilder:
             self._build_error_page(entry, md_path, all_entries)
             built_entries.append(entry)
 
-        self._build_homepage(built_entries)
+        self._build_homepage(built_entries, all_entries)
         self._build_sitemap(built_entries)
         self._build_robots()
         self._build_404()
@@ -180,7 +180,7 @@ class SiteBuilder:
         out_path.write_text(html, encoding="utf-8")
         log.debug("Error page built", slug=entry.slug, path=str(out_path))
 
-    def _build_homepage(self, built_entries: list[ErrorEntry]) -> None:
+    def _build_homepage(self, built_entries: list[ErrorEntry], all_entries: list[ErrorEntry] | None = None) -> None:
         # Group by tool for a cleaner homepage layout
         tools: dict[str, list[ErrorEntry]] = {}
         for entry in built_entries:
@@ -190,6 +190,7 @@ class SiteBuilder:
         html = template.render(
             tools=tools,
             total_articles=len(built_entries),
+            total_topics=len(all_entries) if all_entries else len(built_entries),
             page_title="Error Fix Engine – How to Fix Software & Cloud Errors",
             meta_description=(
                 "Step-by-step guides to fix OpenAI, Docker, Kubernetes, AWS, "
