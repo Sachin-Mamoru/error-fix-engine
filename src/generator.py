@@ -322,8 +322,6 @@ class ArticleGenerator:
         results: list[GeneratedArticle] = []
 
         pending = [e for e in entries if e.slug not in already_done]
-        if max_count > 0:
-            pending = pending[:max_count]
 
         log.info(
             "Batch generation starting",
@@ -333,9 +331,16 @@ class ArticleGenerator:
             cap=max_count or "none",
         )
 
+        success_count = 0
         for i, entry in enumerate(pending):
+            # Stop once we have enough successful generations.
+            if max_count > 0 and success_count >= max_count:
+                break
+
             article = self.generate_one(entry, list(all_slugs))
             if article is None:
+                # Failed entries are skipped; the next candidate is tried so
+                # a single bad slug can never block the whole daily run.
                 log.warning("Skipping failed entry", slug=entry.slug)
             else:
                 # Persist Markdown immediately so progress survives partial runs
@@ -349,6 +354,7 @@ class ArticleGenerator:
                 )
                 log.info("Markdown saved", path=str(md_path))
                 results.append(article)
+                success_count += 1
 
             # Every BATCH_SIZE articles, pause longer to let the RPM window reset.
             # This prevents accumulated quota debt across a large run.
