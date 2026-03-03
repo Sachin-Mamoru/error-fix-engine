@@ -1,232 +1,172 @@
 # Unauthenticated: 401 API key invalid
-> Encountering "Unauthenticated: 401 API key invalid" with Gemini means your API key is missing, incorrect, or improperly configured; this guide explains how to fix it.
-
-As a Site Reliability Engineer, I've seen my fair share of authentication errors. The `401 Unauthenticated` error, specifically with the message "API key invalid" when interacting with the Gemini API, is a common stumbling block for developers. It's frustrating because it often means your application is *almost* there, but just can't clear the first hurdle of identity verification. This guide provides a practical, step-by-step approach to diagnosing and resolving this issue based on my experience.
+> Encountering "Unauthenticated: 401 API key invalid" means your Gemini API key is missing, invalid, or incorrectly configured; this guide explains how to fix it.
 
 ## What This Error Means
 
-When you receive an `Unauthenticated: 401 API key invalid` error from the Gemini API, it signifies that your request has reached the Gemini service, but the credentials provided (or lack thereof) were not accepted as valid for authentication. The HTTP status code `401` explicitly indicates that the request has not been applied because it lacks valid authentication credentials for the target resource.
+The `Unauthenticated: 401 API key invalid` error directly indicates an authentication failure when attempting to interact with the Gemini API. In the world of HTTP status codes, `401 Unauthorized` (often labelled `Unauthenticated` for clarity in API contexts) means that the request has not been applied because it lacks valid authentication credentials for the target resource.
 
-In the context of the Gemini API, this means:
-1.  The API key you sent either doesn't exist on Gemini's records for your project.
-2.  The key is malformed (e.g., contains typos, extra spaces, or incorrect characters).
-3.  The key is being sent in a way that the API doesn't expect (wrong header, query parameter, or client library configuration).
-
-It's crucial to distinguish this from a `403 Forbidden` error, which implies that your credentials *were* accepted, but you lack the necessary *authorization* to perform the requested action. With a 401, the system can't even confirm *who* you are.
+Specifically for the Gemini platform, this error message means that the API service could not recognize or validate the API key you provided. It's a critical signal that the system doesn't know who you are, or thinks you are someone else entirely due to a malformed or incorrect key. It's distinct from a `403 Forbidden` error, which typically means the system knows who you are but you don't have the necessary permissions to access the requested resource. With a `401`, the very first step of identity verification has failed.
 
 ## Why It Happens
 
-Authentication is the very first gate your request needs to pass. If that gate doesn't recognize your key, it simply rejects the request outright, preventing it from ever reaching the actual service logic. This happens because the Gemini API expects a specific API key, linked to your Google Cloud Project, to be present and correctly formatted in every request for most direct API interactions.
+This error fundamentally occurs because the Gemini API endpoint you're trying to reach cannot establish your identity using the provided API key. The API key acts as a digital passport for your application. If that passport is missing, expired, revoked, or simply miswritten, the system will deny access.
 
-In my experience, this error typically occurs due to fundamental mistakes in how the API key is retrieved, handled, or transmitted by the client application. It's a security mechanism working as intended – if the key isn't valid, access is denied. The most common scenarios involve issues with copying the key, storing it securely, or integrating it into the client library or direct HTTP requests. I've often seen developers spend hours debugging complex logic only to find a simple typo in the API key.
+From an SRE perspective, I've seen this in production when deployments go out without proper secrets configuration, or during local development when developers are moving between different projects or environments and forget to update their keys. It's a common stumbling block, but typically straightforward to resolve once you understand the underlying causes.
 
 ## Common Causes
 
-Here's a breakdown of the most frequent reasons I've encountered for this `401 API key invalid` error:
+In my experience, the `Unauthenticated: 401 API key invalid` error with Gemini API keys usually boils down to one of several recurring issues:
 
-1.  **Missing API Key:** The application simply isn't sending any API key with the request. This can happen if an environment variable isn't loaded, a configuration file is missing, or the client library isn't initialized with the key.
-2.  **Incorrect or Malformed Key:**
-    *   **Typographical Errors:** The most common culprit. A single character mistyped, or an extra space, can invalidate the entire key.
-    *   **Copy-Paste Issues:** Sometimes, when copying keys from the Google Cloud Console, extra invisible characters or line breaks can be inadvertently included.
-    *   **Expired or Revoked Key:** API keys can be explicitly revoked for security reasons, or sometimes automatically if associated project settings change.
-    *   **Wrong Key for Project:** Using an API key generated for Project A to access resources in Project B.
-3.  **Environment Variable Misconfiguration:**
-    *   The environment variable name is incorrect (e.g., `GEMINI_API_KEY` instead of `GOOGLE_API_KEY`).
-    *   The environment variable is set in one shell session but the application is run from another where it's not defined.
-    *   The variable is overwritten by a blank or incorrect value further down the application's loading process.
-4.  **Hardcoding Mistakes:** While hardcoding keys is generally a bad practice (especially for production), if you're doing it for quick local testing, a mistake in the literal string value will cause this error.
-5.  **Improper Header/Parameter Usage:** If you're making direct HTTP requests (e.g., with `curl` or a custom HTTP client), the API key must be sent in the correct header (`x-goog-api-key`) or as a query parameter (`key`). Sending it in the wrong place, or with an incorrect header name, will result in a 401. Client libraries usually abstract this, but it's vital for direct API calls.
-6.  **Firewall or Proxy Issues (Less Common for 401):** While less direct, an overly aggressive firewall or proxy could potentially strip headers or alter payloads, leading to a malformed request that the API then rejects as unauthenticated. This is rarer than direct key issues but worth considering in complex network environments.
+1.  **Missing API Key:** The most obvious cause. Your application code or environment simply isn't passing an API key at all, or it's passing an empty string. The Gemini service expects *some* key to be present.
+2.  **Incorrect API Key:** This is often due to copy-paste errors, typing mistakes, or using an API key from a different project or environment. API keys are long, alphanumeric strings; even a single character mismatch will invalidate it.
+3.  **Expired or Revoked Key:** API keys can have lifecycles. They might be set to expire after a certain period, or they could have been manually revoked by an administrator for security reasons. If a key is revoked, any subsequent request using it will fail.
+4.  **Improper Key Formatting/Placement:** Gemini API keys are usually passed as a query parameter (`key=YOUR_API_KEY`) or in a specific HTTP header (e.g., `X-API-Key`). If the key is passed in the wrong place, or incorrectly formatted (e.g., extra spaces, wrong casing), the API won't recognize it.
+5.  **Environment Variable Issues:** Often, API keys are stored in environment variables (e.g., `GEMINI_API_KEY`). If the variable isn't set correctly in the execution environment, or if your application isn't reading it properly, the key will effectively be missing or malformed when it reaches the API client.
+6.  **Regional Restrictions:** While less common for the `401` specifically, sometimes API keys are tied to specific regions or projects. Attempting to use a key in an unauthorized region or for a resource it's not provisioned for *can* sometimes manifest as an authentication issue if the key itself isn't recognized in that context.
 
 ## Step-by-Step Fix
 
-Let's systematically troubleshoot and fix this error.
+Troubleshooting this error requires a systematic approach. Here’s how I typically go about fixing it:
 
-1.  **Verify Key Existence in Google Cloud Console:**
-    *   Navigate to the [Google Cloud Console](https://console.cloud.google.com/).
-    *   Select your project.
-    *   Go to "APIs & Services" > "Credentials".
-    *   Ensure an "API Key" credential exists and is enabled. Note down its exact value.
-    *   If you're unsure or suspect the key might be compromised, consider generating a **new** API key. Remember to delete the old one *after* successfully deploying with the new key.
+1.  **Verify Key Existence and Correctness:**
+    *   **Source of Truth:** Go back to the Google Cloud Console (or wherever you generated your Gemini API key). Ensure the key you *think* you're using actually exists and is active.
+    *   **Direct Comparison:** Carefully copy the key directly from the console and paste it into a temporary text file. Then, compare it character by character (or use a diff tool) with the key your application is actually using. Pay close attention to leading/trailing spaces, special characters, and capitalization.
+    *   **Regenerate (If Unsure):** If you suspect the key might be compromised or if you're just unsure, regenerate a new API key in the Google Cloud Console. Update your application with this new key. Be aware that regenerating invalidates the old key immediately.
 
-2.  **Locate Where Your Application Loads the API Key:**
-    *   **Environment Variables:** Is your application expecting a `GEMINI_API_KEY` or `GOOGLE_API_KEY` environment variable?
-    *   **Configuration Files:** Are you loading it from a `.env` file, `config.py`, or similar?
-    *   **Direct Hardcoding:** If you're hardcoding for testing, find that line.
-
-3.  **Inspect the API Key Value at Runtime:**
-    *   **Temporary Print Statement:** Temporarily add a `print()` statement (or `console.log()` in Node.js) to show the API key *just before* it's used in the API call. **Remove this before committing to production!**
-        ```python
-        import os
-        
-        # ... your code ...
-        
-        gemini_api_key = os.getenv("GEMINI_API_KEY")
-        if not gemini_api_key:
-            print("Error: GEMINI_API_KEY environment variable not set.")
-        else:
-            print(f"API Key being used (first 5 chars): {gemini_api_key[:5]}...") # Print only a snippet for security
-        
-        # Initialize Gemini client with gemini_api_key
-        # ...
+2.  **Check Environment Variable Configuration:**
+    *   If you're using environment variables (which you should for security), verify they are set correctly in your shell or deployment environment.
+    *   **Local Development:**
+        ```bash
+        echo $GEMINI_API_KEY
         ```
-    *   **Debugger:** Use your IDE's debugger to inspect the variable holding the API key.
-    *   **Command Line (for shell scripts/curl):** If using `curl`, explicitly check the command.
+        This command should output your actual API key. If it's empty or incorrect, set it:
+        ```bash
+        export GEMINI_API_KEY="YOUR_ACTUAL_GEMINI_API_KEY"
+        ```
+        For persistent local development, consider using a `.env` file and a library like `python-dotenv` or `dot-env` for Node.js.
+    *   **Deployment Environments:** For CI/CD pipelines, Docker containers, or cloud functions, ensure the environment variables are correctly passed and loaded.
 
-    Compare the value obtained at runtime with the key from the Google Cloud Console. Pay close attention to:
-    *   **Leading/Trailing Whitespace:** These are invisible but break keys.
-    *   **Incorrect Characters:** Did you accidentally type `0` for `O` or `l` for `1`?
-    *   **Partial Key:** Is only a portion of the key being picked up?
+3.  **Review API Client Initialization and Request Logic:**
+    *   Examine the part of your code responsible for initializing the Gemini API client or making the raw HTTP request.
+    *   Confirm the API key is being passed in the expected manner (e.g., as a `key` query parameter, or an `x-goog-api-key` header).
+    *   Ensure no transformations (e.g., truncation, encoding errors) are happening to the key before it's sent.
 
-4.  **Verify How the Key is Passed to the Gemini API:**
-    *   **Client Libraries:** Most official client libraries (Python, Node.js, etc.) have a clear way to initialize them with an API key. Ensure you're using the correct parameter.
-    *   **Direct HTTP Requests:** If you're crafting your own HTTP requests, ensure the key is in the `x-goog-api-key` HTTP header or as a `key` query parameter.
+    ```python
+    import os
+    import google.generativeai as genai
 
-    ```bash
-    # Example using curl (replace YOUR_API_KEY and MODEL_ID)
-    # Check if the key is in the header
-    curl -X POST \
-      -H "Content-Type: application/json" \
-      -H "x-goog-api-key: YOUR_API_KEY" \
-      "https://generativelanguage.googleapis.com/v1beta/models/MODEL_ID:generateContent" \
-      -d '{
-        "contents": [
-          {"parts":[{"text":"Write a short poem about debugging."}]}
-        ]
-      }'
-    
-    # Or as a query parameter (less common with client libraries, but valid for direct calls)
-    curl -X POST \
-      -H "Content-Type: application/json" \
-      "https://generativelanguage.googleapis.com/v1beta/models/MODEL_ID:generateContent?key=YOUR_API_KEY" \
-      -d '{
-        "contents": [
-          {"parts":[{"text":"Write a short poem about debugging."}]}
-        ]
-      }'
+    # Incorrect: Key not loaded, or variable name wrong
+    # api_key = os.getenv("WRONG_API_KEY_NAME")
+
+    # Correct: Load from environment variable
+    api_key = os.getenv("GEMINI_API_KEY")
+
+    if not api_key:
+        print("Error: GEMINI_API_KEY environment variable not set.")
+        # Handle error or exit
+    else:
+        genai.configure(api_key=api_key)
+        # Proceed with API calls
     ```
 
-5.  **Regenerate the API Key (If all else fails):**
-    *   If you've checked everything and are still hitting a wall, go back to the Google Cloud Console > "APIs & Services" > "Credentials".
-    *   Delete the existing API key (make sure nothing else is using it!).
-    *   Create a "New API Key."
-    *   Update your application with this entirely new key. This ensures there are no lingering issues with a potentially cached or corrupted key value.
+4.  **Test with a Simple cURL Request:**
+    *   A `curl` command is an excellent way to isolate if the issue is with your application code or the key itself.
+    *   Replace `YOUR_ACTUAL_API_KEY` with the key you copied from the console.
+    *   Replace `YOUR_GEMINI_ENDPOINT` with the specific endpoint you're trying to hit (e.g., `generativelanguage.googleapis.com/v1beta/models`).
+
+    ```bash
+    curl -X GET "https://generativelanguage.googleapis.com/v1beta/models?key=YOUR_ACTUAL_API_KEY" \
+         -H "Content-Type: application/json"
+    ```
+    If this `curl` command still returns a `401`, you can be quite certain the issue lies with the API key itself (it's wrong, expired, revoked) or its provisioning, rather than your application's logic. If it works, the problem is in your application code or its environment.
+
+5.  **Check Key Restrictions (If Applicable):**
+    *   In the Google Cloud Console, check if your API key has any specific restrictions (e.g., IP address restrictions, HTTP referer restrictions). If your request is coming from an unauthorized IP or domain, the key might appear invalid even if it's correct. Temporarily removing these restrictions can help confirm if they are the cause. Re-apply them carefully after testing.
 
 ## Code Examples
 
-Here are concise, copy-paste ready examples showing correct API key configuration for common environments.
+Here are concise, copy-paste ready examples for commonly used languages.
 
-### Python with `google-generative-ai` library
+### Python Example
+
+This example demonstrates how to configure the `google-generativeai` client using an API key loaded from an environment variable.
 
 ```python
 import os
 import google.generativeai as genai
 
-# Best practice: Load from environment variable
-# export GEMINI_API_KEY="YOUR_API_KEY" in your shell
-API_KEY = os.getenv("GEMINI_API_KEY")
+# Load API key from environment variable
+# It's crucial that GEMINI_API_KEY is set in your shell or deployment environment
+api_key = os.getenv("GEMINI_API_KEY")
 
-if not API_KEY:
+if not api_key:
     raise ValueError("GEMINI_API_KEY environment variable not set.")
 
-genai.configure(api_key=API_KEY)
+# Configure the genai library with your API key
+genai.configure(api_key=api_key)
 
-# Example usage (assuming 'gemini-pro' model)
 try:
-    model = genai.GenerativeModel('gemini-pro')
-    response = model.generate_content("What is the capital of France?")
-    print(response.text)
+    # Example API call: List available models
+    for m in genai.list_models():
+        if "generateContent" in m.supported_generation_methods:
+            print(m.name)
 except Exception as e:
     print(f"An error occurred: {e}")
+    if "401 API key invalid" in str(e):
+        print("Hint: Check your GEMINI_API_KEY environment variable.")
 
 ```
 
-### Node.js with `@google/generative-ai` library
+### cURL Example
 
-```javascript
-// Install: npm install @google/generative-ai dotenv
-require('dotenv').config(); // For loading .env files locally
+This `curl` command directly targets a Gemini API endpoint to list models, passing the API key as a query parameter. This is invaluable for quick verification outside of your application code.
 
-const { GoogleGenerativeAI } = require('@google/generative-ai');
-
-// Best practice: Load from environment variable
-// Create a .env file with: GEMINI_API_KEY="YOUR_API_KEY"
-const API_KEY = process.env.GEMINI_API_KEY;
-
-if (!API_KEY) {
-  console.error("Error: GEMINI_API_KEY environment variable not set.");
-  process.exit(1);
-}
-
-const genAI = new GoogleGenerativeAI(API_KEY);
-
-async function run() {
-  try {
-    const model = genAI.getGenerativeModel({ model: "gemini-pro" });
-    const result = await model.generateContent("What is the highest mountain in the world?");
-    const response = await result.response;
-    const text = response.text();
-    console.log(text);
-  } catch (error) {
-    console.error("An error occurred:", error.message);
-  }
-}
-
-run();
+```bash
+# Replace 'YOUR_ACTUAL_API_KEY' with your real Gemini API key.
+# This example fetches a list of available models.
+curl -X GET "https://generativelanguage.googleapis.com/v1beta/models?key=YOUR_ACTUAL_API_KEY" \
+     -H "Content-Type: application/json"
 ```
 
 ## Environment-Specific Notes
 
-The way you manage and provide API keys can differ significantly across environments.
+The way you manage and provide API keys often varies significantly between development and production environments. Ignoring these differences is a classic cause of "works on my machine" bugs.
 
 ### Local Development
 
-*   **`.env` files:** A very common and recommended approach. Create a `.env` file in your project root (`GEMINI_API_KEY=YOUR_API_KEY`) and use libraries like `dotenv` (Node.js) or `python-dotenv` (Python) to load these variables. This keeps sensitive data out of source control.
-*   **Direct Shell Export:** You can `export GEMINI_API_KEY="YOUR_API_KEY"` in your terminal before running your script. Be aware this only applies to the current shell session.
-*   **IDE Configuration:** Some IDEs (like VS Code or PyCharm) allow you to configure environment variables for run configurations, which can be helpful.
+*   **`.env` files:** For local development, using a `.env` file (e.g., `GEMINI_API_KEY=your_dev_key`) and a library like `python-dotenv` or `dotenv` (Node.js) is common. Ensure these files are **never** committed to version control (`.gitignore` is your friend).
+*   **Direct `export`:** Manually exporting the `GEMINI_API_KEY` environment variable in your terminal session before running your application. This is good for quick tests but not sustainable.
+*   **IDE Configuration:** Some IDEs allow you to set environment variables for run configurations. Double-check these settings if your code runs fine via the terminal but not through your IDE's debugger.
 
-### Docker Containers
+### Cloud Environments (GCP, AWS, Azure, etc.)
 
-*   **`docker run -e`:** When running a container, you can pass environment variables directly:
-    ```bash
-    docker run -e GEMINI_API_KEY="YOUR_API_KEY" my-gemini-app:latest
-    ```
-*   **`docker-compose.yml`:** For multi-service applications, `docker-compose` is ideal:
-    ```yaml
-    version: '3.8'
-    services:
-      app:
-        image: my-gemini-app:latest
-        environment:
-          - GEMINI_API_KEY=${GEMINI_API_KEY} # Make sure GEMINI_API_KEY is exported in your shell where docker-compose runs
-        # Or hardcode (less recommended for sensitive keys):
-        # - GEMINI_API_KEY=YOUR_ACTUAL_API_KEY
-    ```
-    I've seen this in production when a `docker-compose` file was moved, and the `.env` file it relied on wasn't moved with it, leading to a 401.
+*   **Secrets Managers:** In production, hardcoding or directly setting API keys as plain environment variables is a security risk. Utilize cloud-native secrets management services:
+    *   **Google Cloud Secret Manager:** The recommended approach for GCP. Store your API key here and configure your applications (e.g., Cloud Functions, App Engine, GKE) to retrieve it securely at runtime.
+    *   **AWS Secrets Manager / Parameter Store:** For AWS deployments.
+    *   **Azure Key Vault:** For Azure deployments.
+*   **IAM Roles/Service Accounts:** For services running within Google Cloud (e.g., a Cloud Function or a GKE pod), it's often more secure to use a service account with specific IAM roles that grant access to the Gemini API, rather than a raw API key. This avoids managing long-lived secrets altogether. If you are using a service account, ensure it has the `Generative Language API User` role (or equivalent).
 
-### Cloud Deployments (e.g., Google Cloud Run, App Engine, Kubernetes)
+### Docker/Containerized Environments
 
-*   **Google Secret Manager:** This is the recommended secure way to store and access API keys and other secrets in GCP. Your application service account can then be granted permission to access the secret.
-*   **Environment Variables (via service configuration):** Services like Cloud Run and App Engine allow you to define environment variables directly in their service settings. This is simpler for less critical keys but less secure than Secret Manager.
-*   **IAM Service Accounts (for non-API key based authentication):** While this guide focuses on API keys, it's worth noting that if you're using other authentication methods (like service accounts for client libraries that support it), ensure the service account associated with your deployed application has the correct IAM roles (e.g., `Vertex AI User` or `aiplatform.user` for Gemini) to access the generative AI services. A misconfigured service account won't directly return an "API key invalid" error, but it's a related authentication/authorization concern.
-
-Always prioritize Secret Manager for production environments to centralize, manage, and audit access to your sensitive credentials.
+*   **Docker Secrets:** For sensitive information like API keys, Docker Secrets (for Docker Swarm) or Kubernetes Secrets (for Kubernetes) are the preferred methods. These encrypt and securely distribute secrets to your containers.
+*   **Environment Variables (Less Secure):** While you can pass API keys as environment variables during `docker run` (e.g., `docker run -e GEMINI_API_KEY=...`), this embeds the key in the container's environment and can be inspected. It's generally less secure than Docker or Kubernetes Secrets for production.
+*   **`.env` files for `docker compose`:** For local `docker compose` setups, you can use an `.env` file at the root of your project to define variables that `docker-compose.yml` can then inject into your services. Remember to `.gitignore` this file.
 
 ## Frequently Asked Questions
 
-**Q: Is `401 API key invalid` the same as `403 Forbidden`?**
-A: No, they are distinct. A `401 Unauthenticated` means the API could not verify your identity because the provided credentials (your API key) were rejected. A `403 Forbidden` means your identity was verified, but you lack the necessary permissions to access the requested resource or perform the action. Think of 401 as "Who are you?" and 403 as "You are X, but X isn't allowed to do Y."
+**Q: Can I use a service account key instead of an API key for Gemini?**
+**A:** Yes, and for applications running within Google Cloud, it's generally the more secure and recommended approach. Instead of an API key, you'd assign an appropriate IAM role (like `Generative Language API User`) to the service account associated with your application (e.g., a Cloud Function, App Engine instance, GKE pod). The client libraries will automatically pick up the service account credentials.
 
-**Q: Can rate limits cause a `401 API key invalid` error?**
-A: Generally, no. Rate limiting typically results in a `429 Too Many Requests` error. A `401` specifically points to an issue with the API key's validity or presence, not the volume of requests made with a valid key.
+**Q: My key works perfectly fine locally, but I get a 401 in my CI/CD pipeline or deployment environment. What's wrong?**
+**A:** This is a classic symptom of an environment variable mismatch. The API key you have set locally isn't making it into your CI/CD runner or production deployment. Check how environment variables are configured in your CI/CD system (GitHub Actions secrets, GitLab CI/CD variables, Jenkins credentials, etc.) and ensure the correct variable name (`GEMINI_API_KEY` or similar) is being used. I've personally spent hours debugging this exact scenario until I realized a typo in a CI secret name.
 
-**Q: I'm absolutely certain my API key is correct and I've tried everything. What else could it be?**
-A: Double-check for invisible characters (like zero-width spaces) that might have been copied with the key. Ensure your network isn't introducing corruption or stripping headers if you're behind a proxy. If you're using a client library, ensure it's up to date. Finally, confirm that you're hitting the correct region-specific endpoint if your setup requires it. Sometimes, I find that simply creating a *brand new* key in the console and replacing it everywhere can resolve obscure issues.
+**Q: How long do Gemini API keys last? Do they expire?**
+**A:** Standard Google API keys (including those for Gemini) generally do not have an inherent expiration date by default, unlike some OAuth tokens. However, they can be manually revoked or regenerated at any time via the Google Cloud Console. Best practice is to rotate them periodically for security.
 
-**Q: Should I hardcode my API key in my source code?**
-A: Absolutely not for production environments, and it's generally discouraged even for local development. Hardcoding API keys is a significant security risk as it exposes your credentials if your code repository is ever compromised. Always use environment variables, secret management services (like Google Secret Manager), or secure configuration files.
+**Q: Is it safe to hardcode my API key directly into my source code?**
+**A:** Absolutely not. Hardcoding API keys is a significant security vulnerability. If your code is ever committed to a public repository or falls into the wrong hands, your key can be compromised, leading to unauthorized usage and potential billing issues. Always use environment variables or, even better, a secrets management service (like Google Cloud Secret Manager) to keep your keys secure and out of your codebase.
+
+**Q: Does the API key need specific permissions beyond just being valid?**
+**A:** API keys themselves don't carry specific IAM permissions in the same way service accounts do. They grant access to the API services they are generated for. However, if your API key has "Application restrictions" or "API restrictions" configured in the Google Cloud Console, those restrictions can effectively limit what the key can do or from where it can be used. For example, restricting an API key to specific HTTP referrers means it will fail if used from an unauthorized domain.
 
 ## Related Errors
-
-*   [openai-401](/errors/openai-401.html)
-*   [gemini-403](/errors/gemini-403.html)
