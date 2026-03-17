@@ -1,316 +1,245 @@
 # AWS InvalidClientTokenId: The security token is invalid
-> Encountering AWS InvalidClientTokenId means your security token is invalid; this guide explains how to fix it.
-
-As a Senior DevOps Engineer, I've spent countless hours debugging AWS environments, and the `InvalidClientTokenId` error is one I've come across repeatedly. It's frustrating because it stops you dead in your tracks, preventing any interaction with AWS services. The good news is, despite its seemingly cryptic nature, it's almost always a client-side issue with a clear path to resolution. This guide will walk you through understanding, diagnosing, and fixing this common AWS authentication problem.
+> Encountering AWS InvalidClientTokenId means your AWS credentials are malformed, expired, or incorrect for the region; this guide explains how to identify and fix the underlying issue.
 
 ## What This Error Means
 
-At its core, `InvalidClientTokenId: The security token is invalid` signifies that the AWS service you're trying to interact with has rejected your authentication credentials. When you make a request to AWS, whether through the CLI, an SDK, or a direct API call, you include a "security token." This token isn't a single item; it's a bundle of information that typically includes your AWS Access Key ID, Secret Access Key, and sometimes an AWS Session Token (for temporary credentials).
+When you encounter the `InvalidClientTokenId: The security token is invalid` error, it signifies a fundamental authentication failure with AWS. This isn't an issue of permissions (authorization), but rather a problem with how you're presenting your identity (authentication) to AWS. Essentially, AWS received your access key ID and potentially a secret access key or session token, but it couldn't validate them against its records.
 
-AWS uses this information to authenticate your request. When you see `InvalidClientTokenId`, it means that the credentials provided are either:
-1.  **Malformed:** There's a typo, an extra space, or some other corruption.
-2.  **Expired:** The temporary credentials you're using have passed their validity period.
-3.  **Incorrect:** The credentials themselves are valid, but they don't belong to the account or region you're trying to access, or they've been revoked.
-
-It's crucial to understand that this is an authentication error, not an authorization error. AWS isn't saying you *don't have permission* to perform an action (that would typically be `AccessDenied`). Instead, it's saying "I don't even recognize who you are based on these credentials."
+Think of it like trying to open a locked door with a key that's either the wrong shape, bent, broken, or from a completely different lock. The door recognizes you're trying to use a key, but it simply doesn't fit. In AWS terms, the `ClientTokenId` refers to your `AWS_ACCESS_KEY_ID`. When it's invalid, AWS can't identify who you are or verify the authenticity of your request. This error will stop your CLI commands, SDK calls, or API requests dead in their tracks before any action can even be considered.
 
 ## Why It Happens
 
-This error happens because AWS's authentication service (IAM) cannot validate the signature of your request against the provided access key ID. Every AWS API call is cryptographically signed using your secret access key. AWS receives the request, takes your access key ID, retrieves the corresponding secret key it has on file, and attempts to re-sign the request with it. If the signature it generates doesn't match the signature you sent, or if the access key ID doesn't exist, it rejects the request with `InvalidClientTokenId`.
+This error occurs because the credentials provided to AWS through your CLI, SDK, or application simply aren't recognized as valid. AWS processes your request, extracts the `AWS_ACCESS_KEY_ID`, and attempts to match it with a known, active access key within the specified AWS region. If it fails this initial identification step, you get `InvalidClientTokenId`.
 
-The "security token" in the error message is a generic term referring to the entire set of authentication data you're presenting. This can include:
-
-*   **Permanent IAM User Credentials:** An `AKIA...` Access Key ID and its associated Secret Access Key. These are long-lived and should be treated with extreme care.
-*   **Temporary Security Credentials:** Issued by AWS Security Token Service (STS) when you assume an IAM role, use multi-factor authentication (MFA), or federate access. These include an `ASIA...` or `AROA...` Access Key ID, a Secret Access Key, *and* a Session Token. These are time-limited.
-
-In my experience, the vast majority of `InvalidClientTokenId` errors stem from issues with *temporary* credentials, especially their expiration. However, problems with permanent credentials, such as typos or revocation, also lead to this error.
+In my experience, this usually points to one of a few core problems: the access key ID itself is incorrect, it has expired (for temporary credentials), it's associated with a different AWS account or region, or it's simply inactive. It's a clear signal that the initial handshake failed, indicating a configuration issue rather than a runtime problem with the service you're trying to access.
 
 ## Common Causes
 
-Let's break down the most frequent culprits behind this error:
+Debugging `InvalidClientTokenId` often boils down to systematically checking credential sources. Here are the most common culprits I've encountered:
 
-1.  **Expired Temporary Credentials:** This is the number one cause. If you've recently assumed an IAM role (e.g., using `aws sso login`, `aws-vault`, or `sts assume-role`) and haven't refreshed your session, your temporary credentials will expire. AWS CLI and SDKs don't automatically refresh these in all scenarios.
-2.  **Typographical Errors or Malformed Credentials:** A stray space, an incorrect character, a copied-and-pasted incomplete key, or an invisible character can render credentials invalid. This is common when manually configuring `~/.aws/credentials` or setting environment variables.
-3.  **Incorrect AWS Region:** While less direct, if your credentials are valid for `us-east-1` but your CLI/SDK is attempting to interact with a service in `eu-west-1` and you don't have global service permissions or explicit regional access defined, you might encounter this. More often, a region mismatch leads to a different error, but I've seen it contribute to `InvalidClientTokenId` when the context is particularly confused (e.g., an `sts` call to a non-global endpoint).
-4.  **Incorrect Environment Variables Precedence:** AWS credentials can be sourced from environment variables (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`, `AWS_PROFILE`), shared credentials files (`~/.aws/credentials`), or shared config files (`~/.aws/config`). Environment variables always take precedence. If you have stale or incorrect environment variables set, they will override valid credentials in your files, leading to this error.
-5.  **Wrong AWS Profile Used:** If you manage multiple AWS profiles (e.g., `dev`, `staging`, `prod`) and your command explicitly or implicitly uses a profile with invalid or expired credentials, you'll see this error. Forgetting to specify `--profile` or having a default profile misconfigured is a common pitfall.
-6.  **System Clock Skew:** Although rare in modern systems, if your local machine's system clock is significantly out of sync with NTP servers and AWS's servers, the cryptographic signature (which includes a timestamp) can appear invalid to AWS.
-7.  **Credentials Leaked and Revoked:** If your access keys were compromised, you might have revoked them in the IAM console. Any subsequent attempts to use those revoked keys will result in this error.
+1.  **Expired Temporary Credentials:** This is, by far, the most frequent cause. If you're using temporary credentials obtained via `aws sts assume-role`, `get-session-token`, or from an instance profile on an EC2 instance, these credentials have a limited lifespan. Once they expire, any subsequent API calls using them will result in `InvalidClientTokenId`.
+2.  **Typo or Incorrect `AWS_ACCESS_KEY_ID`:** A simple copy-paste error or a manual typo in your `AWS_ACCESS_KEY_ID` is enough to trigger this. Even a single character difference makes the token invalid.
+3.  **Deactivated or Deleted IAM User/Access Key:** If the IAM user associated with the access key has been deleted, or if the specific access key you're using has been deactivated or deleted from the IAM console, it will no longer be valid.
+4.  **Region Mismatch:** While less common for the *token ID itself* (which is global), credentials might be generated or expected in a specific region, and if your CLI/SDK is attempting to use them in a different region, this can sometimes lead to issues. More often, this is a symptom of using *expired* temporary credentials that were valid for a specific region.
+5.  **Incorrect AWS Profile Configuration:** If you're using named profiles in `~/.aws/credentials` or `~/.aws/config`, and the `profile` argument or `AWS_PROFILE` environment variable points to a non-existent or malformed profile, AWS won't be able to load valid credentials.
+6.  **Environment Variable Override:** Sometimes, valid credentials exist in your `~/.aws/credentials` file, but old, incorrect, or expired `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, or `AWS_SESSION_TOKEN` environment variables are set in your shell session, overriding the correct ones.
+7.  **Clock Skew (Rare):** Extremely significant clock differences between your client machine and AWS servers can occasionally interfere with the signature validation process for temporary credentials, though modern systems usually handle time synchronization robustly.
 
 ## Step-by-Step Fix
 
-Let's systematically troubleshoot and resolve `InvalidClientTokenId`.
+Addressing this error requires a methodical approach to checking your credential chain.
 
-### 1. Verify Your Current AWS Identity
+1.  **Identify the Credential Source:**
+    *   Are you using environment variables (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`)?
+    *   Are you using a shared credentials file (`~/.aws/credentials`) and a profile (`--profile default` or `export AWS_PROFILE=myprofile`)?
+    *   Are you relying on an IAM role attached to an EC2 instance, ECS task, or Lambda function?
+    *   Are you assuming a role using `aws sts assume-role` and setting temporary credentials?
 
-The first and most important step is to ask AWS *who it thinks you are*.
+    Knowing *how* your credentials are being picked up is half the battle. AWS CLI and SDKs follow a specific order of precedence: Environment variables > Shared credentials file > IAM roles for EC2/ECS/Lambda.
 
-```bash
-aws sts get-caller-identity
-```
+2.  **Check Environment Variables First:**
+    Run the following commands to inspect your current environment:
 
-**Expected Output (if successful):**
-
-```json
-{
-    "UserId": "AROA...:your-assumed-role-session-name",
-    "Account": "123456789012",
-    "Arn": "arn:aws:sts::123456789012:assumed-role/YourRoleName/your-assumed-role-session-name"
-}
-```
-or
-```json
-{
-    "UserId": "AIDAA...:your-iam-user-name",
-    "Account": "123456789012",
-    "Arn": "arn:aws:iam::123456789012:user/your-iam-user-name"
-}
-```
-
-If `aws sts get-caller-identity` *also* returns `InvalidClientTokenId`, then the problem lies with the fundamental credentials your CLI is attempting to use. If it *succeeds*, but a subsequent command fails with the error, then the specific command's context (e.g., `--profile` or region) might be the issue.
-
-### 2. Check Environment Variables
-
-Environment variables take precedence over credentials files. A stale `AWS_ACCESS_KEY_ID` or `AWS_SESSION_TOKEN` is a very common source of this error.
-
-```bash
-env | grep AWS
-```
-
-Look for variables like `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`, `AWS_PROFILE`, `AWS_DEFAULT_REGION`, and `AWS_REGION`.
-
-If you find suspicious or incorrect variables, unset them:
-
-```bash
-unset AWS_ACCESS_KEY_ID
-unset AWS_SECRET_ACCESS_KEY
-unset AWS_SESSION_TOKEN
-unset AWS_PROFILE # Only if you suspect it's pointing to a bad profile
-# ...and any other AWS-related environment variables you suspect
-```
-After unsetting, try `aws sts get-caller-identity` again.
-
-### 3. Inspect Your AWS Credentials and Config Files
-
-By default, AWS CLI and SDKs look for `~/.aws/credentials` and `~/.aws/config`.
-
-**`~/.aws/credentials`:**
-Open this file and check the profiles you're using.
-
-```ini
-[default]
-aws_access_key_id = AKIAXXXXXXXXXXXXXXXX
-aws_secret_access_key = YOUR_SECRET_ACCESS_KEY_GOES_HERE
-
-[my-dev-profile]
-aws_access_key_id = ASIAXXXXXXXXXXXXXXXX # Note ASIA for temporary credentials
-aws_secret_access_key = ANOTHER_SECRET_ACCESS_KEY
-aws_session_token = FQoDYXdzELL... # Crucial for temporary credentials
-```
-
-*   **Look for typos:** Even a single character or an extra space can invalidate keys.
-*   **Check for `aws_session_token`:** If you're using temporary credentials (e.g., from an `assume-role` operation), this token *must* be present alongside the `aws_access_key_id` and `aws_secret_access_key`. If it's missing or expired, you'll get `InvalidClientTokenId`.
-*   **Verify key format:** Permanent keys start with `AKIA`. Temporary keys (from STS) start with `ASIA` or `AROA`.
-
-**`~/.aws/config`:**
-This file defines region, output format, and can link to source profiles for role assumption.
-
-```ini
-[default]
-region = us-east-1
-output = json
-
-[profile my-dev-profile]
-region = us-west-2
-output = json
-source_profile = default # For role assumption
-role_arn = arn:aws:iam::123456789012:role/MyDevRole
-mfa_serial = arn:aws:iam::123456789012:mfa/myuser
-```
-
-*   **Region:** Ensure the region configured in your profile matches the region you intend to operate in. While not always the direct cause, a mismatch can sometimes confuse the SDK/CLI enough to manifest this error.
-*   **Source Profile/Role ARN:** If you're using `assume-role` via your config, ensure the `source_profile` points to a *valid* profile and the `role_arn` is correct. If the source profile itself has invalid credentials, the `assume-role` call will fail, leading to expired or invalid temporary credentials for the target role.
-
-### 4. Refresh Temporary Credentials
-
-If you're using temporary credentials (which is highly recommended for security), they expire.
-
-*   **AWS SSO:** If you use `aws sso login`, simply run it again:
     ```bash
-    aws sso login --profile my-sso-profile
+    echo $AWS_ACCESS_KEY_ID
+    echo $AWS_SECRET_ACCESS_KEY
+    echo $AWS_SESSION_TOKEN
+    echo $AWS_DEFAULT_REGION
     ```
-    This will open a browser for re-authentication and refresh your session.
-*   **Manual STS Assume Role/MFA:** If you manually get session tokens, you'll need to rerun that process:
+
+    *   **Problem:** If any of these are set, especially `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`, and they are incorrect or empty, they will override any other configuration.
+    *   **Fix:** Unset them if they're wrong or expired, and then retry.
+        ```bash
+        unset AWS_ACCESS_KEY_ID
+        unset AWS_SECRET_ACCESS_KEY
+        unset AWS_SESSION_TOKEN
+        # Also consider unsetting AWS_DEFAULT_REGION if you suspect a region issue
+        # unset AWS_DEFAULT_REGION
+        ```
+
+3.  **Verify Shared Credentials and Config Files:**
+    Examine `~/.aws/credentials` and `~/.aws/config`.
+
+    *   Open `~/.aws/credentials` and confirm the `aws_access_key_id` under your active profile (e.g., `[default]` or `[myprofile]`) is correct and hasn't been accidentally modified. Check for leading/trailing spaces or typos.
+    *   Open `~/.aws/config` and ensure your profile's `region` is set correctly. While less direct for `InvalidClientTokenId`, an incorrect region can sometimes lead to follow-on issues if temporary tokens are region-bound.
+
+4.  **Test Your Current Identity:**
+    Try to fetch your current identity. If your credentials are truly invalid, this command will also fail with the same error, but it's a good sanity check.
+
     ```bash
-    aws sts get-session-token --serial-number arn:aws:iam::123456789012:mfa/myuser --token-code 123456
+    aws sts get-caller-identity
     ```
-    Then, update your `~/.aws/credentials` with the new `AccessKeyId`, `SecretAccessKey`, and `SessionToken`.
-*   **`aws-vault` or similar tools:** These tools usually have a command to refresh or re-login. For `aws-vault`, it typically prompts for MFA when needed or `aws-vault login` will refresh.
+    If this fails, your AWS credentials are not valid in the context you're running this command.
 
-### 5. Explicitly Specify Region
+5.  **Re-Assume Roles for Temporary Credentials:**
+    If you're using temporary credentials from an `assume-role` operation, they *will* expire. The solution is to re-assume the role.
 
-To rule out region confusion, always try specifying the region explicitly for commands:
+    ```bash
+    # Example command to assume a role
+    aws sts assume-role --role-arn arn:aws:iam::123456789012:role/MyTempRole --role-session-name MySession
 
-```bash
-aws s3 ls --region us-east-1
-aws ec2 describe-instances --region eu-west-2
-```
+    # The output will contain new temporary credentials.
+    # You'll need to export these into your environment or configure your CLI/SDK to use them.
+    # For example, using `jq` to parse and export:
+    # eval $(aws sts assume-role --role-arn arn:aws:iam::123456789012:role/MyTempRole --role-session-name MySession | \
+    #   jq -r '.Credentials | "export AWS_ACCESS_KEY_ID=\(.AccessKeyId)\nexport AWS_SECRET_ACCESS_KEY=\(.SecretAccessKey)\nexport AWS_SESSION_TOKEN=\(.SessionToken)\nexport AWS_SESSION_EXPIRATION=\(.Expiration)"')
+    ```
 
-This ensures your CLI isn't picking up a default or inferred region that might not align with your credentials or the service you're targeting.
+6.  **Generate New Access Keys (Last Resort):**
+    If you've exhausted all other options and suspect your access key has been deactivated, deleted, or you just can't track down the issue, consider generating a new access key for your IAM user in the AWS IAM console.
+    *   Go to IAM -> Users -> [Your User] -> Security Credentials tab.
+    *   Deactivate the old key and create a new one. Update your `~/.aws/credentials` file or environment variables with the new key ID and secret. **Remember to never hardcode keys in code.**
 
-### 6. Check System Clock
+7.  **Explicitly Set Region:**
+    If you're still having issues, ensure your region is explicitly set and correct.
 
-Run `date` in your terminal. If the time is wildly off, correct it. This is rare but can cause signature validation failures due to timestamp mismatches.
-
-### 7. Generate New Access Keys (Last Resort)
-
-If you've checked everything above and suspect your *permanent* IAM user keys are genuinely compromised, revoked, or corrupted beyond repair, go to the IAM console:
-1.  Navigate to your IAM user.
-2.  Go to the "Security credentials" tab.
-3.  **Deactivate** or **Delete** the old access key.
-4.  **Create new access key**.
-5.  **Immediately update** your `~/.aws/credentials` file or environment variables with the new keys.
-
-**Warning:** This should be a last resort for permanent keys, as it will break any applications or scripts relying on the old key.
+    ```bash
+    export AWS_DEFAULT_REGION="us-east-1" # Or your desired region
+    # Or for a specific command:
+    aws s3 ls --region us-east-1
+    ```
 
 ## Code Examples
 
-Here are some concise examples of how credentials are typically managed and where the error might manifest.
+Here are some concise, copy-paste ready examples for common scenarios:
 
-### Python (Boto3)
+**1. Verifying and Clearing Environment Variables (Bash):**
+
+```bash
+# Check existing credentials
+echo "AWS_ACCESS_KEY_ID: $AWS_ACCESS_KEY_ID"
+echo "AWS_SECRET_ACCESS_KEY: (present if not empty)"
+echo "AWS_SESSION_TOKEN: $AWS_SESSION_TOKEN"
+echo "AWS_DEFAULT_REGION: $AWS_DEFAULT_REGION"
+
+# Clear potentially problematic environment variables
+unset AWS_ACCESS_KEY_ID
+unset AWS_SECRET_ACCESS_KEY
+unset AWS_SESSION_TOKEN
+unset AWS_DEFAULT_REGION
+unset AWS_PROFILE # Useful if you want to fall back to default profile
+```
+
+**2. Configuring AWS CLI (for persistent credentials):**
+
+```bash
+# Run this to set up your default profile interactively
+aws configure
+
+# Or for a named profile
+aws configure --profile mydevprofile
+
+# Example content for ~/.aws/credentials:
+# [default]
+# aws_access_key_id = AKIAIOSFODNN7EXAMPLE
+# aws_secret_access_key = wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+
+# Example content for ~/.aws/config:
+# [default]
+# region = us-east-1
+# output = json
+#
+# [profile mydevprofile]
+# region = us-west-2
+# output = json
+```
+
+**3. Python Boto3 Example (demonstrating credential usage order):**
 
 ```python
+import os
 import boto3
 from botocore.exceptions import ClientError
 
-# Example 1: Using default profile (from ~/.aws/credentials or env vars)
+# --- Scenario 1: Relying on default credential chain (env vars, ~/.aws/credentials) ---
+# This is the most common and recommended approach
 try:
-    s3_client = boto3.client('s3')
-    response = s3_client.list_buckets()
-    print("Buckets:", [b['Name'] for b in response['Buckets']])
+    s3_client_default = boto3.client('s3')
+    print("Attempting to list S3 buckets using default credentials:")
+    response = s3_client_default.list_buckets()
+    for bucket in response['Buckets']:
+        print(f"  - {bucket['Name']}")
 except ClientError as e:
     if e.response['Error']['Code'] == 'InvalidClientTokenId':
-        print(f"ERROR: InvalidClientTokenId. Check your AWS credentials. Details: {e}")
+        print(f"Error (Default): InvalidClientTokenId. Check your environment variables or ~/.aws/credentials.")
     else:
-        raise # Re-raise other errors
+        print(f"Error (Default): {e}")
 
-# Example 2: Specifying a profile
-try:
-    s3_client = boto3.client('s3', profile_name='my-dev-profile')
-    response = s3_client.list_buckets()
-    print(f"Buckets from 'my-dev-profile': {[b['Name'] for b in response['Buckets']]}")
-except ClientError as e:
-    if e.response['Error']['Code'] == 'InvalidClientTokenId':
-        print(f"ERROR with 'my-dev-profile': InvalidClientTokenId. Check its credentials. Details: {e}")
-    else:
-        raise
-
-# Example 3: Explicitly providing credentials (not recommended for production, better to use profiles/roles)
-# Ensure these are real, valid credentials or it will fail
-ACCESS_KEY = "AKIA..."
-SECRET_KEY = "YOUR_SECRET..."
-SESSION_TOKEN = "FQoDYXdzELL..." # Only if using temporary credentials
+# --- Scenario 2: Explicitly providing credentials (less common, usually for specific cases) ---
+# Note: Hardcoding credentials is generally NOT recommended for production.
+# This example is for demonstration of how explicit credentials are used.
+# Let's use intentionally wrong credentials to demonstrate the error.
+os.environ['AWS_ACCESS_KEY_ID'] = 'AKIAIMINTENTIONALLYINVALID' # Mismatched or non-existent
+os.environ['AWS_SECRET_ACCESS_KEY'] = 'fake_secret_key_that_is_also_wrong_for_this_example'
 
 try:
-    s3_client = boto3.client(
-        's3',
-        aws_access_key_id=ACCESS_KEY,
-        aws_secret_access_key=SECRET_KEY,
-        aws_session_token=SESSION_TOKEN, # Remove if using permanent keys
-        region_name='us-east-1'
-    )
-    response = s3_client.list_buckets()
-    print(f"Buckets from explicit keys: {[b['Name'] for b in response['Buckets']]}")
+    s3_client_explicit = boto3.client('s3', region_name='us-east-1')
+    print("\nAttempting to list S3 buckets using explicit (and likely invalid) environment variables:")
+    response = s3_client_explicit.list_buckets()
+    for bucket in response['Buckets']:
+        print(f"  - {bucket['Name']}")
 except ClientError as e:
     if e.response['Error']['Code'] == 'InvalidClientTokenId':
-        print(f"ERROR with explicit keys: InvalidClientTokenId. Check these keys. Details: {e}")
+        print(f"Error (Explicit): InvalidClientTokenId. The provided credentials are bad.")
     else:
-        raise
-```
+        print(f"Error (Explicit): {e}")
 
-### AWS CLI
-
-```bash
-# Get your current caller identity (the best way to check credentials)
-aws sts get-caller-identity
-
-# List S3 buckets using the default profile
-aws s3 ls
-
-# List S3 buckets using a specific profile
-aws s3 ls --profile my-dev-profile
-
-# Configure (or re-configure) your default profile
-aws configure
-# AWS Access Key ID [****************EXAMPLE]: AKIA...
-# AWS Secret Access Key [****************EXAMPLE]: YOUR_SECRET...
-# Default region name [us-east-1]: us-east-1
-# Default output format [json]: json
-
-# Set credentials directly for a profile (careful with secrets in history!)
-aws configure set aws_access_key_id AKIAXXXXXXXXXXXXXXXX --profile new-profile
-aws configure set aws_secret_access_key YOUR_SECRET_ACCESS_KEY_GOES_HERE --profile new-profile
-aws configure set aws_session_token FQoDYXdzELL... --profile new-profile # Only for temporary
-aws configure set region us-east-1 --profile new-profile
-
-# Unset environment variables (if you suspect them)
-unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN AWS_PROFILE
+# Clean up environment variables if they were set for this example
+del os.environ['AWS_ACCESS_KEY_ID']
+del os.environ['AWS_SECRET_ACCESS_KEY']
 ```
 
 ## Environment-Specific Notes
 
-The `InvalidClientTokenId` error can manifest differently or have different underlying causes depending on your execution environment.
+The source and handling of AWS credentials vary significantly by environment, which directly impacts how you'll debug `InvalidClientTokenId`.
 
 ### Local Development
 
-This is where you'll most frequently encounter the error, primarily due to:
-*   **Manual configuration mistakes:** Typos in `~/.aws/credentials` or `~/.aws/config`.
-*   **Expired temporary credentials:** Especially if you use `aws sso login` or `aws-vault` and forget to refresh your session after a day.
-*   **Conflicting environment variables:** I've seen many cases where `AWS_ACCESS_KEY_ID` was set in a `.bashrc` or `.zshrc` from an old project and overridden current, valid credentials.
-*   **Multiple terminal windows:** One window might have different environment variables set than another, leading to inconsistent behavior.
+This is where `InvalidClientTokenId` is most common.
+*   **Credential Files:** You're typically using `~/.aws/credentials` and `~/.aws/config`. Ensure the correct profile is active, either by `export AWS_PROFILE=mydevprofile` or by passing `--profile mydevprofile` to `aws` commands.
+*   **Environment Variables:** It's very easy to accidentally set `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` in your shell, or via a `.env` file, and forget about them. These take precedence and can mask correct configurations elsewhere.
+*   **Temporary Sessions:** If you `assume-role` frequently, ensure your script or workflow correctly refreshes and exports the new temporary credentials each time they expire. I've often seen this when developers leave a terminal open for too long after assuming a role.
 
-**Recommendation:** Always start your debugging by checking `env | grep AWS` and then `aws sts get-caller-identity`. Use credential management tools like `aws-vault` or `aws sso login` to streamline temporary credential management.
+### Cloud Environments (EC2, ECS, Lambda)
+
+In these environments, the preferred method for authentication is **IAM roles for service accounts/instances**. If you get `InvalidClientTokenId` here, it usually means:
+*   **Explicit Credentials are Being Used:** Your application or a script is *explicitly* trying to use hardcoded credentials or environment variables that are incorrect or expired, *even though* an IAM role is attached. The application isn't falling back to the instance profile or task role because it found explicit credentials first.
+*   **Role Not Attached/Configured:** Less common for `InvalidClientTokenId` (more likely `AccessDenied` or a network error), but if the instance profile/task role isn't correctly associated, the SDK might then search for other credentials and fail if none are found, *or* if it *does* find old, invalid explicit credentials.
+*   **Temporary Credentials from Role Assumption Expired:** If your application assumes another role *from* an EC2 instance, the temporary credentials obtained from that assumption will expire. The application needs to be designed to refresh these.
 
 ### Docker Containers
 
-When your application runs inside a Docker container, credentials can be handled in several ways, each with its own pitfalls:
-
-*   **Environment variables:** Credentials might be passed into the container via `docker run -e` flags or `environment` sections in `docker-compose.yml`. If these are stale or incorrect, the container will fail.
-*   **Mounted `~/.aws` directory:** Less common but possible. If `~/.aws` is mounted from the host, ensure the host's credentials are correct.
-*   **IAM Roles for tasks/pods:** In ECS, EKS, or other container orchestration services, the preferred method is to assign an IAM role to the task definition or Kubernetes service account. If you're getting `InvalidClientTokenId` in a container that *should* be using a role, it implies:
-    *   The role isn't correctly assigned to the task/pod.
-    *   The container's application isn't correctly configured to *assume* the role or fetch credentials from the instance metadata service.
-    *   Someone hardcoded explicit (now invalid) credentials inside the container image or startup script, overriding the IAM role.
-
-**Recommendation:** For Docker, check the Dockerfile, `docker-compose.yml`, and task definitions (ECS/EKS) for how AWS credentials are being injected. Avoid hardcoding credentials directly into container images.
-
-### Cloud (EC2, ECS, EKS, Lambda, etc.)
-
-In most AWS services like EC2 instances, ECS tasks, EKS pods, or Lambda functions, the best practice is to use **IAM roles attached to the compute resource**. This eliminates the need for explicit credentials. If you see `InvalidClientTokenId` in these environments:
-
-*   **EC2 Instance:** Verify that the IAM instance profile is correctly attached to the EC2 instance and that the EC2 instance has network access to the AWS STS endpoint (typically `sts.<region>.amazonaws.com`).
-*   **Lambda Function:** Check the execution role assigned to the Lambda function. This role is what the Lambda service assumes to execute your function. Ensure it has the necessary permissions. If your function is calling *another* AWS service, it uses its assigned execution role. If the function is configured to `assume-role` into *another* role, that secondary role's credentials might be the problem.
-*   **ECS/EKS:** Similar to EC2, ensure the task/pod has an IAM role assigned to it (either via Task Role in ECS or IAM Roles for Service Accounts in EKS). If an application within a task/pod is trying to use hardcoded credentials instead of the assigned role, those hardcoded credentials are likely expired or invalid.
-
-**Recommendation:** Always favor IAM roles over explicit credentials in the cloud. If you get this error, verify the role attachment and ensure no hardcoded credentials are taking precedence.
+Docker adds another layer of isolation.
+*   **Mounting `~/.aws`:** You can mount your local `~/.aws` directory into the container. Ensure the permissions are correct and the default profile or the specified profile is valid.
+    ```bash
+    docker run -v ~/.aws:/root/.aws:ro my-aws-app
+    ```
+*   **Environment Variables:** Passing credentials via environment variables is common:
+    ```bash
+    docker run \
+      -e AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID \
+      -e AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY \
+      -e AWS_SESSION_TOKEN=$AWS_SESSION_TOKEN \
+      my-aws-app
+    ```
+    The key here is ensuring the *host's* environment variables are correctly populated *before* the `docker run` command executes.
+*   **IAM Roles for Container Orchestrators:** If running on ECS, EKS, or other platforms, you should leverage IAM roles for tasks/pods. This abstracts credential management away from the container image itself.
 
 ## Frequently Asked Questions
 
-### Q: Is `InvalidClientTokenId` an AWS service outage?
-A: No, almost never. This error means AWS is successfully receiving your request but cannot authenticate it. It's nearly always an issue with the credentials you're providing, not with the AWS service itself.
+**Q: Is `InvalidClientTokenId` a permissions error?**
+**A:** No, it is not. This error means AWS could not *authenticate* you (identify who you are) because the security token (your access key ID) was invalid. A permissions error (`AccessDenied`) occurs *after* successful authentication, when AWS determines you don't have the necessary rights to perform the requested action.
 
-### Q: Can network issues or a firewall cause this error?
-A: Generally, no. Network issues would typically result in connection timeouts or different types of network errors, not an authentication error like `InvalidClientTokenId`. If AWS cannot even receive your request, it can't tell you the token is invalid.
+**Q: Why does this error appear intermittently?**
+**A:** Intermittent `InvalidClientTokenId` errors almost always point to the use of temporary credentials (e.g., from `aws sts assume-role` or an instance profile) that are expiring. Your application or script might work immediately after refreshing credentials, but fail a few hours later when they time out. Another common cause is different execution environments loading different sets of credentials (e.g., your IDE uses one, your terminal uses another).
 
-### Q: How long do temporary AWS credentials last?
-A: The duration varies. `aws sts get-session-token` can issue credentials valid for up to 36 hours. `aws sts assume-role` can issue credentials for up to 12 hours. `aws sso login` typically issues credentials for a period configured by your SSO administrator, often 1-8 hours. Always assume they will expire and refresh them regularly.
+**Q: Can a network issue cause `InvalidClientTokenId`?**
+**A:** Generally, no. A network issue (like a firewall block or DNS problem) would typically result in a connection timeout or a "host unreachable" error. `InvalidClientTokenId` specifically means that your request *reached* AWS, and AWS processed the authentication header but found the token invalid.
 
-### Q: I'm using `aws configure` to set my keys, but I still get the error. Why?
-A: Environment variables (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`, `AWS_PROFILE`) take precedence over `~/.aws/credentials` and `~/.aws/config`. If you have outdated or incorrect environment variables set, they will override whatever you set with `aws configure`. Always check `env | grep AWS` first.
+**Q: I'm sure my keys are correct in `~/.aws/credentials`. What else could it be?**
+**A:** Check environment variables (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`) as they take precedence. Also, ensure you're using the correct profile (`--profile myprofile` or `AWS_PROFILE`) and that the `AWS_ACCESS_KEY_ID` for that profile is indeed valid and active in the IAM console. Finally, if you're using temporary credentials from an assumed role, they might have simply expired.
 
-### Q: Does MFA affect this error?
-A: Yes. If your IAM user or role requires MFA for an action, and you're attempting to use temporary credentials that were generated *without* an MFA token (or the MFA session has expired), you will often receive `InvalidClientTokenId` when trying to assume a role or perform certain actions. The "token" being invalid here means your entire authentication context (including MFA status) is not sufficient or expired.
+**Q: Does the region affect `InvalidClientTokenId`?**
+**A:** The `AWS_ACCESS_KEY_ID` itself is a global identifier, so it's not strictly region-dependent for basic identification. However, the *context* in which it's used (especially for temporary credentials or certain service endpoints) can lead to issues. An incorrectly set `AWS_DEFAULT_REGION` or explicit `--region` might cause a service-specific issue or prevent the correct credential provider chain from functioning, sometimes surfacing as `InvalidClientTokenId` if the underlying token is tied to a specific region or if the SDK can't correctly locate a regional STS endpoint. It's good practice to ensure your region is correctly configured.
 
 ## Related Errors
-
-- [openai-401](/errors/openai-401.html)
