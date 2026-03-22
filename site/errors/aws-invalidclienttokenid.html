@@ -130,223 +130,200 @@
     <div class="article-content">
       <h1 id="aws-invalidclienttokenid-the-security-token-is-invalid">AWS InvalidClientTokenId: The security token is invalid</h1>
 <blockquote>
-<p>Encountering AWS InvalidClientTokenId means your AWS credentials are malformed, expired, or incorrect for the region; this guide explains how to identify and fix the underlying issue.</p>
+<p>Encountering InvalidClientTokenId means your AWS credentials are malformed, expired, or for the wrong region; this guide explains how to fix it.</p>
 </blockquote>
 <h2 id="what-this-error-means">What This Error Means</h2>
-<p>When you encounter the <code>InvalidClientTokenId: The security token is invalid</code> error, it signifies a fundamental authentication failure with AWS. This isn't an issue of permissions (authorization), but rather a problem with how you're presenting your identity (authentication) to AWS. Essentially, AWS received your access key ID and potentially a secret access key or session token, but it couldn't validate them against its records.</p>
-<p>Think of it like trying to open a locked door with a key that's either the wrong shape, bent, broken, or from a completely different lock. The door recognizes you're trying to use a key, but it simply doesn't fit. In AWS terms, the <code>ClientTokenId</code> refers to your <code>AWS_ACCESS_KEY_ID</code>. When it's invalid, AWS can't identify who you are or verify the authenticity of your request. This error will stop your CLI commands, SDK calls, or API requests dead in their tracks before any action can even be considered.</p>
+<p>When you encounter the <code>InvalidClientTokenId: The security token is invalid</code> error while interacting with AWS via the CLI or SDK, it means that AWS has rejected the credentials you are providing. This is fundamentally an <em>authentication</em> error, not an <em>authorization</em> error. Your client (CLI tool, SDK application, script) has attempted to authenticate itself to AWS using an access key ID, and potentially a secret access key and a session token, but AWS has determined that the provided "security token" (which collectively refers to these credentials) is invalid.</p>
+<p>In simpler terms, AWS doesn't recognize your identity or believes the method you're using to prove your identity is flawed. It's like presenting a passport that's expired, forged, or belongs to someone else at border control – you won't get in.</p>
 <h2 id="why-it-happens">Why It Happens</h2>
-<p>This error occurs because the credentials provided to AWS through your CLI, SDK, or application simply aren't recognized as valid. AWS processes your request, extracts the <code>AWS_ACCESS_KEY_ID</code>, and attempts to match it with a known, active access key within the specified AWS region. If it fails this initial identification step, you get <code>InvalidClientTokenId</code>.</p>
-<p>In my experience, this usually points to one of a few core problems: the access key ID itself is incorrect, it has expired (for temporary credentials), it's associated with a different AWS account or region, or it's simply inactive. It's a clear signal that the initial handshake failed, indicating a configuration issue rather than a runtime problem with the service you're trying to access.</p>
-<h2 id="common-causes">Common Causes</h2>
-<p>Debugging <code>InvalidClientTokenId</code> often boils down to systematically checking credential sources. Here are the most common culprits I've encountered:</p>
+<p>This error occurs when the AWS service endpoint you're trying to reach cannot validate the access key ID provided in your request. AWS's authentication system checks several factors against the access key ID to determine its validity:</p>
 <ol>
-<li><strong>Expired Temporary Credentials:</strong> This is, by far, the most frequent cause. If you're using temporary credentials obtained via <code>aws sts assume-role</code>, <code>get-session-token</code>, or from an instance profile on an EC2 instance, these credentials have a limited lifespan. Once they expire, any subsequent API calls using them will result in <code>InvalidClientTokenId</code>.</li>
-<li><strong>Typo or Incorrect <code>AWS_ACCESS_KEY_ID</code>:</strong> A simple copy-paste error or a manual typo in your <code>AWS_ACCESS_KEY_ID</code> is enough to trigger this. Even a single character difference makes the token invalid.</li>
-<li><strong>Deactivated or Deleted IAM User/Access Key:</strong> If the IAM user associated with the access key has been deleted, or if the specific access key you're using has been deactivated or deleted from the IAM console, it will no longer be valid.</li>
-<li><strong>Region Mismatch:</strong> While less common for the <em>token ID itself</em> (which is global), credentials might be generated or expected in a specific region, and if your CLI/SDK is attempting to use them in a different region, this can sometimes lead to issues. More often, this is a symptom of using <em>expired</em> temporary credentials that were valid for a specific region.</li>
-<li><strong>Incorrect AWS Profile Configuration:</strong> If you're using named profiles in <code>~/.aws/credentials</code> or <code>~/.aws/config</code>, and the <code>profile</code> argument or <code>AWS_PROFILE</code> environment variable points to a non-existent or malformed profile, AWS won't be able to load valid credentials.</li>
-<li><strong>Environment Variable Override:</strong> Sometimes, valid credentials exist in your <code>~/.aws/credentials</code> file, but old, incorrect, or expired <code>AWS_ACCESS_KEY_ID</code>, <code>AWS_SECRET_ACCESS_KEY</code>, or <code>AWS_SESSION_TOKEN</code> environment variables are set in your shell session, overriding the correct ones.</li>
-<li><strong>Clock Skew (Rare):</strong> Extremely significant clock differences between your client machine and AWS servers can occasionally interfere with the signature validation process for temporary credentials, though modern systems usually handle time synchronization robustly.</li>
+<li><strong>Existence:</strong> Does an access key with this ID actually exist within your AWS account?</li>
+<li><strong>Format:</strong> Is the access key ID correctly formatted (e.g., <code>AKIA...</code>)?</li>
+<li><strong>Status:</strong> Is the access key active, or has it been deactivated or deleted?</li>
+<li><strong>Expiration:</strong> If it's a temporary security token (like those obtained from AWS STS for assumed roles or MFA sessions), has it expired?</li>
+<li><strong>Consistency:</strong> In some edge cases, especially with temporary credentials, there can be regional nuances or inconsistencies if the token was generated in one region but used in another, or if there's a mismatch in the assumed role session context.</li>
 </ol>
+<p>In my experience, the vast majority of <code>InvalidClientTokenId</code> errors boil down to a mismatch or misconfiguration of these critical pieces of information. It's often a simple oversight that can be frustrating to track down if you don't know where to look.</p>
+<h2 id="common-causes">Common Causes</h2>
+<p>Let's break down the typical culprits behind this error:</p>
+<ul>
+<li><strong>Typographical Errors:</strong> This is surprisingly common. A single incorrect character in <code>AWS_ACCESS_KEY_ID</code> or <code>AWS_SECRET_ACCESS_KEY</code> will render the entire credential set invalid. I've seen this happen countless times when copying and pasting credentials manually.</li>
+<li><strong>Expired Temporary Credentials:</strong> If you're using AWS STS to assume roles (<code>aws sts assume-role</code>) or generating temporary credentials via MFA, these tokens have a limited lifespan (often 1 hour, configurable up to 12 hours). Once expired, any attempt to use them will result in <code>InvalidClientTokenId</code>. This is a frequent cause in CI/CD pipelines or local development environments where long-running sessions might unknowingly outlast their token.</li>
+<li><strong>Incorrect Environment Variables:</strong> Your shell's environment variables (<code>AWS_ACCESS_KEY_ID</code>, <code>AWS_SECRET_ACCESS_KEY</code>, <code>AWS_SESSION_TOKEN</code>, <code>AWS_REGION</code>) take precedence over <code>~/.aws/credentials</code> and <code>~/.aws/config</code>. If these are set incorrectly or are stale, they'll override valid configurations.</li>
+<li><strong>Incorrect AWS Configuration Files:</strong> Errors in <code>~/.aws/credentials</code> (e.g., malformed lines, wrong profile name, incorrect key) or <code>~/.aws/config</code> (e.g., wrong region for a profile) can lead to this issue.</li>
+<li><strong>Multiple Credential Sources:</strong> AWS CLI/SDKs follow a specific order of precedence for credentials. If you have credentials defined in multiple places (e.g., environment variables, <code>~/.aws/credentials</code>, IAM roles on an EC2 instance), an invalid set from a higher-precedence source will be used, masking a valid set elsewhere.</li>
+<li><strong>Credentials Deactivated or Deleted:</strong> An IAM user's access key might have been deactivated or deleted in the AWS console or via IAM API calls. If the key is no longer active, AWS will reject it.</li>
+<li><strong>Whitespace Issues:</strong> Leading or trailing whitespace in credential values (especially when copied from a UI or <code>.env</code> file) can cause them to be parsed incorrectly.</li>
+<li><strong>Region Mismatch (Less Common, but Possible):</strong> While access keys are generally global, temporary session tokens obtained from STS <em>can sometimes</em> be tied to a specific region where they were generated, or the service you are trying to reach might itself be region-specific and your credentials might not apply correctly. More often, a region mismatch causes authorization errors or "could not connect" type errors, but it's worth checking.</li>
+</ul>
 <h2 id="step-by-step-fix">Step-by-Step Fix</h2>
-<p>Addressing this error requires a methodical approach to checking your credential chain.</p>
+<p>Here's my go-to troubleshooting process when I hit an <code>InvalidClientTokenId</code> error:</p>
 <ol>
 <li>
-<p><strong>Identify the Credential Source:</strong></p>
-<ul>
-<li>Are you using environment variables (<code>AWS_ACCESS_KEY_ID</code>, <code>AWS_SECRET_ACCESS_KEY</code>, <code>AWS_SESSION_TOKEN</code>)?</li>
-<li>Are you using a shared credentials file (<code>~/.aws/credentials</code>) and a profile (<code>--profile default</code> or <code>export AWS_PROFILE=myprofile</code>)?</li>
-<li>Are you relying on an IAM role attached to an EC2 instance, ECS task, or Lambda function?</li>
-<li>Are you assuming a role using <code>aws sts assume-role</code> and setting temporary credentials?</li>
-</ul>
-<p>Knowing <em>how</em> your credentials are being picked up is half the battle. AWS CLI and SDKs follow a specific order of precedence: Environment variables &gt; Shared credentials file &gt; IAM roles for EC2/ECS/Lambda.</p>
+<p><strong>Verify Active Credentials with <code>aws sts get-caller-identity</code></strong><br />
+    This is the quickest way to check if your <em>currently active</em> AWS credentials are valid and what identity they represent.<br />
+<code>bash
+    aws sts get-caller-identity</code><br />
+    If this command fails with <code>InvalidClientTokenId</code>, it confirms your active credentials are the problem. If it succeeds, it tells you which account/user/role your current configuration points to, which can help diagnose if you're authenticating as the <em>wrong</em> identity.</p>
 </li>
 <li>
-<p><strong>Check Environment Variables First:</strong><br />
-    Run the following commands to inspect your current environment:</p>
-<p><code>bash
-echo $AWS_ACCESS_KEY_ID
-echo $AWS_SECRET_ACCESS_KEY
-echo $AWS_SESSION_TOKEN
-echo $AWS_DEFAULT_REGION</code></p>
-<ul>
-<li><strong>Problem:</strong> If any of these are set, especially <code>AWS_ACCESS_KEY_ID</code> and <code>AWS_SECRET_ACCESS_KEY</code>, and they are incorrect or empty, they will override any other configuration.</li>
-<li><strong>Fix:</strong> Unset them if they're wrong or expired, and then retry.<br />
+<p><strong>Inspect Environment Variables</strong><br />
+    Environment variables have the highest precedence. Check if any <code>AWS_</code> variables are set that might be interfering.<br />
+<code>bash
+    env | grep AWS</code><br />
+    Look for <code>AWS_ACCESS_KEY_ID</code>, <code>AWS_SECRET_ACCESS_KEY</code>, <code>AWS_SESSION_TOKEN</code>, and <code>AWS_REGION</code>. If these are set and look suspicious, unset them.<br />
 <code>bash
     unset AWS_ACCESS_KEY_ID
     unset AWS_SECRET_ACCESS_KEY
-    unset AWS_SESSION_TOKEN
-    # Also consider unsetting AWS_DEFAULT_REGION if you suspect a region issue
-    # unset AWS_DEFAULT_REGION</code></li>
-</ul>
+    unset AWS_SESSION_TOKEN # If applicable
+    unset AWS_REGION        # If you want to rely on config files</code><br />
+    Then, re-run <code>aws sts get-caller-identity</code>.</p>
 </li>
 <li>
-<p><strong>Verify Shared Credentials and Config Files:</strong><br />
-    Examine <code>~/.aws/credentials</code> and <code>~/.aws/config</code>.</p>
+<p><strong>Check <code>~/.aws/credentials</code> and <code>~/.aws/config</code></strong><br />
+    If environment variables aren't the issue, the next place to look is your AWS configuration files.</p>
 <ul>
-<li>Open <code>~/.aws/credentials</code> and confirm the <code>aws_access_key_id</code> under your active profile (e.g., <code>[default]</code> or <code>[myprofile]</code>) is correct and hasn't been accidentally modified. Check for leading/trailing spaces or typos.</li>
-<li>Open <code>~/.aws/config</code> and ensure your profile's <code>region</code> is set correctly. While less direct for <code>InvalidClientTokenId</code>, an incorrect region can sometimes lead to follow-on issues if temporary tokens are region-bound.</li>
+<li>
+<p><strong><code>~/.aws/credentials</code>:</strong><br />
+    ```ini<br />
+    [default]<br />
+    aws_access_key_id = AKIAIOSFODNN7EXAMPLE<br />
+    aws_secret_access_key = wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY</p>
+<p>[my-profile]<br />
+aws_access_key_id = ANOTHEREXAMPLEKEY<br />
+aws_secret_access_key = ANOTHERSECRETEXAMPLE<br />
+aws_session_token = # Only for temporary credentials<br />
+<code>``
+Ensure the</code>aws_access_key_id<code>and</code>aws_secret_access_key<code>are correct for the profile you're using (or the</code>default<code>profile). Double-check for typos or leading/trailing whitespace. If there's an</code>aws_session_token`, ensure it hasn't expired (it should be absent for permanent IAM keys).</p>
+</li>
+<li>
+<p><strong><code>~/.aws/config</code>:</strong><br />
+    ```ini<br />
+    [default]<br />
+    region = us-east-1</p>
+<p>[profile my-profile]<br />
+region = eu-west-1<br />
+output = json<br />
+<code>``
+Verify that the</code>region<code>setting in your</code>config<code>file matches the region the key was generated in or the region where the target resource resides, if that's a factor. If you're using a named profile, ensure you're specifying it correctly with</code>--profile my-profile<code>in your CLI commands or via</code>AWS_PROFILE` environment variable.</p>
+</li>
 </ul>
 </li>
 <li>
-<p><strong>Test Your Current Identity:</strong><br />
-    Try to fetch your current identity. If your credentials are truly invalid, this command will also fail with the same error, but it's a good sanity check.</p>
-<p><code>bash
-aws sts get-caller-identity</code><br />
-If this fails, your AWS credentials are not valid in the context you're running this command.</p>
+<p><strong>Rotate Temporary Credentials</strong><br />
+    If you're using <code>aws sts assume-role</code> or <code>get-session-token</code>, your temporary credentials will expire. You need to re-run the command that generates them.<br />
+<code>bash
+    # Example of re-assuming a role
+    unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
+    eval $(aws sts assume-role \
+        --role-arn arn:aws:iam::123456789012:role/MyRole \
+        --role-session-name MySession \
+        --duration-seconds 3600 | jq -r '.Credentials | "export AWS_ACCESS_KEY_ID=\(.AccessKeyId)\nexport AWS_SECRET_ACCESS_KEY=\(.SecretAccessKey)\nexport AWS_SESSION_TOKEN=\(.SessionToken)\nexport AWS_SESSION_EXPIRATION=\(.Expiration)"')</code><br />
+    Then, re-run <code>aws sts get-caller-identity</code> to confirm.</p>
 </li>
 <li>
-<p><strong>Re-Assume Roles for Temporary Credentials:</strong><br />
-    If you're using temporary credentials from an <code>assume-role</code> operation, they <em>will</em> expire. The solution is to re-assume the role.</p>
-<p>```bash</p>
-<h1 id="example-command-to-assume-a-role">Example command to assume a role</h1>
-<p>aws sts assume-role --role-arn arn:aws:iam::123456789012:role/MyTempRole --role-session-name MySession</p>
-<h1 id="the-output-will-contain-new-temporary-credentials">The output will contain new temporary credentials.</h1>
-<h1 id="youll-need-to-export-these-into-your-environment-or-configure-your-clisdk-to-use-them">You'll need to export these into your environment or configure your CLI/SDK to use them.</h1>
-<h1 id="for-example-using-jq-to-parse-and-export">For example, using <code>jq</code> to parse and export:</h1>
-<p># eval $(aws sts assume-role --role-arn arn:aws:iam::123456789012:role/MyTempRole --role-session-name MySession | \</p>
-<h1 id="jq-r-credentials-export-aws_access_key_idaccesskeyidnexport-aws_secret_access_keysecretaccesskeynexport-aws_session_tokensessiontokennexport-aws_session_expirationexpiration">jq -r '.Credentials | "export AWS_ACCESS_KEY_ID=(.AccessKeyId)\nexport AWS_SECRET_ACCESS_KEY=(.SecretAccessKey)\nexport AWS_SESSION_TOKEN=(.SessionToken)\nexport AWS_SESSION_EXPIRATION=(.Expiration)"')</h1>
-<p>```</p>
-</li>
-<li>
-<p><strong>Generate New Access Keys (Last Resort):</strong><br />
-    If you've exhausted all other options and suspect your access key has been deactivated, deleted, or you just can't track down the issue, consider generating a new access key for your IAM user in the AWS IAM console.</p>
+<p><strong>Check IAM Console (Last Resort for Permanent Keys)</strong><br />
+    If you've checked everything local and are using a permanent IAM user access key:</p>
 <ul>
-<li>Go to IAM -&gt; Users -&gt; [Your User] -&gt; Security Credentials tab.</li>
-<li>Deactivate the old key and create a new one. Update your <code>~/.aws/credentials</code> file or environment variables with the new key ID and secret. <strong>Remember to never hardcode keys in code.</strong></li>
+<li>Log into the AWS Management Console.</li>
+<li>Navigate to IAM.</li>
+<li>Go to "Users" and select the user whose access key you're using.</li>
+<li>Click on the "Security credentials" tab.</li>
+<li>Find the Access Key ID you're using. Ensure its "Status" is "Active". If it's "Inactive," you'll need to make it active or generate a new one. If you suspect it might be compromised, deactivate it and create a new one.</li>
 </ul>
 </li>
 <li>
-<p><strong>Explicitly Set Region:</strong><br />
-    If you're still having issues, ensure your region is explicitly set and correct.</p>
-<p>```bash<br />
-export AWS_DEFAULT_REGION="us-east-1" # Or your desired region</p>
-<h1 id="or-for-a-specific-command">Or for a specific command:</h1>
-<p>aws s3 ls --region us-east-1<br />
-```</p>
+<p><strong>Review Application/SDK Configuration</strong><br />
+    If the error is coming from an application using an AWS SDK (e.g., Boto3 in Python, AWS SDK for JavaScript), check how it's loading credentials. The SDKs follow a similar precedence chain. Ensure your application isn't hardcoding old credentials or pointing to an incorrect profile.</p>
 </li>
 </ol>
 <h2 id="code-examples">Code Examples</h2>
-<p>Here are some concise, copy-paste ready examples for common scenarios:</p>
-<p><strong>1. Verifying and Clearing Environment Variables (Bash):</strong></p>
-<div class="highlight"><pre><span></span><code><span class="c1"># Check existing credentials</span>
-<span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;AWS_ACCESS_KEY_ID: </span><span class="nv">$AWS_ACCESS_KEY_ID</span><span class="s2">&quot;</span>
-<span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;AWS_SECRET_ACCESS_KEY: (present if not empty)&quot;</span>
-<span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;AWS_SESSION_TOKEN: </span><span class="nv">$AWS_SESSION_TOKEN</span><span class="s2">&quot;</span>
-<span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;AWS_DEFAULT_REGION: </span><span class="nv">$AWS_DEFAULT_REGION</span><span class="s2">&quot;</span>
-
-<span class="c1"># Clear potentially problematic environment variables</span>
-<span class="nb">unset</span><span class="w"> </span>AWS_ACCESS_KEY_ID
-<span class="nb">unset</span><span class="w"> </span>AWS_SECRET_ACCESS_KEY
-<span class="nb">unset</span><span class="w"> </span>AWS_SESSION_TOKEN
-<span class="nb">unset</span><span class="w"> </span>AWS_DEFAULT_REGION
-<span class="nb">unset</span><span class="w"> </span>AWS_PROFILE<span class="w"> </span><span class="c1"># Useful if you want to fall back to default profile</span>
+<p>Here are some concise, copy-paste ready examples for credential management.</p>
+<h3 id="setting-environment-variables-bash">Setting Environment Variables (Bash)</h3>
+<div class="highlight"><pre><span></span><code><span class="nb">export</span><span class="w"> </span><span class="nv">AWS_ACCESS_KEY_ID</span><span class="o">=</span><span class="s2">&quot;AKIAIOSFODNN7EXAMPLE&quot;</span>
+<span class="nb">export</span><span class="w"> </span><span class="nv">AWS_SECRET_ACCESS_KEY</span><span class="o">=</span><span class="s2">&quot;wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY&quot;</span>
+<span class="c1"># Only for temporary credentials (e.g., from assume-role)</span>
+<span class="nb">export</span><span class="w"> </span><span class="nv">AWS_SESSION_TOKEN</span><span class="o">=</span><span class="s2">&quot;FQoGZXIvYXdzEJ///////////////////////////w==&quot;</span>
+<span class="nb">export</span><span class="w"> </span><span class="nv">AWS_REGION</span><span class="o">=</span><span class="s2">&quot;us-east-1&quot;</span><span class="w"> </span><span class="c1"># Or your target region</span>
 </code></pre></div>
 
-<p><strong>2. Configuring AWS CLI (for persistent credentials):</strong></p>
-<div class="highlight"><pre><span></span><code><span class="c1"># Run this to set up your default profile interactively</span>
-aws<span class="w"> </span>configure
-
-<span class="c1"># Or for a named profile</span>
-aws<span class="w"> </span>configure<span class="w"> </span>--profile<span class="w"> </span>mydevprofile
-
-<span class="c1"># Example content for ~/.aws/credentials:</span>
-<span class="c1"># [default]</span>
-<span class="c1"># aws_access_key_id = AKIAIOSFODNN7EXAMPLE</span>
-<span class="c1"># aws_secret_access_key = wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY</span>
-
-<span class="c1"># Example content for ~/.aws/config:</span>
-<span class="c1"># [default]</span>
-<span class="c1"># region = us-east-1</span>
-<span class="c1"># output = json</span>
-<span class="c1">#</span>
-<span class="c1"># [profile mydevprofile]</span>
-<span class="c1"># region = us-west-2</span>
-<span class="c1"># output = json</span>
+<h3 id="unsetting-environment-variables-bash">Unsetting Environment Variables (Bash)</h3>
+<div class="highlight"><pre><span></span><code><span class="nb">unset</span><span class="w"> </span>AWS_ACCESS_KEY_ID<span class="w"> </span>AWS_SECRET_ACCESS_KEY<span class="w"> </span>AWS_SESSION_TOKEN<span class="w"> </span>AWS_REGION
 </code></pre></div>
 
-<p><strong>3. Python Boto3 Example (demonstrating credential usage order):</strong></p>
-<div class="highlight"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
-<span class="kn">import</span><span class="w"> </span><span class="nn">boto3</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">botocore.exceptions</span><span class="w"> </span><span class="kn">import</span> <span class="n">ClientError</span>
+<h3 id="using-aws-configure-to-set-defaults">Using <code>aws configure</code> to Set Defaults</h3>
+<p>This command interactively prompts you for credentials and region, saving them to <code>~/.aws/credentials</code> and <code>~/.aws/config</code> under the <code>[default]</code> profile.</p>
+<div class="highlight"><pre><span></span><code>aws<span class="w"> </span>configure
+<span class="c1"># AWS Access Key ID [****************EXAMPLE]: AKIAIOSFODNN7EXAMPLE</span>
+<span class="c1"># AWS Secret Access Key [****************EXAMPLEKEY]: wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY</span>
+<span class="c1"># Default region name [us-east-1]: us-east-1</span>
+<span class="c1"># Default output format [json]: json</span>
+</code></pre></div>
 
-<span class="c1"># --- Scenario 1: Relying on default credential chain (env vars, ~/.aws/credentials) ---</span>
-<span class="c1"># This is the most common and recommended approach</span>
-<span class="k">try</span><span class="p">:</span>
-    <span class="n">s3_client_default</span> <span class="o">=</span> <span class="n">boto3</span><span class="o">.</span><span class="n">client</span><span class="p">(</span><span class="s1">&#39;s3&#39;</span><span class="p">)</span>
-    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Attempting to list S3 buckets using default credentials:&quot;</span><span class="p">)</span>
-    <span class="n">response</span> <span class="o">=</span> <span class="n">s3_client_default</span><span class="o">.</span><span class="n">list_buckets</span><span class="p">()</span>
-    <span class="k">for</span> <span class="n">bucket</span> <span class="ow">in</span> <span class="n">response</span><span class="p">[</span><span class="s1">&#39;Buckets&#39;</span><span class="p">]:</span>
-        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;  - </span><span class="si">{</span><span class="n">bucket</span><span class="p">[</span><span class="s1">&#39;Name&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-<span class="k">except</span> <span class="n">ClientError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
-    <span class="k">if</span> <span class="n">e</span><span class="o">.</span><span class="n">response</span><span class="p">[</span><span class="s1">&#39;Error&#39;</span><span class="p">][</span><span class="s1">&#39;Code&#39;</span><span class="p">]</span> <span class="o">==</span> <span class="s1">&#39;InvalidClientTokenId&#39;</span><span class="p">:</span>
-        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Error (Default): InvalidClientTokenId. Check your environment variables or ~/.aws/credentials.&quot;</span><span class="p">)</span>
-    <span class="k">else</span><span class="p">:</span>
-        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Error (Default): </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<h3 id="checking-current-identity-with-aws-cli">Checking Current Identity with AWS CLI</h3>
+<div class="highlight"><pre><span></span><code>aws<span class="w"> </span>sts<span class="w"> </span>get-caller-identity
+</code></pre></div>
 
-<span class="c1"># --- Scenario 2: Explicitly providing credentials (less common, usually for specific cases) ---</span>
-<span class="c1"># Note: Hardcoding credentials is generally NOT recommended for production.</span>
-<span class="c1"># This example is for demonstration of how explicit credentials are used.</span>
-<span class="c1"># Let&#39;s use intentionally wrong credentials to demonstrate the error.</span>
-<span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">[</span><span class="s1">&#39;AWS_ACCESS_KEY_ID&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="s1">&#39;AKIAIMINTENTIONALLYINVALID&#39;</span> <span class="c1"># Mismatched or non-existent</span>
-<span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">[</span><span class="s1">&#39;AWS_SECRET_ACCESS_KEY&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="s1">&#39;fake_secret_key_that_is_also_wrong_for_this_example&#39;</span>
+<h3 id="python-boto3-example-implicit-credential-loading">Python Boto3 Example (Implicit Credential Loading)</h3>
+<p>Boto3 automatically looks for credentials in environment variables, <code>~/.aws/credentials</code>, and IAM roles (on EC2/ECS/Lambda).</p>
+<div class="highlight"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">boto3</span>
 
 <span class="k">try</span><span class="p">:</span>
-    <span class="n">s3_client_explicit</span> <span class="o">=</span> <span class="n">boto3</span><span class="o">.</span><span class="n">client</span><span class="p">(</span><span class="s1">&#39;s3&#39;</span><span class="p">,</span> <span class="n">region_name</span><span class="o">=</span><span class="s1">&#39;us-east-1&#39;</span><span class="p">)</span>
-    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">Attempting to list S3 buckets using explicit (and likely invalid) environment variables:&quot;</span><span class="p">)</span>
-    <span class="n">response</span> <span class="o">=</span> <span class="n">s3_client_explicit</span><span class="o">.</span><span class="n">list_buckets</span><span class="p">()</span>
-    <span class="k">for</span> <span class="n">bucket</span> <span class="ow">in</span> <span class="n">response</span><span class="p">[</span><span class="s1">&#39;Buckets&#39;</span><span class="p">]:</span>
-        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;  - </span><span class="si">{</span><span class="n">bucket</span><span class="p">[</span><span class="s1">&#39;Name&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-<span class="k">except</span> <span class="n">ClientError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
-    <span class="k">if</span> <span class="n">e</span><span class="o">.</span><span class="n">response</span><span class="p">[</span><span class="s1">&#39;Error&#39;</span><span class="p">][</span><span class="s1">&#39;Code&#39;</span><span class="p">]</span> <span class="o">==</span> <span class="s1">&#39;InvalidClientTokenId&#39;</span><span class="p">:</span>
-        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Error (Explicit): InvalidClientTokenId. The provided credentials are bad.&quot;</span><span class="p">)</span>
-    <span class="k">else</span><span class="p">:</span>
-        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Error (Explicit): </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-
-<span class="c1"># Clean up environment variables if they were set for this example</span>
-<span class="k">del</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">[</span><span class="s1">&#39;AWS_ACCESS_KEY_ID&#39;</span><span class="p">]</span>
-<span class="k">del</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">[</span><span class="s1">&#39;AWS_SECRET_ACCESS_KEY&#39;</span><span class="p">]</span>
+    <span class="c1"># This will use the default credentials found in the environment</span>
+    <span class="n">sts_client</span> <span class="o">=</span> <span class="n">boto3</span><span class="o">.</span><span class="n">client</span><span class="p">(</span><span class="s1">&#39;sts&#39;</span><span class="p">)</span>
+    <span class="n">response</span> <span class="o">=</span> <span class="n">sts_client</span><span class="o">.</span><span class="n">get_caller_identity</span><span class="p">()</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Successfully authenticated:&quot;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;User ID: </span><span class="si">{</span><span class="n">response</span><span class="p">[</span><span class="s1">&#39;UserId&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Account: </span><span class="si">{</span><span class="n">response</span><span class="p">[</span><span class="s1">&#39;Account&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;ARN: </span><span class="si">{</span><span class="n">response</span><span class="p">[</span><span class="s1">&#39;Arn&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Error authenticating: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
 </code></pre></div>
 
 <h2 id="environment-specific-notes">Environment-Specific Notes</h2>
-<p>The source and handling of AWS credentials vary significantly by environment, which directly impacts how you'll debug <code>InvalidClientTokenId</code>.</p>
-<h3 id="local-development">Local Development</h3>
-<p>This is where <code>InvalidClientTokenId</code> is most common.<br />
-*   <strong>Credential Files:</strong> You're typically using <code>~/.aws/credentials</code> and <code>~/.aws/config</code>. Ensure the correct profile is active, either by <code>export AWS_PROFILE=mydevprofile</code> or by passing <code>--profile mydevprofile</code> to <code>aws</code> commands.<br />
-*   <strong>Environment Variables:</strong> It's very easy to accidentally set <code>AWS_ACCESS_KEY_ID</code> and <code>AWS_SECRET_ACCESS_KEY</code> in your shell, or via a <code>.env</code> file, and forget about them. These take precedence and can mask correct configurations elsewhere.<br />
-*   <strong>Temporary Sessions:</strong> If you <code>assume-role</code> frequently, ensure your script or workflow correctly refreshes and exports the new temporary credentials each time they expire. I've often seen this when developers leave a terminal open for too long after assuming a role.</p>
-<h3 id="cloud-environments-ec2-ecs-lambda">Cloud Environments (EC2, ECS, Lambda)</h3>
-<p>In these environments, the preferred method for authentication is <strong>IAM roles for service accounts/instances</strong>. If you get <code>InvalidClientTokenId</code> here, it usually means:<br />
-*   <strong>Explicit Credentials are Being Used:</strong> Your application or a script is <em>explicitly</em> trying to use hardcoded credentials or environment variables that are incorrect or expired, <em>even though</em> an IAM role is attached. The application isn't falling back to the instance profile or task role because it found explicit credentials first.<br />
-*   <strong>Role Not Attached/Configured:</strong> Less common for <code>InvalidClientTokenId</code> (more likely <code>AccessDenied</code> or a network error), but if the instance profile/task role isn't correctly associated, the SDK might then search for other credentials and fail if none are found, <em>or</em> if it <em>does</em> find old, invalid explicit credentials.<br />
-*   <strong>Temporary Credentials from Role Assumption Expired:</strong> If your application assumes another role <em>from</em> an EC2 instance, the temporary credentials obtained from that assumption will expire. The application needs to be designed to refresh these.</p>
-<h3 id="docker-containers">Docker Containers</h3>
-<p>Docker adds another layer of isolation.<br />
-*   <strong>Mounting <code>~/.aws</code>:</strong> You can mount your local <code>~/.aws</code> directory into the container. Ensure the permissions are correct and the default profile or the specified profile is valid.<br />
-<code>bash
-    docker run -v ~/.aws:/root/.aws:ro my-aws-app</code><br />
-*   <strong>Environment Variables:</strong> Passing credentials via environment variables is common:<br />
-<code>bash
-    docker run \
-      -e AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID \
-      -e AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY \
-      -e AWS_SESSION_TOKEN=$AWS_SESSION_TOKEN \
-      my-aws-app</code><br />
-    The key here is ensuring the <em>host's</em> environment variables are correctly populated <em>before</em> the <code>docker run</code> command executes.<br />
-*   <strong>IAM Roles for Container Orchestrators:</strong> If running on ECS, EKS, or other platforms, you should leverage IAM roles for tasks/pods. This abstracts credential management away from the container image itself.</p>
+<p>The source and management of AWS credentials can vary significantly between environments.</p>
+<ul>
+<li><strong>Local Development:</strong> Here, you'll most commonly rely on <code>~/.aws/credentials</code> (managed by <code>aws configure</code> or manually) and environment variables. If you use tools like <code>aws-vault</code> or IDE integrations, ensure they are correctly configured and refreshed. I often run into this when switching between multiple client accounts or profiles, forgetting to <code>export AWS_PROFILE</code> for the correct one.</li>
+<li><strong>Docker Containers:</strong> When running AWS CLI or SDK within a Docker container, you have a few options:<ul>
+<li><strong>Environment Variables:</strong> Pass <code>AWS_ACCESS_KEY_ID</code>, <code>AWS_SECRET_ACCESS_KEY</code>, etc., as environment variables using <code>-e</code> flags or in your <code>docker-compose.yml</code>.</li>
+<li><strong>Mounting <code>~/.aws</code>:</strong> You can mount your host's <code>~/.aws</code> directory into the container. Be cautious with this for security reasons in shared environments. <code>docker run -v ~/.aws:/root/.aws ...</code></li>
+<li><strong>IAM Roles (for EC2/ECS/EKS hosts):</strong> If your Docker container is running on an EC2 instance or within an ECS/EKS cluster, the best practice is to assign an IAM role to the host or task definition. The containerized application will then automatically assume this role, removing the need for explicit credentials. If you're seeing <code>InvalidClientTokenId</code> in a container with a task role, it often means the application is trying to <em>override</em> the role with bad explicit credentials.</li>
+</ul>
+</li>
+<li><strong>CI/CD Pipelines (e.g., GitHub Actions, GitLab CI, Jenkins):</strong> Credentials in CI/CD are typically managed as secrets.<ul>
+<li><strong>Environment Variables:</strong> Secrets are injected as environment variables into the build/deploy job. Always ensure these secrets are fresh and correctly mapped. For example, in GitHub Actions, you'd define <code>AWS_ACCESS_KEY_ID</code> and <code>AWS_SECRET_ACCESS_KEY</code> as repository secrets.</li>
+<li><strong>IAM Roles / OIDC:</strong> Increasingly, CI/CD platforms support OpenID Connect (OIDC) to directly assume IAM roles without long-lived access keys. This is the most secure method. If you're setting this up, ensure the OIDC provider configuration, trust policy on the IAM role, and the role ARN in your CI/CD workflow are all accurate. An <code>InvalidClientTokenId</code> here might indicate a problem in the initial token exchange for the role.</li>
+</ul>
+</li>
+<li><strong>Cloud Instances (EC2, Lambda, ECS Tasks):</strong> For applications running directly on AWS services, the gold standard is to use <strong>IAM roles</strong>. Assign an appropriate IAM role to your EC2 instance profile, Lambda function, or ECS task definition. The AWS SDK/CLI will automatically pick up these credentials from the instance metadata service. If you encounter <code>InvalidClientTokenId</code> in such an environment, it usually means:<ol>
+<li>No IAM role is assigned.</li>
+<li>The application is <em>explicitly configured</em> with incorrect hardcoded or environment variable credentials, overriding the (non-existent or valid) IAM role.</li>
+<li>The application is attempting to assume <em>another</em> role using explicit, invalid credentials.</li>
+</ol>
+</li>
+</ul>
 <h2 id="frequently-asked-questions">Frequently Asked Questions</h2>
-<p><strong>Q: Is <code>InvalidClientTokenId</code> a permissions error?</strong><br />
-<strong>A:</strong> No, it is not. This error means AWS could not <em>authenticate</em> you (identify who you are) because the security token (your access key ID) was invalid. A permissions error (<code>AccessDenied</code>) occurs <em>after</em> successful authentication, when AWS determines you don't have the necessary rights to perform the requested action.</p>
-<p><strong>Q: Why does this error appear intermittently?</strong><br />
-<strong>A:</strong> Intermittent <code>InvalidClientTokenId</code> errors almost always point to the use of temporary credentials (e.g., from <code>aws sts assume-role</code> or an instance profile) that are expiring. Your application or script might work immediately after refreshing credentials, but fail a few hours later when they time out. Another common cause is different execution environments loading different sets of credentials (e.g., your IDE uses one, your terminal uses another).</p>
-<p><strong>Q: Can a network issue cause <code>InvalidClientTokenId</code>?</strong><br />
-<strong>A:</strong> Generally, no. A network issue (like a firewall block or DNS problem) would typically result in a connection timeout or a "host unreachable" error. <code>InvalidClientTokenId</code> specifically means that your request <em>reached</em> AWS, and AWS processed the authentication header but found the token invalid.</p>
-<p><strong>Q: I'm sure my keys are correct in <code>~/.aws/credentials</code>. What else could it be?</strong><br />
-<strong>A:</strong> Check environment variables (<code>AWS_ACCESS_KEY_ID</code>, <code>AWS_SECRET_ACCESS_KEY</code>, <code>AWS_SESSION_TOKEN</code>) as they take precedence. Also, ensure you're using the correct profile (<code>--profile myprofile</code> or <code>AWS_PROFILE</code>) and that the <code>AWS_ACCESS_KEY_ID</code> for that profile is indeed valid and active in the IAM console. Finally, if you're using temporary credentials from an assumed role, they might have simply expired.</p>
-<p><strong>Q: Does the region affect <code>InvalidClientTokenId</code>?</strong><br />
-<strong>A:</strong> The <code>AWS_ACCESS_KEY_ID</code> itself is a global identifier, so it's not strictly region-dependent for basic identification. However, the <em>context</em> in which it's used (especially for temporary credentials or certain service endpoints) can lead to issues. An incorrectly set <code>AWS_DEFAULT_REGION</code> or explicit <code>--region</code> might cause a service-specific issue or prevent the correct credential provider chain from functioning, sometimes surfacing as <code>InvalidClientTokenId</code> if the underlying token is tied to a specific region or if the SDK can't correctly locate a regional STS endpoint. It's good practice to ensure your region is correctly configured.</p>
+<ul>
+<li>
+<p><strong>Q: Is <code>InvalidClientTokenId</code> an authorization or an authentication error?</strong><br />
+<strong>A:</strong> It is strictly an <em>authentication</em> error. It means AWS couldn't verify <em>who you are</em>, not that you don't have <em>permission</em> to perform an action. An authorization error would typically manifest as <code>AccessDeniedException</code>.</p>
+</li>
+<li>
+<p><strong>Q: Can a region mismatch cause this error?</strong><br />
+<strong>A:</strong> While less common than for <code>AccessDeniedException</code>, it can. Specifically, temporary credentials from AWS STS can sometimes be implicitly tied to the region where they were generated, or a service might behave differently depending on the region. Always ensure your configured region matches your intent.</p>
+</li>
+<li>
+<p><strong>Q: My credentials are correct, but I still get the error. What else could it be?</strong><br />
+<strong>A:</strong> Double-check for invisible characters (like whitespace) when copying/pasting. Ensure you don't have conflicting environment variables or AWS profiles active. If using an SDK, verify how it's loading credentials – it might be picking up an unexpected source. Finally, re-check the IAM console to ensure the key hasn't been deactivated or deleted by another administrator.</p>
+</li>
+<li>
+<p><strong>Q: How can I prevent <code>InvalidClientTokenId</code> errors in the future?</strong><br />
+<strong>A:</strong> Prioritize using <strong>IAM roles</strong> for applications running on AWS infrastructure (EC2, Lambda, ECS, EKS). For CI/CD, leverage OIDC integration with IAM roles. On local development, use tools like <code>aws-vault</code> or <code>aws-sso-cli</code> to manage and refresh temporary credentials automatically, minimizing the use of long-lived access keys. Always rotate temporary credentials promptly when they expire.</p>
+</li>
+</ul>
 <h2 id="related-errors">Related Errors</h2>
+<p>(none)</p>
     </div>
 
     <!-- ── AdSense placement 2 – bottom of article ───────────────────────── -->
@@ -413,7 +390,7 @@ aws<span class="w"> </span>configure<span class="w"> </span>--profile<span class
     <div class="container">
       <p class="footer-logo">⚡ ErrorFix.dev</p>
       <p>Practical, engineer-written guides for real-world software errors.</p>
-      <p style="margin-top:.5rem">Last updated: <time>March 21, 2026</time>.</p>
+      <p style="margin-top:.5rem">Last updated: <time>March 22, 2026</time>.</p>
       <p class="footer-links" style="margin-top:.75rem">
         <!-- ╔══════════════════════════════════════════════════════════════╗ -->
         <!-- ║  AFFILIATE LINKS – replace the href values below            ║ -->
