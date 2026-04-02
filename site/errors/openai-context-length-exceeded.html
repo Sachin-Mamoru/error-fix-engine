@@ -130,213 +130,253 @@
     <div class="article-content">
       <h1 id="invalidrequesterror-context_length_exceeded">InvalidRequestError: context_length_exceeded</h1>
 <blockquote>
-<p>Encountering InvalidRequestError: context_length_exceeded means your prompt exceeds the model's maximum token limit; this guide explains how to fix it.</p>
+<p>Encountering InvalidRequestError: context_length_exceeded means your prompt or conversation history has exceeded the maximum token limit for the model; this guide explains how to fix it.</p>
 </blockquote>
 <h2 id="what-this-error-means">What This Error Means</h2>
-<p>When you encounter <code>InvalidRequestError: context_length_exceeded</code> from the OpenAI API, it means the total number of tokens in your request's input has surpassed the maximum limit defined for the specific model you are using. This isn't a transient network issue or a server-side bug; it's a hard limit imposed by the model's architecture. Every model, from <code>gpt-3.5-turbo</code> to various <code>gpt-4</code> iterations, has a fixed "context window" which determines how much information it can process in a single request. If your input – comprising the system message, the user's prompt, and any prior turns in a conversation – translates into more tokens than this window allows, the API will reject the request with this error.</p>
+<p>When working with the OpenAI API for language models, <code>InvalidRequestError: context_length_exceeded</code> is a clear signal: the total length of your input has surpassed the model's capacity. Think of it like trying to fit a novel into a short story slot. Every interaction with an OpenAI model, particularly for chat completions, involves sending a "context window" of information. This window has a finite size, measured in "tokens."</p>
+<p>Tokens are the fundamental units of text that language models process. A token can be a word, a part of a word, or even punctuation. For example, "token" might be one token, while "tokens" could be "token" + "s". The API takes your entire input (system message, user messages, assistant responses in a conversation, tool outputs) and tokenizes it. If the sum of these tokens exceeds the model's defined context limit, you hit this error.</p>
 <h2 id="why-it-happens">Why It Happens</h2>
-<p>At its core, the problem stems from how large language models process text. They don't see raw characters or words but rather "tokens." A token can be as short as a single character (like a comma) or as long as a word (like "hello" or "apple"). Complex words or phrases might break down into multiple tokens. The crucial point is that each model has a fixed memory, or "context window," measured in tokens. For example, some models might have a 4k token limit, others 8k, 16k, 32k, or even 128k.</p>
-<p>When you send a request to the API, all the text in your <code>messages</code> array (for chat completions) or <code>prompt</code> (for older completion endpoints) is first tokenized. If the sum of these tokens exceeds the model's maximum context length, the <code>context_length_exceeded</code> error is returned. In my experience, this is particularly common in conversational applications where chat history accumulates over time, or when attempting to feed very large documents directly into a prompt.</p>
+<p>The core reason for this error is the architectural limitation of transformer models, which underpin OpenAI's offerings. These models are designed to process a fixed-size sequence of tokens. While models have become increasingly capable and context windows have grown significantly, they are not infinite. Each model version (e.g., <code>gpt-3.5-turbo</code>, <code>gpt-4</code>, <code>gpt-4-32k</code>) comes with a specific, hard-coded maximum context length.</p>
+<p>When you make an API call, the OpenAI endpoint calculates the total token count of your <code>messages</code> array, including all <code>role</code>s (system, user, assistant, tool). It then compares this against the chosen model's maximum allowed input token limit. If <code>total_input_tokens &gt; model_max_input_tokens</code>, the <code>context_length_exceeded</code> error is returned instantly, preventing the model from even attempting to process the request. It's a pre-flight check to ensure the input fits the model's operational constraints.</p>
+<p>It's important to distinguish this from the <code>max_tokens</code> parameter you might set in your API request. The <code>max_tokens</code> parameter controls the <em>maximum length of the model's generated output</em>. While the total number of tokens (input + output) must also fit within the model's overall context window, <code>context_length_exceeded</code> specifically indicates that the <em>input alone</em> is too large.</p>
 <h2 id="common-causes">Common Causes</h2>
-<p>I've seen this error pop up in production and development for a few recurring reasons:</p>
+<p>In my experience, this error typically stems from a few recurring scenarios:</p>
 <ul>
-<li><strong>Excessive Chat History:</strong> In interactive or conversational applications, if you're sending the entire history of a chat session with every API call, the cumulative token count can quickly exceed the limit. This is, by far, the most frequent culprit.</li>
-<li><strong>Overly Verbose Prompts:</strong> Directly embedding very long documents, large code snippets, or extensive datasets into a single prompt string without summarization or truncation.</li>
-<li><strong>Detailed Instructions and Examples:</strong> While good prompt engineering often involves providing examples or elaborate instructions, including too many can eat into the token budget, especially if the user's actual query is also long.</li>
-<li><strong>Combined System and User Content:</strong> A lengthy system message, coupled with a long user prompt and previous assistant responses, pushes the total token count over the edge.</li>
-<li><strong>Poor Token Estimation:</strong> Not accurately calculating or estimating the token count of your input before sending it to the API. It's easy to underestimate how many tokens a seemingly short string of text can consume.</li>
+<li><strong>Cumulative Conversation History in Chatbots:</strong> This is perhaps the most frequent culprit. In interactive applications, especially chatbots or virtual assistants, developers often maintain a history of past turns to provide continuity. If this history isn't pruned or summarized, it can grow indefinitely, eventually pushing the total context size beyond the limit. I've seen this in production when state management for conversations isn't robust.</li>
+<li><strong>Overly Long User Prompts:</strong> Users sometimes paste entire documents, lengthy logs, or highly detailed specifications directly into a prompt. While beneficial for context, if the input is too large for the chosen model, it will fail.</li>
+<li><strong>Verbose System Instructions:</strong> The <code>system</code> role message provides crucial guidance to the model. However, excessively long or redundant system prompts can consume valuable context tokens, leaving less room for user input or conversation history.</li>
+<li><strong>Large Tool Outputs:</strong> When utilizing OpenAI's function calling feature, the <code>tool</code> role messages carry the output from external tools. If these tool outputs (e.g., database query results, complex API responses, parsed documents) are very large, they can quickly exhaust the context window.</li>
+<li><strong>Direct Embedding of Documents:</strong> Attempting to feed entire articles, reports, or large codebases directly into the prompt without prior summarization or retrieval-augmented generation (RAG) strategies. This is an inefficient and often impossible approach for anything beyond short texts.</li>
+<li><strong>Development and Debugging Artifacts:</strong> Sometimes, during development, extra debugging information or verbose logging might inadvertently be included in the prompt, especially when constructing it dynamically.</li>
 </ul>
 <h2 id="step-by-step-fix">Step-by-Step Fix</h2>
-<p>Addressing <code>context_length_exceeded</code> requires a systematic approach to manage your input.</p>
-<ol>
-<li>
-<p><strong>Identify Your Model's Context Limit:</strong><br />
-    First, confirm the exact model you are using and its corresponding <code>max_tokens</code> context window. This information is typically found in the OpenAI documentation. For instance, <code>gpt-3.5-turbo</code> often has 4k or 16k token variants, while <code>gpt-4</code> has 8k, 32k, or even 128k (e.g., <code>gpt-4-turbo</code>). Knowing your limit is crucial for effective management.</p>
-</li>
-<li>
-<p><strong>Accurately Estimate Token Usage:</strong><br />
-    Before sending data to the API, use OpenAI's <code>tiktoken</code> library to count the tokens in your input. This is the most reliable method, as it uses the same tokenizer models as the OpenAI API.</p>
-<p>```python<br />
-import tiktoken</p>
-<p>def num_tokens_from_messages(messages, model="gpt-3.5-turbo-0125"):<br />
-    """Returns the number of tokens used by a list of messages."""<br />
-    try:<br />
-        encoding = tiktoken.encoding_for_model(model)<br />
-    except KeyError:<br />
-        encoding = tiktoken.get_encoding("cl100k_base") # Fallback for new models</p>
-<div class="highlight"><pre><span></span><code>num_tokens = 0
-for message in messages:
-    # Each message takes a few tokens for metadata (role, name)
-    num_tokens += 4  # every message follows &lt;im_start&gt;{role/name}\n{content}&lt;im_end&gt;\n
-    for key, value in message.items():
-        num_tokens += len(encoding.encode(value))
-        if key == &quot;name&quot;:
-            num_tokens += -1  # role and name are always provided as a pair
-num_tokens += 2  # every reply is primed with &lt;im_start&gt;assistant
-return num_tokens
-</code></pre></div>
-
-<h1 id="example-usage">Example usage:</h1>
-<p>conversation_history = [<br />
-    {"role": "system", "content": "You are a helpful assistant."},<br />
-    {"role": "user", "content": "Tell me about large language models and their context windows."},<br />
-    # ... more messages<br />
-]</p>
-<p>current_tokens = num_tokens_from_messages(conversation_history, "gpt-3.5-turbo")<br />
-print(f"Current token count: {current_tokens}")<br />
-```</p>
-</li>
-<li>
-<p><strong>Implement Input Truncation Strategies:</strong><br />
-    This is your primary method for mitigation.</p>
-<ul>
-<li>
-<p><strong>Sliding Window for Conversations:</strong> For chatbots, maintain a buffer of recent messages. When the token count exceeds a threshold (e.g., 80% of the model's limit), remove the oldest messages until the count is acceptable. I've often implemented this by prioritizing system messages and the most recent user/assistant turns.</p>
-</li>
-<li>
-<p><strong>Summarization:</strong> Instead of discarding old messages entirely, periodically summarize earlier parts of the conversation and replace the verbose history with its concise summary. This preserves context without blowing up the token count.</p>
-</li>
-<li>
-<p><strong>Chunking Large Documents:</strong> If you're processing large text documents, don't send the entire document at once. Break it into smaller, manageable chunks. You can then process each chunk iteratively, or use retrieval-augmented generation (RAG) techniques to fetch only the most relevant sections for a given query.</p>
-</li>
-<li>
-<p><strong>Pruning Irrelevant Details:</strong> Review your system prompts and user inputs. Are there redundant instructions, verbose examples, or unnecessary data points that can be removed without losing critical context?</p>
-</li>
-</ul>
-</li>
-<li>
-<p><strong>Upgrade to a Larger Context Model:</strong><br />
-    If truncating your input compromises the quality of the model's response, consider switching to an OpenAI model with a larger context window. For example, moving from <code>gpt-3.5-turbo</code> (4k tokens) to <code>gpt-4-turbo</code> (128k tokens) can significantly alleviate this constraint. Be mindful of the associated cost increase.</p>
-</li>
-<li>
-<p><strong>Refactor Prompt Engineering:</strong><br />
-    Sometimes, the issue isn't just the sheer volume but <em>how</em> the information is presented. Can you restructure your queries? Instead of providing a full database schema for every query, perhaps a summary or only relevant table definitions could be provided. Break down complex tasks into multiple API calls, each focusing on a specific sub-problem.</p>
-</li>
-<li>
-<p><strong>Implement Server-Side Validation:</strong><br />
-    Build token count checks into your application logic <em>before</em> making the API call. This allows you to handle the error gracefully on your end, perhaps by prompting the user to shorten their input, summarizing history automatically, or indicating that a larger model is needed.</p>
-</li>
-</ol>
-<h2 id="code-examples">Code Examples</h2>
-<h3 id="1-basic-chat-history-truncation-python">1. Basic Chat History Truncation (Python)</h3>
-<p>This example shows how to trim the oldest messages from a chat history to fit within a target token limit, prioritizing the system message and recent interactions.</p>
+<p>Addressing <code>context_length_exceeded</code> involves understanding your token usage and strategically reducing your input.</p>
+<h3 id="1-identify-your-current-token-usage">1. Identify Your Current Token Usage</h3>
+<p>The first step is always to measure. You need to know how many tokens your current problematic request consumes. OpenAI provides a tokenization library called <code>tiktoken</code> which is crucial for this.</p>
 <div class="highlight"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">tiktoken</span>
 
-<span class="k">def</span><span class="w"> </span><span class="nf">num_tokens_from_messages</span><span class="p">(</span><span class="n">messages</span><span class="p">,</span> <span class="n">model</span><span class="o">=</span><span class="s2">&quot;gpt-3.5-turbo-0125&quot;</span><span class="p">):</span>
-    <span class="c1"># (Same function as above, omitted for brevity)</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">num_tokens_from_messages</span><span class="p">(</span><span class="n">messages</span><span class="p">,</span> <span class="n">model</span><span class="o">=</span><span class="s2">&quot;gpt-3.5-turbo&quot;</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Returns the number of tokens used by a list of messages.&quot;&quot;&quot;</span>
     <span class="k">try</span><span class="p">:</span>
         <span class="n">encoding</span> <span class="o">=</span> <span class="n">tiktoken</span><span class="o">.</span><span class="n">encoding_for_model</span><span class="p">(</span><span class="n">model</span><span class="p">)</span>
     <span class="k">except</span> <span class="ne">KeyError</span><span class="p">:</span>
         <span class="n">encoding</span> <span class="o">=</span> <span class="n">tiktoken</span><span class="o">.</span><span class="n">get_encoding</span><span class="p">(</span><span class="s2">&quot;cl100k_base&quot;</span><span class="p">)</span>
-
-    <span class="n">num_tokens</span> <span class="o">=</span> <span class="mi">0</span>
-    <span class="k">for</span> <span class="n">message</span> <span class="ow">in</span> <span class="n">messages</span><span class="p">:</span>
-        <span class="n">num_tokens</span> <span class="o">+=</span> <span class="mi">4</span>
-        <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">message</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
-            <span class="n">num_tokens</span> <span class="o">+=</span> <span class="nb">len</span><span class="p">(</span><span class="n">encoding</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="n">value</span><span class="p">))</span>
-            <span class="k">if</span> <span class="n">key</span> <span class="o">==</span> <span class="s2">&quot;name&quot;</span><span class="p">:</span>
-                <span class="n">num_tokens</span> <span class="o">+=</span> <span class="o">-</span><span class="mi">1</span>
-    <span class="n">num_tokens</span> <span class="o">+=</span> <span class="mi">2</span>
-    <span class="k">return</span> <span class="n">num_tokens</span>
-
-<span class="k">def</span><span class="w"> </span><span class="nf">truncate_chat_history</span><span class="p">(</span><span class="n">messages</span><span class="p">,</span> <span class="n">max_tokens</span><span class="p">,</span> <span class="n">model</span><span class="o">=</span><span class="s2">&quot;gpt-3.5-turbo-0125&quot;</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    Truncates the chat history to fit within max_tokens, prioritizing system message</span>
-<span class="sd">    and recent interactions.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-    <span class="n">current_tokens</span> <span class="o">=</span> <span class="n">num_tokens_from_messages</span><span class="p">(</span><span class="n">messages</span><span class="p">,</span> <span class="n">model</span><span class="p">)</span>
-    <span class="k">if</span> <span class="n">current_tokens</span> <span class="o">&lt;=</span> <span class="n">max_tokens</span><span class="p">:</span>
-        <span class="k">return</span> <span class="n">messages</span>
-
-    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Warning: Current tokens (</span><span class="si">{</span><span class="n">current_tokens</span><span class="si">}</span><span class="s2">) exceed max_tokens (</span><span class="si">{</span><span class="n">max_tokens</span><span class="si">}</span><span class="s2">). Truncating history.&quot;</span><span class="p">)</span>
-
-    <span class="n">truncated_messages</span> <span class="o">=</span> <span class="p">[]</span>
-    <span class="c1"># Always keep system message if present</span>
-    <span class="n">system_message</span> <span class="o">=</span> <span class="nb">next</span><span class="p">((</span><span class="n">m</span> <span class="k">for</span> <span class="n">m</span> <span class="ow">in</span> <span class="n">messages</span> <span class="k">if</span> <span class="n">m</span><span class="p">[</span><span class="s2">&quot;role&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;system&quot;</span><span class="p">),</span> <span class="kc">None</span><span class="p">)</span>
-    <span class="k">if</span> <span class="n">system_message</span><span class="p">:</span>
-        <span class="n">truncated_messages</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">system_message</span><span class="p">)</span>
-        <span class="c1"># Account for system message tokens if it&#39;s kept</span>
-        <span class="n">max_tokens</span> <span class="o">-=</span> <span class="n">num_tokens_from_messages</span><span class="p">([</span><span class="n">system_message</span><span class="p">],</span> <span class="n">model</span><span class="p">)</span>
-
-    <span class="c1"># Add messages from newest to oldest until max_tokens is reached</span>
-    <span class="c1"># Skip the system message if it was already added</span>
-    <span class="n">messages_to_add</span> <span class="o">=</span> <span class="p">[</span><span class="n">m</span> <span class="k">for</span> <span class="n">m</span> <span class="ow">in</span> <span class="n">messages</span> <span class="k">if</span> <span class="n">m</span><span class="p">[</span><span class="s2">&quot;role&quot;</span><span class="p">]</span> <span class="o">!=</span> <span class="s2">&quot;system&quot;</span><span class="p">]</span>
-
-    <span class="c1"># We add from the back (most recent) to the front (older)</span>
-    <span class="c1"># Then reverse at the end to maintain original order</span>
-    <span class="n">temp_list</span> <span class="o">=</span> <span class="p">[]</span>
-    <span class="k">for</span> <span class="n">message</span> <span class="ow">in</span> <span class="nb">reversed</span><span class="p">(</span><span class="n">messages_to_add</span><span class="p">):</span>
-        <span class="n">message_tokens</span> <span class="o">=</span> <span class="n">num_tokens_from_messages</span><span class="p">([</span><span class="n">message</span><span class="p">],</span> <span class="n">model</span><span class="p">)</span>
-        <span class="k">if</span> <span class="n">num_tokens_from_messages</span><span class="p">(</span><span class="n">truncated_messages</span> <span class="o">+</span> <span class="n">temp_list</span> <span class="o">+</span> <span class="p">[</span><span class="n">message</span><span class="p">],</span> <span class="n">model</span><span class="p">)</span> <span class="o">&lt;=</span> <span class="n">max_tokens</span><span class="p">:</span>
-             <span class="n">temp_list</span><span class="o">.</span><span class="n">insert</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">message</span><span class="p">)</span> <span class="c1"># Insert at beginning to maintain original order after reversal</span>
-        <span class="k">else</span><span class="p">:</span>
-            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Skipping message due to token limit: </span><span class="si">{</span><span class="n">message</span><span class="p">[</span><span class="s1">&#39;content&#39;</span><span class="p">][:</span><span class="mi">50</span><span class="p">]</span><span class="si">}</span><span class="s2">...&quot;</span><span class="p">)</span>
-            <span class="k">break</span> <span class="c1"># Stop adding if next message would exceed limit</span>
-
-    <span class="n">truncated_messages</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">temp_list</span><span class="p">)</span>
-
-    <span class="k">return</span> <span class="n">truncated_messages</span>
+    <span class="k">if</span> <span class="n">model</span> <span class="o">==</span> <span class="s2">&quot;gpt-3.5-turbo&quot;</span><span class="p">:</span> <span class="c1"># note: future models might need different logic</span>
+        <span class="n">num_tokens</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="k">for</span> <span class="n">message</span> <span class="ow">in</span> <span class="n">messages</span><span class="p">:</span>
+            <span class="n">num_tokens</span> <span class="o">+=</span> <span class="mi">4</span>  <span class="c1"># every message follows &lt;im_start&gt;{role/name}\n{content}&lt;im_end&gt;\n</span>
+            <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">message</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+                <span class="n">num_tokens</span> <span class="o">+=</span> <span class="nb">len</span><span class="p">(</span><span class="n">encoding</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="n">value</span><span class="p">))</span>
+                <span class="k">if</span> <span class="n">key</span> <span class="o">==</span> <span class="s2">&quot;name&quot;</span><span class="p">:</span>
+                    <span class="n">num_tokens</span> <span class="o">+=</span> <span class="o">-</span><span class="mi">1</span>  <span class="c1"># role/name are always 1 token less</span>
+        <span class="n">num_tokens</span> <span class="o">+=</span> <span class="mi">2</span>  <span class="c1"># every reply is primed with &lt;im_start&gt;assistant</span>
+        <span class="k">return</span> <span class="n">num_tokens</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;&quot;&quot;num_tokens_from_messages() is not implemented for model </span><span class="si">{</span><span class="n">model</span><span class="si">}</span><span class="s2">.</span>
+<span class="s2">        See https://github.com/openai/openai-cookbook/blob/main/examples/How_to_count_tokens_with_tiktoken.ipynb&quot;&quot;&quot;</span><span class="p">)</span>
 
 <span class="c1"># Example usage:</span>
-<span class="n">long_history</span> <span class="o">=</span> <span class="p">[</span>
-    <span class="p">{</span><span class="s2">&quot;role&quot;</span><span class="p">:</span> <span class="s2">&quot;system&quot;</span><span class="p">,</span> <span class="s2">&quot;content&quot;</span><span class="p">:</span> <span class="s2">&quot;You are a friendly assistant.&quot;</span><span class="p">},</span>
-    <span class="p">{</span><span class="s2">&quot;role&quot;</span><span class="p">:</span> <span class="s2">&quot;user&quot;</span><span class="p">,</span> <span class="s2">&quot;content&quot;</span><span class="p">:</span> <span class="s2">&quot;Hi, how are you? &quot;</span> <span class="o">*</span> <span class="mi">50</span><span class="p">},</span>
-    <span class="p">{</span><span class="s2">&quot;role&quot;</span><span class="p">:</span> <span class="s2">&quot;assistant&quot;</span><span class="p">,</span> <span class="s2">&quot;content&quot;</span><span class="p">:</span> <span class="s2">&quot;I&#39;m doing well, thanks for asking! &quot;</span> <span class="o">*</span> <span class="mi">60</span><span class="p">},</span>
-    <span class="p">{</span><span class="s2">&quot;role&quot;</span><span class="p">:</span> <span class="s2">&quot;user&quot;</span><span class="p">,</span> <span class="s2">&quot;content&quot;</span><span class="p">:</span> <span class="s2">&quot;Can you summarize the history of the internet for me, focusing on key milestones and technologies?&quot;</span> <span class="o">*</span> <span class="mi">100</span><span class="p">},</span>
-    <span class="p">{</span><span class="s2">&quot;role&quot;</span><span class="p">:</span> <span class="s2">&quot;assistant&quot;</span><span class="p">,</span> <span class="s2">&quot;content&quot;</span><span class="p">:</span> <span class="s2">&quot;The internet began with ARPANET in the late 1960s, a project by the US Department of Defense. It evolved through various stages, including the development of TCP/IP, DNS, and the World Wide Web by Tim Berners-Lee in the early 1990s. Early technologies included packet switching and email. Key milestones include the release of Mosaic browser, dot-com boom, and the rise of social media. &quot;</span> <span class="o">*</span> <span class="mi">200</span><span class="p">},</span>
-    <span class="p">{</span><span class="s2">&quot;role&quot;</span><span class="p">:</span> <span class="s2">&quot;user&quot;</span><span class="p">,</span> <span class="s2">&quot;content&quot;</span><span class="p">:</span> <span class="s2">&quot;That&#39;s a lot of information! Can you tell me more about the impact of the World Wide Web specifically?&quot;</span><span class="p">},</span>
+<span class="n">example_messages</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="p">{</span><span class="s2">&quot;role&quot;</span><span class="p">:</span> <span class="s2">&quot;system&quot;</span><span class="p">,</span> <span class="s2">&quot;content&quot;</span><span class="p">:</span> <span class="s2">&quot;You are a helpful assistant.&quot;</span><span class="p">},</span>
+    <span class="p">{</span><span class="s2">&quot;role&quot;</span><span class="p">:</span> <span class="s2">&quot;user&quot;</span><span class="p">,</span> <span class="s2">&quot;content&quot;</span><span class="p">:</span> <span class="s2">&quot;What is the capital of France?&quot;</span><span class="p">},</span>
+    <span class="p">{</span><span class="s2">&quot;role&quot;</span><span class="p">:</span> <span class="s2">&quot;assistant&quot;</span><span class="p">,</span> <span class="s2">&quot;content&quot;</span><span class="p">:</span> <span class="s2">&quot;Paris is the capital of France.&quot;</span><span class="p">},</span>
+    <span class="p">{</span><span class="s2">&quot;role&quot;</span><span class="p">:</span> <span class="s2">&quot;user&quot;</span><span class="p">,</span> <span class="s2">&quot;content&quot;</span><span class="p">:</span> <span class="s2">&quot;Tell me more about it.&quot;</span><span class="p">}</span>
 <span class="p">]</span>
 
-<span class="n">model_max_context</span> <span class="o">=</span> <span class="mi">4096</span> <span class="c1"># Example for gpt-3.5-turbo</span>
-<span class="n">truncated_conversation</span> <span class="o">=</span> <span class="n">truncate_chat_history</span><span class="p">(</span><span class="n">long_history</span><span class="p">,</span> <span class="n">model_max_context</span><span class="p">,</span> <span class="s2">&quot;gpt-3.5-turbo&quot;</span><span class="p">)</span>
-
-<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">--- Original Conversation ---&quot;</span><span class="p">)</span>
-<span class="k">for</span> <span class="n">msg</span> <span class="ow">in</span> <span class="n">long_history</span><span class="p">:</span>
-    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">msg</span><span class="p">[</span><span class="s1">&#39;role&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">msg</span><span class="p">[</span><span class="s1">&#39;content&#39;</span><span class="p">][:</span><span class="mi">70</span><span class="p">]</span><span class="si">}</span><span class="s2">...&quot;</span><span class="p">)</span>
-<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Original tokens: </span><span class="si">{</span><span class="n">num_tokens_from_messages</span><span class="p">(</span><span class="n">long_history</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;gpt-3.5-turbo&#39;</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-
-<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">--- Truncated Conversation ---&quot;</span><span class="p">)</span>
-<span class="k">for</span> <span class="n">msg</span> <span class="ow">in</span> <span class="n">truncated_conversation</span><span class="p">:</span>
-    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">msg</span><span class="p">[</span><span class="s1">&#39;role&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">msg</span><span class="p">[</span><span class="s1">&#39;content&#39;</span><span class="p">][:</span><span class="mi">70</span><span class="p">]</span><span class="si">}</span><span class="s2">...&quot;</span><span class="p">)</span>
-<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Truncated tokens: </span><span class="si">{</span><span class="n">num_tokens_from_messages</span><span class="p">(</span><span class="n">truncated_conversation</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;gpt-3.5-turbo&#39;</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="n">model_to_use</span> <span class="o">=</span> <span class="s2">&quot;gpt-3.5-turbo&quot;</span>
+<span class="n">tokens</span> <span class="o">=</span> <span class="n">num_tokens_from_messages</span><span class="p">(</span><span class="n">example_messages</span><span class="p">,</span> <span class="n">model</span><span class="o">=</span><span class="n">model_to_use</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Total tokens for messages: </span><span class="si">{</span><span class="n">tokens</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="c1"># Compare this `tokens` value with the actual limit of your chosen model.</span>
+<span class="c1"># e.g., gpt-3.5-turbo has a 4096 token context window (as of early 2023)</span>
 </code></pre></div>
 
-<h3 id="2-shell-command-for-estimating-tokens-using-tiktoken">2. Shell Command for Estimating Tokens (using <code>tiktoken</code>)</h3>
-<p>You can also quickly estimate tokens from the command line if you have <code>tiktoken</code> installed.</p>
-<div class="highlight"><pre><span></span><code>python<span class="w"> </span>-c<span class="w"> </span><span class="s2">&quot;import tiktoken; enc = tiktoken.encoding_for_model(&#39;gpt-3.5-turbo&#39;); print(len(enc.encode(&#39;Your very long prompt string goes here, and it will be tokenized.&#39;)))&quot;</span>
+<p>By accurately counting tokens, you can pinpoint which parts of your input are consuming the most space.</p>
+<h3 id="2-prioritize-and-prune-conversation-history">2. Prioritize and Prune Conversation History</h3>
+<p>For chatbots, the conversation history is the primary growth vector for context length. Implement a strategy to manage it:</p>
+<ul>
+<li>
+<p><strong>Fixed-Window Truncation:</strong> The simplest method. Keep only the <code>N</code> most recent messages. When the <code>num_tokens_from_messages</code> exceeds a threshold (e.g., 75% of the model's limit), pop the oldest messages from the <code>messages</code> array until it fits.</p>
+<p>```python<br />
+MAX_TOKENS_FOR_MODEL = 4000 # Example for gpt-3.5-turbo (adjust for your model)<br />
+HISTORY_BUFFER = 500 # Leave some room for new user input and assistant response</p>
+<p>def prune_messages(messages, model="gpt-3.5-turbo"):<br />
+    current_tokens = num_tokens_from_messages(messages, model)<br />
+    while current_tokens &gt; (MAX_TOKENS_FOR_MODEL - HISTORY_BUFFER) and len(messages) &gt; 1:<br />
+        # We assume the system message is important and should stay.<br />
+        # Pop the second element, which is typically the oldest user/assistant message.<br />
+        if messages[1]["role"] in ["user", "assistant", "tool"]: # Ensure we don't remove the system prompt<br />
+            messages.pop(1)<br />
+        else: # If the second element is not conversational, then something is wrong or system message is duplicated<br />
+            break<br />
+        current_tokens = num_tokens_from_messages(messages, model)<br />
+    return messages</p>
+<h1 id="in-your-chat-loop">In your chat loop:</h1>
+<h1 id="messagesappendrole-user-content-user_input">messages.append({"role": "user", "content": user_input})</h1>
+<h1 id="messages-prune_messagesmessages-model_to_use">messages = prune_messages(messages, model_to_use)</h1>
+<h1 id="response-clientchatcompletionscreatemodelmodel_to_use-messagesmessages">response = client.chat.completions.create(model=model_to_use, messages=messages)</h1>
+<p>```</p>
+</li>
+<li>
+<p><strong>Summarization:</strong> A more sophisticated approach. Instead of simply deleting old messages, summarize them periodically. When the history grows too long, take a block of older messages, send them to the model for summarization, and replace the original block with a single, concise summary message. This retains more context than raw truncation. I've found this to be extremely effective in maintaining long-running conversations.</p>
+</li>
+</ul>
+<h3 id="3-optimize-system-instructions-and-user-prompts">3. Optimize System Instructions and User Prompts</h3>
+<ul>
+<li><strong>Be Concise:</strong> Review your system prompt. Can it be shorter without losing essential directives? Remove any filler or overly polite language.</li>
+<li><strong>Dynamic Prompting:</strong> Instead of including all possible context always, dynamically insert relevant information based on the user's current query.</li>
+<li><strong>Input Pre-processing:</strong> If users are providing large texts, consider pre-processing them.<ul>
+<li><strong>Extraction:</strong> Extract key entities, dates, or keywords.</li>
+<li><strong>Summarization:</strong> Use a smaller, faster model (or even the target model in a separate call) to summarize large user inputs <em>before</em> sending them into the main chat context.</li>
+<li><strong>Chunking:</strong> Break large documents into smaller chunks and process them sequentially or use a retrieval system.</li>
+</ul>
+</li>
+</ul>
+<h3 id="4-choose-an-appropriate-model">4. Choose an Appropriate Model</h3>
+<p>OpenAI offers models with different context window sizes.</p>
+<ul>
+<li><code>gpt-3.5-turbo</code>: Typically 4k tokens.</li>
+<li><code>gpt-3.5-turbo-16k</code>: A larger context version, 16k tokens.</li>
+<li><code>gpt-4</code>: 8k tokens.</li>
+<li><code>gpt-4-32k</code>: A much larger context version, 32k tokens.</li>
+</ul>
+<p>If your use case inherently requires processing vast amounts of information, upgrading to a model with a larger context window (e.g., from <code>gpt-3.5-turbo</code> to <code>gpt-3.5-turbo-16k</code> or <code>gpt-4-32k</code>) might be the most straightforward solution, assuming the cost implications are acceptable. Always verify the current context limits from OpenAI's official documentation.</p>
+<h3 id="5-account-for-output-tokens">5. Account for Output Tokens</h3>
+<p>Remember that the total tokens (input + expected output) must fit within the model's limit. While <code>context_length_exceeded</code> is about input, if you set <code>max_tokens</code> (for output) to a very high value when your input is already large, you might eventually hit the <em>total</em> context limit. It's good practice to leave a reasonable buffer for the model's response.</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># Calculate remaining tokens for output</span>
+<span class="c1"># (MAX_TOKENS_FOR_MODEL - current_input_tokens) - small_buffer_for_safety</span>
+<span class="n">remaining_tokens</span> <span class="o">=</span> <span class="n">MAX_TOKENS_FOR_MODEL</span> <span class="o">-</span> <span class="n">num_tokens_from_messages</span><span class="p">(</span><span class="n">messages</span><span class="p">,</span> <span class="n">model_to_use</span><span class="p">)</span> <span class="o">-</span> <span class="mi">100</span>
+<span class="c1"># Then pass remaining_tokens to the max_tokens parameter</span>
+<span class="c1"># response = client.chat.completions.create(model=model_to_use, messages=messages, max_tokens=remaining_tokens)</span>
+</code></pre></div>
+
+<h2 id="code-examples">Code Examples</h2>
+<p>Here are concise, copy-paste ready examples focusing on core fixes.</p>
+<h3 id="truncating-conversation-history-python">Truncating Conversation History (Python)</h3>
+<p>This example shows how to keep the <code>system</code> message and truncate older <code>user</code>/<code>assistant</code> messages to fit within a <code>MAX_TOKENS_FOR_MODEL</code> budget.</p>
+<div class="highlight"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">tiktoken</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">num_tokens_from_messages</span><span class="p">(</span><span class="n">messages</span><span class="p">,</span> <span class="n">model</span><span class="o">=</span><span class="s2">&quot;gpt-3.5-turbo&quot;</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Accurately counts tokens for a list of messages.&quot;&quot;&quot;</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">encoding</span> <span class="o">=</span> <span class="n">tiktoken</span><span class="o">.</span><span class="n">encoding_for_model</span><span class="p">(</span><span class="n">model</span><span class="p">)</span>
+    <span class="k">except</span> <span class="ne">KeyError</span><span class="p">:</span>
+        <span class="n">encoding</span> <span class="o">=</span> <span class="n">tiktoken</span><span class="o">.</span><span class="n">get_encoding</span><span class="p">(</span><span class="s2">&quot;cl100k_base&quot;</span><span class="p">)</span>
+    <span class="c1"># Specific logic for gpt-3.5-turbo for exact counting, adjust for other models</span>
+    <span class="k">if</span> <span class="n">model</span> <span class="o">==</span> <span class="s2">&quot;gpt-3.5-turbo&quot;</span><span class="p">:</span>
+        <span class="n">num_tokens</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="k">for</span> <span class="n">message</span> <span class="ow">in</span> <span class="n">messages</span><span class="p">:</span>
+            <span class="n">num_tokens</span> <span class="o">+=</span> <span class="mi">4</span>  <span class="c1"># every message follows &lt;im_start&gt;{role/name}\n{content}&lt;im_end&gt;\n</span>
+            <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">message</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+                <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                    <span class="n">num_tokens</span> <span class="o">+=</span> <span class="nb">len</span><span class="p">(</span><span class="n">encoding</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="n">value</span><span class="p">))</span>
+                <span class="k">if</span> <span class="n">key</span> <span class="o">==</span> <span class="s2">&quot;name&quot;</span><span class="p">:</span>
+                    <span class="n">num_tokens</span> <span class="o">+=</span> <span class="o">-</span><span class="mi">1</span>  <span class="c1"># role/name are always 1 token less</span>
+        <span class="n">num_tokens</span> <span class="o">+=</span> <span class="mi">2</span>  <span class="c1"># every reply is primed with &lt;im_start&gt;assistant</span>
+        <span class="k">return</span> <span class="n">num_tokens</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="c1"># Fallback for other models or simpler estimation</span>
+        <span class="k">return</span> <span class="nb">sum</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">encoding</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="n">msg</span><span class="p">[</span><span class="s2">&quot;content&quot;</span><span class="p">]))</span> <span class="k">for</span> <span class="n">msg</span> <span class="ow">in</span> <span class="n">messages</span> <span class="k">if</span> <span class="s2">&quot;content&quot;</span> <span class="ow">in</span> <span class="n">msg</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">truncate_chat_history</span><span class="p">(</span><span class="n">messages</span><span class="p">,</span> <span class="n">model_limit</span><span class="p">,</span> <span class="n">buffer_tokens</span><span class="o">=</span><span class="mi">150</span><span class="p">,</span> <span class="n">model</span><span class="o">=</span><span class="s2">&quot;gpt-3.5-turbo&quot;</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Truncates message history to fit within model_limit - buffer_tokens.</span>
+<span class="sd">    Keeps the initial system message if present.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">messages</span><span class="p">:</span>
+        <span class="k">return</span> <span class="p">[]</span>
+
+    <span class="c1"># Ensure system message is always the first if it exists</span>
+    <span class="n">system_message</span> <span class="o">=</span> <span class="n">messages</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="k">if</span> <span class="n">messages</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;role&quot;</span><span class="p">)</span> <span class="o">==</span> <span class="s2">&quot;system&quot;</span> <span class="k">else</span> <span class="kc">None</span>
+    <span class="n">conversational_messages</span> <span class="o">=</span> <span class="n">messages</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span> <span class="k">if</span> <span class="n">system_message</span> <span class="k">else</span> <span class="n">messages</span><span class="p">[:]</span>
+
+    <span class="n">current_tokens</span> <span class="o">=</span> <span class="n">num_tokens_from_messages</span><span class="p">(</span><span class="n">messages</span><span class="p">,</span> <span class="n">model</span><span class="p">)</span>
+    <span class="n">target_token_limit</span> <span class="o">=</span> <span class="n">model_limit</span> <span class="o">-</span> <span class="n">buffer_tokens</span>
+
+    <span class="c1"># If already within limits, return as is</span>
+    <span class="k">if</span> <span class="n">current_tokens</span> <span class="o">&lt;=</span> <span class="n">target_token_limit</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">messages</span>
+
+    <span class="c1"># Truncate conversational messages from oldest</span>
+    <span class="k">while</span> <span class="n">current_tokens</span> <span class="o">&gt;</span> <span class="n">target_token_limit</span> <span class="ow">and</span> <span class="n">conversational_messages</span><span class="p">:</span>
+        <span class="n">conversational_messages</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span> <span class="c1"># Remove the oldest conversational message</span>
+
+        <span class="c1"># Reconstruct messages with system message for token counting</span>
+        <span class="n">temp_messages</span> <span class="o">=</span> <span class="p">[</span><span class="n">system_message</span><span class="p">]</span> <span class="o">+</span> <span class="n">conversational_messages</span> <span class="k">if</span> <span class="n">system_message</span> <span class="k">else</span> <span class="n">conversational_messages</span>
+        <span class="n">current_tokens</span> <span class="o">=</span> <span class="n">num_tokens_from_messages</span><span class="p">(</span><span class="n">temp_messages</span><span class="p">,</span> <span class="n">model</span><span class="p">)</span>
+
+    <span class="n">final_messages</span> <span class="o">=</span> <span class="p">[</span><span class="n">system_message</span><span class="p">]</span> <span class="o">+</span> <span class="n">conversational_messages</span> <span class="k">if</span> <span class="n">system_message</span> <span class="k">else</span> <span class="n">conversational_messages</span>
+    <span class="k">return</span> <span class="n">final_messages</span>
+
+
+<span class="c1"># --- Usage Example ---</span>
+<span class="n">MAX_GPT_3_5_TURBO_TOKENS</span> <span class="o">=</span> <span class="mi">4096</span>
+
+<span class="n">initial_messages</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="p">{</span><span class="s2">&quot;role&quot;</span><span class="p">:</span> <span class="s2">&quot;system&quot;</span><span class="p">,</span> <span class="s2">&quot;content&quot;</span><span class="p">:</span> <span class="s2">&quot;You are a helpful assistant.&quot;</span><span class="p">},</span>
+    <span class="p">{</span><span class="s2">&quot;role&quot;</span><span class="p">:</span> <span class="s2">&quot;user&quot;</span><span class="p">,</span> <span class="s2">&quot;content&quot;</span><span class="p">:</span> <span class="s2">&quot;This is a very long initial message. &quot;</span> <span class="o">*</span> <span class="mi">100</span><span class="p">},</span> <span class="c1"># Simulate long message</span>
+    <span class="p">{</span><span class="s2">&quot;role&quot;</span><span class="p">:</span> <span class="s2">&quot;assistant&quot;</span><span class="p">,</span> <span class="s2">&quot;content&quot;</span><span class="p">:</span> <span class="s2">&quot;Okay, I understand. &quot;</span> <span class="o">*</span> <span class="mi">50</span><span class="p">},</span>
+    <span class="p">{</span><span class="s2">&quot;role&quot;</span><span class="p">:</span> <span class="s2">&quot;user&quot;</span><span class="p">,</span> <span class="s2">&quot;content&quot;</span><span class="p">:</span> <span class="s2">&quot;What about the weather today?&quot;</span><span class="p">},</span>
+    <span class="p">{</span><span class="s2">&quot;role&quot;</span><span class="p">:</span> <span class="s2">&quot;assistant&quot;</span><span class="p">,</span> <span class="s2">&quot;content&quot;</span><span class="p">:</span> <span class="s2">&quot;It&#39;s sunny.&quot;</span><span class="p">},</span>
+    <span class="p">{</span><span class="s2">&quot;role&quot;</span><span class="p">:</span> <span class="s2">&quot;user&quot;</span><span class="p">,</span> <span class="s2">&quot;content&quot;</span><span class="p">:</span> <span class="s2">&quot;And yesterday?&quot;</span><span class="p">},</span>
+    <span class="p">{</span><span class="s2">&quot;role&quot;</span><span class="p">:</span> <span class="s2">&quot;assistant&quot;</span><span class="p">,</span> <span class="s2">&quot;content&quot;</span><span class="p">:</span> <span class="s2">&quot;Yesterday it was cloudy.&quot;</span><span class="p">},</span>
+    <span class="p">{</span><span class="s2">&quot;role&quot;</span><span class="p">:</span> <span class="s2">&quot;user&quot;</span><span class="p">,</span> <span class="s2">&quot;content&quot;</span><span class="p">:</span> <span class="s2">&quot;Tell me more about yesterday&#39;s weather conditions, &quot;</span> <span class="o">*</span> <span class="mi">70</span><span class="p">}</span> <span class="c1"># Another long one</span>
+<span class="p">]</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Initial tokens: </span><span class="si">{</span><span class="n">num_tokens_from_messages</span><span class="p">(</span><span class="n">initial_messages</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+<span class="c1"># Simulate adding a new user message that would exceed the limit</span>
+<span class="n">new_user_message</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;role&quot;</span><span class="p">:</span> <span class="s2">&quot;user&quot;</span><span class="p">,</span> <span class="s2">&quot;content&quot;</span><span class="p">:</span> <span class="s2">&quot;Summarize our conversation so far about the weather. &quot;</span> <span class="o">*</span> <span class="mi">20</span><span class="p">}</span>
+<span class="n">initial_messages</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">new_user_message</span><span class="p">)</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Tokens after new message (before truncation): </span><span class="si">{</span><span class="n">num_tokens_from_messages</span><span class="p">(</span><span class="n">initial_messages</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+<span class="c1"># Now truncate</span>
+<span class="n">truncated_messages</span> <span class="o">=</span> <span class="n">truncate_chat_history</span><span class="p">(</span><span class="n">initial_messages</span><span class="p">,</span> <span class="n">MAX_GPT_3_5_TURBO_TOKENS</span><span class="p">,</span> <span class="n">buffer_tokens</span><span class="o">=</span><span class="mi">500</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Tokens after truncation: </span><span class="si">{</span><span class="n">num_tokens_from_messages</span><span class="p">(</span><span class="n">truncated_messages</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">Truncated messages:&quot;</span><span class="p">)</span>
+<span class="k">for</span> <span class="n">msg</span> <span class="ow">in</span> <span class="n">truncated_messages</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;- </span><span class="si">{</span><span class="n">msg</span><span class="p">[</span><span class="s1">&#39;role&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">msg</span><span class="p">[</span><span class="s1">&#39;content&#39;</span><span class="p">][:</span><span class="mi">50</span><span class="p">]</span><span class="si">}</span><span class="s2">...&quot;</span><span class="p">)</span> <span class="c1"># Print truncated content for brevity</span>
 </code></pre></div>
 
 <h2 id="environment-specific-notes">Environment-Specific Notes</h2>
+<p>The fundamental solution to <code>context_length_exceeded</code> remains the same across environments, but certain aspects of implementation or observation can differ.</p>
 <ul>
 <li>
-<p><strong>Cloud Functions/Serverless (AWS Lambda, Google Cloud Functions, Azure Functions):</strong><br />
-    When deploying applications that use <code>tiktoken</code> in serverless environments, be mindful of package sizes and cold start times. <code>tiktoken</code> is a C extension, so ensure your deployment package includes the correct compiled binaries for the target runtime environment (e.g., <code>manylinux</code> wheels for Linux-based functions). Pre-loading the encoder can help mitigate cold start latency if invoked frequently. I've often seen performance issues here if not properly managed.</p>
+<p><strong>Cloud (e.g., AWS Lambda, GCP Cloud Functions):</strong></p>
+<ul>
+<li><strong>Payload Size Limits:</strong> Be aware that beyond OpenAI's token limits, your cloud provider's API Gateway (if applicable) might have its own payload size limits (e.g., AWS API Gateway has a 10MB limit). While typical API requests to OpenAI models rarely hit this for text, it's a consideration if you're encoding very large prompt data within the request body itself.</li>
+<li><strong>Logging:</strong> In serverless environments, robust logging is critical. Ensure you're logging the full <code>messages</code> payload (or at least its token count and a hash of its content) when an error occurs. This allows you to reconstruct the problematic request without having to redeploy or debug locally. Just be mindful of sensitive data in logs.</li>
+<li><strong>Performance:</strong> Truncation or summarization logic adds a small amount of compute overhead. In highly scaled serverless functions, optimize this logic to avoid latency spikes.</li>
+</ul>
 </li>
 <li>
-<p><strong>Docker Containers:</strong><br />
-    Docker provides a consistent environment, which is great for <code>tiktoken</code>. Just ensure your <code>Dockerfile</code> includes <code>pip install tiktoken</code> and any other necessary dependencies. Make sure the Python version in your container matches your development environment to avoid unexpected C extension build issues.</p>
+<p><strong>Docker:</strong></p>
+<ul>
+<li><strong>Container Resources:</strong> If your Docker container is managing long-term conversation state (e.g., in-memory history), ensure the container has sufficient memory allocated. While token limits are about <em>request size</em>, keeping massive message histories in application memory can lead to out-of-memory errors in resource-constrained containers.</li>
+<li><strong>Observability:</strong> Docker's logging mechanisms (e.g., <code>docker logs</code>) are your primary source for debugging. Similar to cloud environments, log relevant details of the API request when this error occurs.</li>
+</ul>
 </li>
 <li>
-<p><strong>Local Development:</strong><br />
-    Debugging <code>context_length_exceeded</code> is typically easiest in a local development environment. You can rapidly iterate on truncation logic, test different prompt strategies, and use <code>tiktoken</code> interactively. Leverage your IDE's debugging tools to step through token counting and message truncation functions.</p>
+<p><strong>Local Development:</strong></p>
+<ul>
+<li><strong>Debugging Ease:</strong> Local development typically offers the easiest debugging. You can print full request payloads directly to your console, step through code, and experiment with <code>tiktoken</code> without deployment cycles.</li>
+<li><strong>Resource Availability:</strong> Your local machine likely has more available RAM than a serverless function, so you might not immediately hit application-level memory constraints if holding large histories, but the API error will still persist. Use this flexibility to thoroughly test your truncation/summarization strategies.</li>
+</ul>
 </li>
 </ul>
 <h2 id="frequently-asked-questions">Frequently Asked Questions</h2>
-<p><strong>Q: Does the <code>max_tokens</code> parameter in the API call prevent <code>context_length_exceeded</code>?</strong><br />
-<strong>A:</strong> No. The <code>max_tokens</code> parameter you set in the API request (<code>client.chat.completions.create(..., max_tokens=200)</code>) controls the maximum <em>length of the model's response</em>, not the maximum length of your input prompt. The <code>context_length_exceeded</code> error relates solely to the input side.</p>
-<p><strong>Q: Is there a way to get "more" tokens for my model's context window?</strong><br />
-<strong>A:</strong> Not directly for a given model. The context window is a fixed architectural limit. Your options are to implement effective input truncation strategies, or to switch to a different OpenAI model that inherently offers a larger context window (e.g., moving from <code>gpt-3.5-turbo</code> to <code>gpt-4-turbo</code>).</p>
-<p><strong>Q: How accurate is <code>tiktoken</code> for counting tokens?</strong><br />
-<strong>A:</strong> <code>tiktoken</code> is highly accurate because it's the official tokenizer library used by OpenAI. It precisely replicates how the API will tokenize your input, making it the gold standard for pre-flight token estimation.</p>
-<p><strong>Q: Should I always trim from the beginning of the conversation history?</strong><br />
-<strong>A:</strong> Not always. While common, the optimal trimming strategy depends on your application's needs. Sometimes, older parts of the conversation might contain critical context (like initial user preferences). In my experience, a good approach is to always preserve the system message, then prioritize the most recent user/assistant turns, potentially summarizing older parts rather than just discarding them.</p>
-<p><strong>Q: Can I catch this error and retry automatically?</strong><br />
-<strong>A:</strong> You can catch the <code>InvalidRequestError</code>, but retrying <em>without modifying the input</em> will only result in the same error. You must implement logic to reduce the token count of your request before attempting a retry.</p>
+<p><strong>Q: Is <code>max_tokens</code> (for output) related to <code>context_length_exceeded</code>?</strong><br />
+<strong>A:</strong> Indirectly. <code>context_length_exceeded</code> specifically means your <em>input</em> (<code>messages</code> array) is too large. However, the <em>total</em> number of tokens (input + output) must also fit within the model's overall context window. If your input is already near the limit, and you request a large <code>max_tokens</code> for the output, the API might not even start processing because it can infer the total would exceed. Best practice is to ensure sufficient room for both.</p>
+<p><strong>Q: How do I know the exact token limit for my specific OpenAI model?</strong><br />
+<strong>A:</strong> Always refer to OpenAI's official documentation for the most up-to-date token limits for each model (e.g., <code>gpt-3.5-turbo</code>, <code>gpt-4</code>). While <code>tiktoken</code> helps with counting, the documentation is the definitive source for model capacity.</p>
+<p><strong>Q: Can I simply increase the context window size for my model?</strong><br />
+<strong>A:</strong> No, the context window size is a fixed parameter for each specific model variant. You cannot arbitrarily "increase" it. Your options are to reduce your input data or switch to a different model that offers a larger context window (e.g., <code>gpt-3.5-turbo-16k</code>, <code>gpt-4-32k</code>).</p>
+<p><strong>Q: Does setting <code>temperature</code> or <code>top_p</code> affect the context length?</strong><br />
+<strong>A:</strong> No. <code>temperature</code> and <code>top_p</code> are parameters that control the randomness and diversity of the model's output generation. They have no impact on the maximum number of input tokens the model can accept.</p>
+<p><strong>Q: My application uses embedding models. Do they also have <code>context_length_exceeded</code>?</strong><br />
+<strong>A:</strong> Yes, embedding models also have their own specific input token limits, although the error message might vary slightly or be framed differently depending on the client library. The principle remains: the text you send for embedding cannot exceed that model's maximum input token length. However, the <code>InvalidRequestError: context_length_exceeded</code> error specifically discussed here is most commonly encountered with chat completion models due to their conversational nature.</p>
 <h2 id="related-errors">Related Errors</h2>
-<ul>
-<li><a href="/errors/openai-429.html">openai-429</a></li>
-<li><a href="/errors/openai-400.html">openai-400</a></li>
-</ul>
     </div>
 
     <!-- ── AdSense placement 2 – bottom of article ───────────────────────── -->
@@ -410,7 +450,7 @@ print(f"Current token count: {current_tokens}")<br />
     <div class="container">
       <p class="footer-logo">⚡ ErrorFix.dev</p>
       <p>Practical, engineer-written guides for real-world software errors.</p>
-      <p style="margin-top:.5rem">Last updated: <time>April 01, 2026</time>.</p>
+      <p style="margin-top:.5rem">Last updated: <time>April 02, 2026</time>.</p>
       <p class="footer-links" style="margin-top:.75rem">
         <!-- ╔══════════════════════════════════════════════════════════════╗ -->
         <!-- ║  AFFILIATE LINKS – replace the href values below            ║ -->
