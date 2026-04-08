@@ -1,211 +1,232 @@
 # AWS EKS You must be logged in to the server (Unauthorized)
-> Encountering the "You must be logged in to the server (Unauthorized)" error with AWS EKS means `kubectl` cannot authenticate to your cluster; this guide explains how to fix it through a structured troubleshooting process.
+> Encountering the "You must be logged in to the server (Unauthorized)" error when accessing AWS EKS clusters means your `kubectl` client lacks proper authentication or authorization to interact with the cluster API, and this guide provides practical steps to resolve it.
 
 ## What This Error Means
 
-When you run `kubectl` commands against an AWS EKS cluster and receive the message "error: You must be logged in to the server (Unauthorized)", it indicates that your `kubectl` client, after attempting to connect to the Kubernetes API server, was rejected due to insufficient or incorrect authentication. This is an HTTP 401 Unauthorized status coming directly from the API server. It essentially means the API server doesn't recognize your identity or doesn't grant your identity permission to perform *any* action, not even to list basic resources. This isn't a networking issue where the server is unreachable; rather, it's a security gatekeeper actively denying access.
+This error message, "You must be logged in to the server (Unauthorized)", is a direct indication that your `kubectl` client cannot successfully authenticate with your Amazon Elastic Kubernetes Service (EKS) cluster's API server. When you run a `kubectl` command, it attempts to connect and present credentials to the EKS control plane. If the API server responds with an HTTP 401 Unauthorized status, it means the identity you're presenting is either invalid, expired, or simply not recognized by the cluster's authentication mechanism.
+
+It's crucial to understand that this isn't typically a network connectivity issue (like "connection refused"). Instead, it confirms that `kubectl` *reached* the EKS API server, but your attempt to prove who you are (authentication) or what you're allowed to do (authorization) failed. In my experience, this is one of the most common hurdles new users face, and even seasoned engineers sometimes stumble upon it after credentials expire or contexts switch.
 
 ## Why It Happens
 
-The core of this error lies in the authentication flow between your client machine and the EKS cluster's Kubernetes API server. Unlike a vanilla Kubernetes cluster where you might use a service account token or client certificates directly, EKS leverages AWS IAM for authentication. When you run `kubectl`, it relies on the `aws-cli` (or previously `aws-iam-authenticator`) to generate a temporary, signed URL (a pre-signed URL) that proves your AWS IAM identity. This identity is then presented to the EKS control plane. If this handshake fails at any point, or if the presented identity isn't recognized or authorized by the cluster, you'll hit this "Unauthorized" wall.
+At its core, `kubectl` authentication with AWS EKS clusters relies on AWS Identity and Access Management (IAM). Unlike a standard Kubernetes cluster where you might use client certificates or service account tokens, EKS integrates with AWS IAM to manage access. Here's the simplified flow:
 
-In my experience, this usually boils down to a mismatch: the identity `kubectl` is trying to use doesn't match what the EKS cluster expects or has permissions for.
+1.  You run a `kubectl` command (e.g., `kubectl get pods`).
+2.  `kubectl` needs an authentication token for the EKS API server. It uses an `exec-plugin` (typically provided by the AWS CLI v2) to generate a temporary, signed token from AWS IAM.
+3.  This token is then presented to the EKS API server.
+4.  The EKS API server validates the token with AWS IAM.
+5.  If valid, the API server maps the underlying IAM principal (user or role) to a Kubernetes user and groups, which are then checked against Kubernetes Role-Based Access Control (RBAC) policies and, crucially, the `aws-auth` ConfigMap within the `kube-system` namespace.
+
+The "Unauthorized" error typically occurs when one of these steps breaks:
+*   **Token Generation Failure:** The `exec-plugin` can't generate a valid token because your local AWS credentials are missing, incorrect, or expired.
+*   **IAM Identity Mismatch:** The IAM user or role used to generate the token is not mapped within the EKS cluster's `aws-auth` ConfigMap to a Kubernetes user/group, or if it is, it lacks the necessary Kubernetes RBAC permissions.
+*   **Incorrect Context:** Your `kubectl` is pointing to the wrong cluster or an invalid configuration.
 
 ## Common Causes
 
-Several factors can lead to this "Unauthorized" error. Understanding these can quickly narrow down your troubleshooting scope:
+Let's break down the most frequent culprits leading to this "Unauthorized" message:
 
-1.  **Missing or Expired AWS Credentials:** `kubectl` indirectly uses your AWS CLI credentials (`~/.aws/credentials` or environment variables) to authenticate with EKS. If these are missing, expired, or incorrect, the authentication process will fail before `kubectl` even talks to EKS. This is particularly common when using temporary credentials (e.g., from SSO or assuming roles) that have a short expiry.
-2.  **Incorrect `kubeconfig` Context:** Your `kubeconfig` file (typically `~/.kube/config`) can contain multiple cluster configurations and contexts. If `kubectl` is configured to use the wrong context, it might be trying to connect to a different cluster, or a cluster where the associated authentication details are outdated or invalid.
-3.  **`aws-auth` ConfigMap Misconfiguration:** EKS uses a special `aws-auth` ConfigMap in the `kube-system` namespace to map AWS IAM users and roles to Kubernetes RBAC roles and groups. If your IAM identity (user or role) is not correctly listed in this ConfigMap, or if there's a typo, the EKS cluster won't recognize your AWS identity and deny access. This is a very frequent culprit, especially after cluster creation or when onboarding new team members.
-4.  **Region Mismatch:** Your `aws-cli` configuration or environment variables might be set to a different AWS region than where your EKS cluster resides. `kubectl` will then try to authenticate to EKS in the wrong region, leading to an authentication failure.
-5.  **Outdated AWS CLI or `kubectl`:** The underlying authentication mechanism for EKS has evolved. If your `aws-cli` (especially if you're still on v1) or `kubectl` is significantly outdated, it might not support the current EKS authentication protocol, leading to issues. `aws-cli` v2 is recommended as it includes the necessary `eks get-token` functionality.
-6.  **IAM Permissions:** Even if your IAM user/role is correctly mapped in `aws-auth`, it still needs the necessary IAM permissions to *generate* the authentication token. Specifically, the `eks:DescribeCluster` and `eks:AccessCluster` permissions are crucial.
-7.  **Multiple AWS Accounts/Profiles:** If you frequently switch between AWS accounts or use different profiles, it's easy for `kubectl` to pick up credentials for the wrong account, leading to an authentication error with the target EKS cluster.
-8.  **VPC Endpoint Policies (Less Common but Possible):** If you're using VPC endpoints for EKS, overly restrictive endpoint policies could prevent your IAM principal from accessing the EKS API. However, this typically manifests as more of a "connection refused" or timeout if the policy is blocking traffic completely, rather than "unauthorized." For "Unauthorized," it implies the connection was made, but the identity was rejected.
+1.  **Expired or Incorrect AWS Credentials:** This is by far the leading cause. AWS temporary credentials (e.g., from an `aws sso login` session, an assumed role, or a CI/CD pipeline) have a limited lifespan. If they expire and you haven't refreshed them, the `aws` CLI can no longer generate a valid EKS authentication token. Similarly, if your `~/.aws/credentials` file is misconfigured or you're using the wrong AWS profile, you'll hit this wall.
+2.  **`kubeconfig` is Out-of-Date or Incorrect:** Your local `kubeconfig` file (typically `~/.kube/config`) tells `kubectl` how to connect to your EKS cluster. If this file hasn't been updated recently with the correct EKS cluster details, or if it's pointing to a cluster that no longer exists or has had its endpoint changed, you'll face this issue. Often, I see developers forget to run `aws eks update-kubeconfig` after a cluster is created or after switching AWS regions/accounts.
+3.  **IAM User/Role Not Mapped in `aws-auth` ConfigMap:** The EKS cluster's `aws-auth` ConfigMap (residing in the `kube-system` namespace) is the bridge between AWS IAM identities and Kubernetes RBAC. If the specific IAM user or role you're using isn't listed in this ConfigMap, or if it's mapped to a Kubernetes group without sufficient permissions (e.g., not `system:masters` or an equivalent custom role), you'll be unauthorized. The IAM identity that *created* the EKS cluster is automatically granted `system:masters` access, but subsequent users/roles need explicit mapping.
+4.  **Incorrect AWS Region:** Your AWS CLI configuration, or the region specified when updating your `kubeconfig`, might not match the region where your EKS cluster resides. If `kubectl` tries to generate a token for a cluster in `us-east-1` but your CLI is configured for `us-west-2`, it will fail.
+5.  **`aws CLI` Version or Missing `exec-plugin`:** Modern EKS authentication relies on the `aws` CLI (v2) acting as `kubectl`'s `exec-plugin`. If you have an older version of the AWS CLI or it's not correctly installed/configured in your PATH, `kubectl` won't be able to call it to generate the necessary token. While older setups used `aws-iam-authenticator`, the current standard integrates this directly into the AWS CLI.
+6.  **Clock Skew:** A less common but important cause. Significant time differences between your client machine and AWS servers can invalidate temporary authentication tokens, leading to authorization failures.
 
 ## Step-by-Step Fix
 
-Here's a structured approach to troubleshoot and resolve the "Unauthorized" error. I've often seen this sequence effectively resolve the issue for myself and my teams.
+Let's walk through the troubleshooting steps to get you back into your EKS cluster.
 
-### 1. Verify Your AWS CLI Authentication
+1.  **Verify Your AWS CLI Configuration and Credentials**
+    First, confirm that your AWS CLI is correctly configured and has valid credentials for the AWS account where your EKS cluster lives.
 
-First, ensure your `aws-cli` is correctly configured and authenticated to the AWS account where your EKS cluster resides.
-
-1.  **Check `aws-cli` configuration:**
     ```bash
     aws configure list
-    ```
-    This shows your active profile, region, and output format. Ensure the region matches your EKS cluster's region.
-2.  **Verify your current IAM identity:**
-    ```bash
     aws sts get-caller-identity
     ```
-    This command returns the ARN of the IAM user or role currently configured for your `aws-cli`. Make sure this is the identity you expect to be using for EKS and that it belongs to the correct AWS account. If you're using a specific profile, you might need `aws sts get-caller-identity --profile your-profile-name`.
 
-    *If `aws sts get-caller-identity` fails or shows an unexpected identity, your core AWS authentication is broken. Fix your AWS credentials (e.g., `aws configure` or set `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` environment variables) before proceeding.*
-
-### 2. Update Your `kubeconfig`
-
-The `kubeconfig` file might be outdated or incorrect. EKS clusters dynamically generate temporary authentication tokens, and your `kubeconfig` needs to be able to request these.
-
-1.  **Update `kubeconfig` using `aws-cli`:**
+    The `aws sts get-caller-identity` command will show you the IAM user or role currently configured for your AWS CLI. Ensure this is the identity you expect to use.
+    If you're using AWS SSO, make sure your session is active:
     ```bash
-    aws eks update-kubeconfig --name <YOUR_CLUSTER_NAME> --region <YOUR_CLUSTER_REGION>
+    aws sso login
     ```
-    Replace `<YOUR_CLUSTER_NAME>` and `<YOUR_CLUSTER_REGION>` with your actual cluster details. This command automatically adds or updates the cluster entry in your `kubeconfig` (`~/.kube/config` by default) and ensures it uses the `aws-cli` to generate authentication tokens. If you manage multiple AWS profiles, add `--profile <YOUR_AWS_PROFILE>` to this command.
+    If your credentials have expired, or `get-caller-identity` fails, you need to refresh them. This might involve setting environment variables (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`) or re-logging in via SSO.
 
-    *After running this, `kubectl` should automatically use the newly configured context for that cluster. If you have multiple contexts, you might need to explicitly switch.*
+2.  **Update Your `kubeconfig` for EKS**
+    This is often the magical fix. The `aws eks update-kubeconfig` command fetches the latest cluster endpoint and certificate data, and crucially, configures the `exec-plugin` in your `kubeconfig` to use the `aws` CLI for generating EKS authentication tokens.
 
-### 3. Verify `kubeconfig` Context
-
-Ensure `kubectl` is actually using the correct cluster context.
-
-1.  **List available contexts:**
+    **Always specify the cluster name and region:**
     ```bash
+    aws eks update-kubeconfig --name <your-cluster-name> --region <your-aws-region>
+    ```
+    For example:
+    ```bash
+    aws eks update-kubeconfig --name my-production-cluster --region us-east-1
+    ```
+    If you manage multiple clusters or profiles, you might want to add an `--alias` to create a more descriptive context name or use `--profile` to specify a particular AWS profile from `~/.aws/credentials`.
+
+3.  **Check Your `kubectl` Context**
+    After updating your `kubeconfig`, verify that `kubectl` is now pointing to the correct context.
+
+    ```bash
+    kubectl config current-context
     kubectl config get-contexts
     ```
-    Look for your cluster's context. The `*` indicates the currently active context.
-2.  **Switch to the correct context (if needed):**
+    If the current context isn't the one you expect, switch to the correct one:
     ```bash
-    kubectl config use-context arn:aws:eks:<YOUR_CLUSTER_REGION>:<YOUR_ACCOUNT_ID>:cluster/<YOUR_CLUSTER_NAME>
+    kubectl config use-context <name-from-get-contexts>
     ```
-    Or use the simpler context name that `update-kubeconfig` usually creates, which is `arn:aws:eks:<region>:<account-id>:cluster/<cluster-name>`.
 
-### 4. Review IAM Permissions
+4.  **Verify IAM Permissions and `aws-auth` ConfigMap**
+    If the previous steps didn't resolve the issue, it's highly likely a problem with how your IAM identity is mapped within the EKS cluster. The user or role you are using must be listed in the `aws-auth` ConfigMap.
 
-The IAM user or role identified by `aws sts get-caller-identity` needs specific permissions to interact with EKS and its API server.
+    **This step requires an *already authorized* user** (e.g., the original cluster creator or someone with `system:masters` access) to execute. If you are the original creator and still hitting "Unauthorized," re-check steps 1-3.
 
-1.  **Check IAM Policy:** Ensure the IAM user or role has at least the following permissions:
-    *   `eks:DescribeCluster`
-    *   `eks:AccessCluster` (implicitly granted by `eks:DescribeCluster` for `kubeconfig` generation, but good to verify explicit access if issues persist).
-    *   `sts:GetServiceBearerToken` (for the `eks get-token` mechanism).
-    *   `ec2:DescribeRegions` (often part of general AWS console access policies).
-
-    These permissions are typically included in managed policies like `AmazonEKSClusterPolicy` or `AmazonEKSWorkerNodePolicy`, but for a user/role managing EKS, custom policies might be needed.
-
-### 5. Check the `aws-auth` ConfigMap
-
-This is often the trickiest part, especially for new clusters or when adding new users/roles. The `aws-auth` ConfigMap in the `kube-system` namespace maps AWS IAM identities to Kubernetes RBAC groups.
-
-1.  **Retrieve the `aws-auth` ConfigMap:**
+    First, inspect the `aws-auth` ConfigMap:
     ```bash
     kubectl get configmap aws-auth -n kube-system -o yaml
     ```
-    *If this command itself returns "Unauthorized", it means you're not even allowed to read the `aws-auth` ConfigMap, indicating a deeper authentication problem. In this scenario, you'll need to use an identity that *does* have access (e.g., the cluster creator's IAM identity, or an administrative role) to inspect and modify it. Alternatively, if no one has access, you might need to use the AWS Console to manually add a new IAM role/user mapping.*
+    Look for `mapUsers` and `mapRoles` sections. Your `aws sts get-caller-identity` output (from step 1) should correspond to an entry here.
 
-2.  **Inspect the `mapUsers` and `mapRoles` sections:**
-    Look for your IAM user ARN or IAM role ARN under `mapUsers` or `mapRoles`.
-    *   **`mapUsers` Example:**
-        ```yaml
-        apiVersion: v1
-        data:
-          mapUsers: |
-            - userarn: arn:aws:iam::123456789012:user/daniel.kovacs
-              username: daniel.kovacs
-              groups:
-                - system:masters
-        # ...
-        ```
-    *   **`mapRoles` Example:**
-        ```yaml
-        apiVersion: v1
-        data:
-          mapRoles: |
-            - rolearn: arn:aws:iam::123456789012:role/EKSAdminRole
-              username: EKSAdminRole
-              groups:
-                - system:masters
-        # ...
-        ```
-    Ensure your `userarn` or `rolearn` exactly matches the output of `aws sts get-caller-identity`. The `username` can be arbitrary but should be unique. The `groups` entry (e.g., `system:masters`) determines the Kubernetes RBAC permissions. For initial access, `system:masters` grants superuser privileges.
-
-3.  **Update the `aws-auth` ConfigMap (if necessary):**
-    If your identity is missing or incorrect, you'll need to update this ConfigMap. The safest way is to edit it:
-    ```bash
-    kubectl edit configmap aws-auth -n kube-system
+    **Example `mapUsers` entry:**
+    ```yaml
+    apiVersion: v1
+    data:
+      mapUsers: |
+        - userarn: arn:aws:iam::123456789012:user/dev-user
+          username: dev-user
+          groups:
+            - system:masters
+    kind: ConfigMap
+    metadata:
+      name: aws-auth
+      namespace: kube-system
     ```
-    Add or modify the `mapUsers` or `mapRoles` section. Be extremely careful with YAML syntax, as an invalid file will prevent future updates. If you're managing this via IaC (Terraform, CloudFormation), update your code and apply it.
 
-### 6. Ensure `kubectl` and `aws-cli` are Up-to-Date
+    If your IAM user/role is missing or incorrectly configured, the *authorized* user can add it. The easiest way for this is often using `eksctl` (if you're using it to manage your clusters) or directly editing the ConfigMap (with extreme caution).
 
-Outdated tools can cause compatibility issues.
-*   **`kubectl`:** Aim for a version that is within one minor version of your EKS cluster's Kubernetes version.
+    **Using `eksctl` to add an IAM user (recommended if `eksctl` is used):**
     ```bash
-    kubectl version --client
+    eksctl create iamidentitymapping \
+      --cluster <your-cluster-name> \
+      --region <your-aws-region> \
+      --arn arn:aws:iam::<your-account-id>:user/your-iam-username \
+      --username your-kubernetes-username \
+      --group system:masters # Or a more restrictive group
     ```
-*   **`aws-cli`:** Ensure you're using `aws-cli` v2.
+    **Using `eksctl` to add an IAM role:**
+    ```bash
+    eksctl create iamidentitymapping \
+      --cluster <your-cluster-name> \
+      --region <your-aws-region> \
+      --arn arn:aws:iam::<your-account-id>:role/your-iam-role-name \
+      --username your-kubernetes-username \
+      --group system:masters
+    ```
+    Replace placeholders like `<your-cluster-name>`, `<your-aws-region>`, `<your-account-id>`, `your-iam-username`, `your-iam-role-name`, and `your-kubernetes-username`. Remember, `system:masters` grants full administrative access. For production, I generally recommend mapping to more specific RBAC roles.
+
+5.  **Ensure `aws CLI` (v2) is Installed and Up-to-Date**
+    The `exec-plugin` for EKS authentication is now integrated into the AWS CLI version 2. If you're using an older version or it's not correctly installed, the token generation will fail.
+    Check your version:
     ```bash
     aws --version
     ```
-    If you're on v1, consider upgrading to v2, as it natively includes the `eks get-token` functionality previously provided by `aws-iam-authenticator`.
-
-### 7. Troubleshoot Advanced Scenarios
-
-*   **Temporary Credentials/SSO:** If you're using AWS SSO or assuming roles, ensure your temporary credentials are valid and haven't expired. You might need to re-authenticate via `aws sso login` or re-assume your role.
-*   **Proxy Settings:** If you are behind a corporate proxy, ensure your `kubectl` and `aws-cli` are configured to use it (e.g., `HTTPS_PROXY` environment variable). However, this would more likely lead to connection timeouts than "Unauthorized."
-*   **Environment Variables:** Double-check `AWS_PROFILE`, `AWS_REGION`, `KUBECONFIG` environment variables, as these can override default settings and lead to unexpected behavior.
+    Ensure it's at least `aws-cli/2.x.x`. If not, upgrade it.
 
 ## Code Examples
 
-These are concise, ready-to-copy-paste commands for quick verification and fixes.
+Here are some ready-to-use code snippets for common tasks:
 
-**1. Check current AWS identity:**
+**1. Refreshing your `kubeconfig` and setting context:**
+
 ```bash
-aws sts get-caller-identity --output json
+# Replace with your cluster name and region
+EKS_CLUSTER_NAME="my-prod-cluster"
+AWS_REGION="us-west-2"
+
+# Update your kubeconfig. This will add/update a context in ~/.kube/config
+aws eks update-kubeconfig --name "${EKS_CLUSTER_NAME}" --region "${AWS_REGION}"
+
+# Optionally, if you have multiple profiles configured in ~/.aws/credentials
+# aws eks update-kubeconfig --name "${EKS_CLUSTER_NAME}" --region "${AWS_REGION}" --profile my-dev-profile
+
+# Verify current context (should now be your EKS cluster)
+kubectl config current-context
+
+# Test access
+kubectl get nodes
 ```
 
-**2. Update `kubeconfig` for an EKS cluster:**
-```bash
-aws eks update-kubeconfig --name my-production-cluster --region us-east-1 --profile my-dev-profile
-```
-*(Replace `my-production-cluster`, `us-east-1`, and `my-dev-profile` with your actual values.)*
+**2. Checking your active AWS IAM identity:**
 
-**3. List and switch `kubectl` contexts:**
 ```bash
-kubectl config get-contexts
-kubectl config use-context arn:aws:eks:us-east-1:123456789012:cluster/my-production-cluster
+aws sts get-caller-identity
 ```
-*(The context name is typically the full ARN, but can be customized.)*
 
-**4. View the `aws-auth` ConfigMap:**
+**3. Inspecting the EKS `aws-auth` ConfigMap:**
+(Requires an authorized user to run this command successfully)
+
 ```bash
 kubectl get configmap aws-auth -n kube-system -o yaml
 ```
 
-**5. Edit the `aws-auth` ConfigMap (use with caution):**
+**4. Adding an IAM user mapping to `aws-auth` using `eksctl`:**
+(Requires `eksctl` to be installed and an authorized user)
+
 ```bash
-kubectl edit configmap aws-auth -n kube-system
+# Replace with your details
+EKS_CLUSTER_NAME="my-prod-cluster"
+AWS_REGION="us-west-2"
+IAM_USER_ARN="arn:aws:iam::123456789012:user/dev-user-bob"
+K8S_USERNAME="bob" # This is the Kubernetes username that will be mapped
+K8S_GROUPS="system:masters" # Or a more specific group like 'developers'
+
+eksctl create iamidentitymapping \
+  --cluster "${EKS_CLUSTER_NAME}" \
+  --region "${AWS_REGION}" \
+  --arn "${IAM_USER_ARN}" \
+  --username "${K8S_USERNAME}" \
+  --group "${K8S_GROUPS}"
+
+# After adding, dev-user-bob should be able to run `aws eks update-kubeconfig` and then `kubectl get nodes`
 ```
 
 ## Environment-Specific Notes
 
-The "Unauthorized" error can manifest slightly differently depending on your operating environment.
+The "Unauthorized" error can manifest differently or require specific considerations based on your environment.
 
-*   **Cloud (CI/CD Pipelines):** When encountering this in a CI/CD pipeline (e.g., GitLab CI, GitHub Actions, Jenkins), the issue is almost always related to the IAM role attached to the runner or the credentials configured for the pipeline step.
-    *   **Solution:** Ensure the IAM role associated with your CI/CD agent has the necessary `eks:*` permissions and is correctly mapped in the `aws-auth` ConfigMap of your target EKS cluster. If using OIDC, verify the IAM role's trust policy correctly trusts the OIDC provider (e.g., `token.actions.githubusercontent.com`). I've spent countless hours debugging pipelines only to find a missing `mapRoles` entry or an incorrectly configured trust policy.
-*   **Docker Containers:** If you're running `kubectl` within a Docker container, the container needs access to your AWS credentials and `kubeconfig`.
-    *   **Solution:** You'll typically mount `~/.aws` and `~/.kube` into the container. For example: `docker run -v ~/.aws:/root/.aws -v ~/.kube:/root/.kube my-kubectl-image kubectl get nodes`. Ensure the `AWS_PROFILE` or other credential environment variables are correctly passed or set within the container.
-*   **Local Development Machine:** This is the most common scenario, covered extensively in the "Step-by-Step Fix" section. The key here is managing potentially multiple AWS profiles, SSO sessions, and `kubeconfig` files.
-    *   **Solution:** Always explicitly set `AWS_PROFILE` or use the `--profile` flag with `aws-cli` commands, and ensure your `KUBECONFIG` environment variable points to the correct `kubeconfig` file if you're not using the default `~/.kube/config`. Running `aws sts get-caller-identity` and `kubectl config current-context` repeatedly during troubleshooting is a good habit.
+*   **Local Development:**
+    *   **Multiple AWS Profiles:** I've seen this frequently. Ensure you are explicitly using the correct AWS profile via `export AWS_PROFILE=my-profile` or by adding `--profile my-profile` to your `aws eks update-kubeconfig` command. Your `~/.aws/credentials` and `~/.aws/config` files are critical here.
+    *   **Expired MFA:** If your IAM user requires MFA, ensure your SSO session or temporary credentials obtained via `aws sts get-session-token` (with MFA) are fresh.
+
+*   **CI/CD Pipelines (e.g., Jenkins, GitLab CI, GitHub Actions):**
+    *   **IAM Roles for Service Accounts (IRSA):** Best practice is to use IRSA or a dedicated IAM role for the CI/CD agent. Ensure this specific role has `eks:DescribeCluster` and `eks:UpdateKubeconfig` permissions and, most importantly, is mapped in the EKS cluster's `aws-auth` ConfigMap.
+    *   **Temporary Credentials:** Pipelines often use temporary credentials. Verify that the credentials obtained by the pipeline's execution role haven't expired before `kubectl` commands are run. Time differences between the CI/CD agent and AWS services can also cause issues.
+
+*   **Docker Containers:**
+    *   **Credential Passing:** If you're running `kubectl` inside a Docker container, you must ensure AWS credentials are correctly passed into the container. This can be via environment variables (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`) or by mounting the `~/.aws` directory into the container. Without these, the `aws` CLI inside the container cannot generate the EKS token.
+
+*   **EC2 Instances (IAM Roles):**
+    *   If you're running `kubectl` on an EC2 instance, it will automatically use the IAM role attached to the instance profile. Ensure this instance role has the necessary permissions (`eks:DescribeCluster` and `eks:UpdateKubeconfig`) and is mapped in the EKS cluster's `aws-auth` ConfigMap. This is a very clean way to manage access, but it still requires the `aws-auth` mapping.
+
+*   **Multi-Account Setups:**
+    *   When accessing an EKS cluster in a different AWS account, you'll typically assume a role in the target account. Ensure your `kubeconfig` update command (`aws eks update-kubeconfig`) is configured to use the assumed role's credentials (e.g., via a profile that assumes a role). The *assumed role itself* must be mapped in the target cluster's `aws-auth` ConfigMap.
 
 ## Frequently Asked Questions
 
-**Q: I get "connection refused" instead of "Unauthorized". Is it the same issue?**
-**A:** No, "connection refused" is a fundamentally different error. It means your client couldn't even establish a TCP connection to the Kubernetes API server. This typically points to networking issues (firewall, security groups), incorrect API endpoint in your `kubeconfig`, or the API server itself being down or inaccessible. This guide specifically addresses the "Unauthorized" error, where a connection *was* made but authentication failed.
+**Q: Why does `aws sts get-caller-identity` work, but `kubectl get nodes` still fails with "Unauthorized"?**
+**A:** `aws sts get-caller-identity` successfully verifies your local AWS credentials. This means you can talk to the AWS API. However, `kubectl get nodes` requires two things: valid AWS credentials to generate an EKS token *and* for the IAM identity associated with those credentials to be explicitly mapped to a Kubernetes user/group within the EKS cluster's `aws-auth` ConfigMap, with sufficient RBAC permissions. Your AWS credentials might be perfect, but the EKS cluster just doesn't know who you are in its Kubernetes context.
 
-**Q: How do I manage multiple AWS accounts or profiles when working with EKS?**
-**A:** Use the `AWS_PROFILE` environment variable (e.g., `export AWS_PROFILE=my-dev-profile`) or the `--profile` flag with `aws-cli` commands (e.g., `aws eks update-kubeconfig --profile my-dev-profile ...`). When running `kubectl`, it will implicitly use the credentials associated with the profile configured in your `kubeconfig` or the active `AWS_PROFILE`.
+**Q: I'm using `eksctl` to manage my clusters. Is `aws eks update-kubeconfig` still necessary?**
+**A:** `eksctl` typically updates your `kubeconfig` automatically when you create or interact with clusters (e.g., `eksctl get clusters` or `eksctl create cluster`). However, if you're experiencing this "Unauthorized" error, explicitly running `aws eks update-kubeconfig --name <cluster-name> --region <region>` can sometimes resolve issues by forcing a refresh and ensuring the correct `exec-plugin` configuration is in place. It's a good first diagnostic step regardless of whether you primarily use `eksctl`.
 
-**Q: Do I need `aws-iam-authenticator` installed separately anymore?**
-**A:** For `aws-cli` v2, no. `aws-cli` v2 includes the `eks get-token` command which replaces the functionality of `aws-iam-authenticator`. If you're on `aws-cli` v1, you might still need it, but upgrading to v2 is highly recommended.
+**Q: Can I use an IAM user without granting them `system:masters` access?**
+**A:** Absolutely, and it's highly recommended for production environments following the principle of least privilege. Instead of `system:masters`, you can map IAM users or roles to custom Kubernetes RBAC roles. First, define your custom `Role` or `ClusterRole` and `RoleBinding` or `ClusterRoleBinding` within Kubernetes, then map the IAM identity in `aws-auth` to a Kubernetes group that is bound to your custom role. This allows fine-grained control over what specific users or roles can do within the cluster.
 
-**Q: Can this error be caused by a firewall on my machine?**
-**A:** Unlikely for "Unauthorized." A firewall blocking outbound connections would typically result in a "connection timed out" or "connection refused" error, as the `kubectl` client wouldn't even be able to reach the EKS API server. "Unauthorized" means the connection was successful, but the server rejected your credentials.
-
-**Q: How can I verify which IAM identity `kubectl` is *actually* using?**
-**A:** `kubectl` doesn't directly show the IAM identity it's using. Instead, you verify this by checking your `aws-cli`'s active configuration (`aws configure list`) and the `aws sts get-caller-identity` output for your active profile. The `aws eks update-kubeconfig` command then configures `kubectl` to use this active AWS identity.
+**Q: My `kubeconfig` keeps getting overwritten or becomes messy with multiple clusters. How do I manage this?**
+**A:** `aws eks update-kubeconfig` by default adds or updates the context in `~/.kube/config`. To manage multiple clusters more cleanly:
+1.  Use the `--alias` flag: `aws eks update-kubeconfig --name clusterA --region us-east-1 --alias my-dev-clusterA` and `aws eks update-kubeconfig --name clusterB --region us-west-2 --alias my-prod-clusterB`. This creates distinct context names.
+2.  Use separate `kubeconfig` files: Generate `kubeconfig` files into different locations (e.g., `aws eks update-kubeconfig --name my-cluster --region us-east-1 --kubeconfig ~/.kube/config-my-cluster`). Then, specify which file to use with the `KUBECONFIG` environment variable (e.g., `KUBECONFIG=~/.kube/config-my-cluster kubectl get nodes`) or by merging them.
 
 ## Related Errors
-
-- [kubernetes-connection-refused](/errors/kubernetes-connection-refused.html)
+*(none)*
