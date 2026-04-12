@@ -1,216 +1,184 @@
 # Linux No space left on device (ENOSPC)
-> Encountering "No space left on device" (ENOSPC) on Linux means your disk partition has run out of free space, and this guide explains how to identify, diagnose, and fix the issue.
+> Encountering the "No space left on device" error means your disk partition has run out of free space or inodes; this guide explains how to diagnose and resolve it.
 
 ## What This Error Means
-
-The "No space left on device" error, often accompanied by the `ENOSPC` errno (Error NO SPaCe), is a critical system-level message indicating that the disk partition where an application is trying to write data has no remaining free blocks. This isn't just a warning; it means the operation that triggered it—whether creating a file, writing to a log, downloading a package, or even updating system components—has failed.
-
-When you hit `ENOSPC`, your system's ability to function normally is severely impaired. Applications will crash or fail to start, logs will stop writing, temporary files cannot be created, and you won't be able to install updates or new software. In essence, any operation requiring disk write access will fail. In my experience, this can quickly cascade into system instability if not addressed promptly, particularly on production servers where logs and temporary data accumulate rapidly.
+The "No space left on device" error, indicated by the `ENOSPC` error code, is a critical system message in Linux that signals a storage-related problem. At its core, it means your operating system, or an application attempting to write data, has run out of available capacity on a particular filesystem. This isn't just about megabytes or gigabytes; it can mean one of two things: either there are no free data blocks left (the traditional understanding of "disk full"), or, less commonly but often more puzzlingly, there are no free *inodes* left. Inodes are data structures that store metadata about files and directories (permissions, ownership, timestamps, location of data blocks), and each file or directory requires one. When you hit `ENOSPC`, any operation that attempts to write new data or create new files will fail, often leading to application crashes, system instability, or even preventing crucial logs from being written.
 
 ## Why It Happens
+This error typically occurs because a filesystem has reached its maximum capacity. When an application tries to create a new file, write to an existing file, or even just create a temporary file, the operating system checks if there's enough space. If there isn't, the write operation fails with `ENOSPC`.
 
-At its core, `ENOSPC` occurs because a filesystem has exhausted its allocated resources. This can manifest in two primary ways:
-
-1.  **Disk Block Exhaustion:** The most common scenario, where the actual amount of free space (measured in bytes or blocks) on a partition has reached zero. This is what `df -h` typically reports. You've simply filled up the drive with data.
-2.  **Inode Exhaustion:** Less common but equally debilitating, this happens when all available inodes on a filesystem have been used, even if there appears to be free disk space according to `df -h`. An inode is a data structure that stores information about a file or a directory (like ownership, permissions, and location on disk). Each file or directory requires one inode. If you have millions of tiny files, you can run out of inodes long before you run out of actual disk space. This is a subtle but important distinction that often puzzles engineers new to Linux system administration.
+The "why" can often be traced back to either an overwhelming amount of data being written, or a lack of proper cleanup. For instance, log files might grow unchecked, temporary directories might accumulate junk, or a build process might create thousands of small intermediate files. In my experience, the less intuitive cause — inode exhaustion — often catches developers off guard. You might see `df -h` report plenty of free space, but `df -i` tells a different story: all inodes are used up. This happens when there are a huge number of very small files, each consuming an inode, even if they collectively don't use much block space.
 
 ## Common Causes
+In my career, I've seen `ENOSPC` crop up in various scenarios, and pinpointing the exact cause requires systematic investigation. Here are the most common culprits:
 
-Identifying the root cause is the first step toward a lasting solution. In my career, I've seen `ENOSPC` triggered by various culprits:
-
-*   **Accumulated Log Files:** System logs (`/var/log`), application logs (e.g., Nginx access logs, database logs, custom application logs), or `journald` entries can grow unchecked, especially on busy systems without proper log rotation policies.
-*   **Temporary Files and Caches:** Uncleaned temporary directories (`/tmp`, `/var/tmp`), package manager caches (`apt`, `yum`, `npm`, `pip`), or build system caches (e.g., Maven, Gradle, Node.js `node_modules` folders) can consume significant space over time.
-*   **Large Application Data:** Databases growing beyond their allocated space, large media files, user uploads, or data generated by data processing jobs can fill disks quickly.
-*   **Docker Images and Volumes:** Docker can be a significant consumer of disk space. Unused images, stopped containers, and orphan volumes can quickly bloat a system, particularly when developers iterate frequently. I've lost count of the times I've tracked down "missing" disk space to an overabundance of Docker layers.
-*   **Forgotten Backups:** Old backup archives, database dumps, or snapshots that were never deleted can accumulate, especially if automated cleanup routines fail.
-*   **User-Generated Content:** On servers hosting websites or applications that allow user uploads, unrestricted file uploads can quickly consume available storage.
-*   **Inode Exhaustion (Many Small Files):** As mentioned, systems handling a vast number of small files (e.g., caching proxies, mail servers, source control repositories with many small objects) can hit inode limits even with ample free space.
+*   **Excessive Log Files:** Uncontrolled logging is a frequent cause, especially in production environments. Application logs, web server access logs (Nginx, Apache), and system logs (`/var/log`) can grow rapidly if not properly rotated and compressed. I've seen a single misconfigured application fill an entire root partition with gigabytes of verbose logs.
+*   **Accumulated Temporary Files:** Many applications create temporary files for various operations. If these applications crash, are terminated improperly, or simply don't have robust cleanup routines, `/tmp`, `/var/tmp`, and user-specific temporary directories (e.g., `~/.cache`, `~/.npm`) can become bloated.
+*   **Application-Specific Data Overload:** Databases with large datasets, caches that aren't pruned, or file upload directories that are never cleaned can consume vast amounts of space. For example, a development server might accumulate many old Docker images or Maven/Gradle caches.
+*   **Failed Backups or Snapshots:** Sometimes, backup processes fail midway, leaving partial backups that take up space. Or, older backups might not be automatically purged, leading to an accumulation of large archives.
+*   **Package Manager Caches:** Tools like `apt`, `yum`, or `dnf` keep downloaded package files in caches (`/var/cache/apt/archives`, `/var/cache/yum`) to speed up future installations. While useful, these can grow quite large over time.
+*   **Inode Exhaustion:** This is trickier. It happens when you have millions of very small files. Common examples include mail queues, web server session files, build artifacts (e.g., `node_modules` with deep dependency trees, Java `.class` files), or file systems used for temporary storage by applications that generate many tiny files. `git` repositories with lots of small files, or even `~/.config` directories for some applications, can contribute.
 
 ## Step-by-Step Fix
+Addressing `ENOSPC` requires a systematic approach to identify and clear space. Always proceed with caution, especially when deleting files in production environments.
 
-When you encounter `ENOSPC`, approach it systematically. Safety first: be careful with `rm -rf`. Always verify paths and contents before deleting.
-
-1.  **Verify the Error and Affected Partition:**
-    First, confirm that the `ENOSPC` error is indeed due to a full disk and identify which partition is full.
+1.  **Identify the Full Partition:**
+    Start by determining which filesystem is full. The `df -h` command will show disk usage in a human-readable format. Look for partitions with 100% (or close to 100%) usage.
 
     ```bash
     df -h
+    ```
+
+    You might see something like:
+    ```
+    Filesystem      Size  Used Avail Use% Mounted on
+    /dev/vda1        20G   20G     0 100% /
+    tmpfs           3.9G     0  3.9G   0% /dev/shm
+    ```
+    Here, `/dev/vda1` mounted at `/` (the root filesystem) is full.
+
+2.  **Check for Inode Exhaustion:**
+    If `df -h` shows plenty of free space but you're still getting `ENOSPC`, your problem is likely inode exhaustion. Use `df -i` to check inode usage.
+
+    ```bash
     df -i
     ```
 
-    `df -h` (disk free, human-readable) shows disk space usage. Look for partitions with 100% `Use%`.
-    `df -i` (disk free, inodes) shows inode usage. If `IUse%` is 100%, you have an inode problem, not just a space problem. This is a crucial diagnostic step I always start with.
+    If `IUse%` is near 100% for the problematic partition, then you have too many small files.
 
-2.  **Identify Large Files/Directories:**
-    Once you know which partition is full (e.g., `/` or `/var`), start looking for large consumers of space. The `du` (disk usage) command is your best friend here.
-
-    Navigate to the root of the affected partition (or `/` if it's the root filesystem) and run:
+3.  **Find Large Files and Directories (for block space issues):**
+    Navigate to the mount point of the full partition (e.g., `/` or `/var`). Use `du -sh *` to find the largest directories. Recursively drill down until you find the culprits. Remember to include hidden directories (`.[!.]*`).
 
     ```bash
-    # For current directory, showing top 10 largest items
-    du -sh * | sort -rh | head -n 10
+    # Start at the root (or problematic mount point)
+    sudo du -sh /*
+    sudo du -sh /.[!.]* # Check hidden directories at root, e.g., /.snapshot
 
-    # To find large files globally (this can take a long time on a large disk)
-    # Be mindful of the starting path, e.g., / or /var
-    sudo find / -xdev -type f -size +1G -print0 | xargs -0 du -h | sort -rh | head -n 20
+    # Example: if /var is large, check within /var
+    sudo du -sh /var/*
+
+    # Example: if /var/log is large, check within /var/log
+    sudo du -sh /var/log/*
     ```
-    The `find` command searches for files larger than 1GB (`+1G`), preventing it from traversing other filesystems (`-xdev`). Adjust `+1G` to `+100M` if you're looking for smaller, but numerous, large files.
+    Once you've identified large files or directories, you can make informed decisions about deletion. For instance, I've often found massive `docker` directories or uncleaned database backups.
 
-3.  **Check Log Files:**
-    Log files are a very common culprit.
+4.  **Analyze Inode Usage (for inode issues):**
+    If `df -i` indicated inode exhaustion, you need to find where all the small files are. This command can help pinpoint directories containing a high number of files:
 
     ```bash
-    # Check general log directory size
-    sudo du -sh /var/log
-
-    # Check journalctl disk usage (for systems using systemd-journald)
-    sudo journalctl --disk-usage
-
-    # Reduce journald logs to a specific size (e.g., 100MB)
-    sudo journalctl --vacuum-size=100M
-    # Or by time (e.g., keep only logs from the last 7 days)
-    # sudo journalctl --vacuum-time=7d
+    sudo find /path/to/full/partition -xdev -printf '%h\n' | sort | uniq -c | sort -rh | head -n 20
     ```
-    For application-specific logs, navigate to their respective directories (e.g., `/var/log/nginx`, `/var/log/mysql`) and use `du -sh *` to find large ones. Delete or truncate old log files using `echo > filename` for active files (to avoid breaking the application) or `rm old_log_file` for inactive ones. Implement or verify log rotation (e.g., `logrotate`).
+    Replace `/path/to/full/partition` with the actual mount point (e.g., `/`). This command finds the 20 directories with the most files.
 
-4.  **Clear Temporary Files:**
-    Temporary files can pile up.
+5.  **Clear Temporary Files:**
+    *   **System-wide temporary files:** `sudo rm -rf /tmp/*` (use with extreme caution, only if you're sure no critical applications are actively using files in `/tmp`).
+    *   **User-specific caches:** `rm -rf ~/.cache/*`, `~/.npm/_cacache`, `~/.gradle/caches`.
+    *   **Package manager caches:**
+        *   Debian/Ubuntu: `sudo apt clean`
+        *   CentOS/RHEL: `sudo yum clean all` or `sudo dnf clean all`
 
-    ```bash
-    sudo rm -rf /tmp/*
-    sudo rm -rf /var/tmp/*
-    ```
-    Be cautious: some applications might be actively using files in `/tmp`. It's generally safer to reboot if possible, as most `/tmp` contents are cleared on reboot. If not, consider selectively deleting older files or files owned by non-critical processes.
+6.  **Rotate and Compress Logs:**
+    *   Manually delete old log files:
+        ```bash
+        # Example: Delete .log files older than 7 days in /var/log/my_app
+        sudo find /var/log/my_app -name "*.log" -mtime +7 -delete
+        ```
+    *   Configure `logrotate` for critical applications. Most default installations handle system logs, but custom applications might need manual configuration.
+    *   Consider compressing older logs rather than outright deleting them: `gzip old_log_file.log`.
 
-5.  **Manage Docker Resources (if applicable):**
-    Docker can consume a lot of space.
+7.  **Identify and Remove Old/Unused Files:**
+    *   **Find large files:**
+        ```bash
+        sudo find / -xdev -type f -size +1G -print0 | xargs -0 du -h | sort -rh | head -n 10
+        ```
+        This lists the 10 largest files (over 1GB) on the root filesystem. Adjust `-size` and path as needed.
+    *   **Docker cleanup:** `docker system prune -a` (removes all stopped containers, unused networks, dangling images, and build cache). This is often a massive space saver for Docker hosts.
+    *   **Git repositories:** Large `.git` directories, especially from monorepos or heavily history-rewritten repos, can be cleaned with `git gc --prune=now`.
 
-    ```bash
-    # Show disk usage of Docker
-    docker system df
-
-    # Remove all unused Docker data (containers, images, networks, build cache)
-    # This is often the quickest way to free up significant space on Docker hosts.
-    docker system prune -a
-    ```
-    I've seen `docker system prune -a` free up tens, sometimes hundreds, of gigabytes of disk space on a frequently used CI/CD runner or a developer machine.
-
-6.  **Empty Trash and Old Backups:**
-    If you're on a desktop environment, check your trash can. On servers, look for old backup directories or forgotten archives.
-
-    ```bash
-    # Example: remove old tarballs or zip files
-    sudo find /var/backups -type f -name "*.tar.gz" -mtime +30 -delete
-    ```
-
-7.  **Delete Unnecessary Files:**
-    Once you've identified large, unneeded files or directories, delete them.
-    ```bash
-    sudo rm -rf /path/to/large/unnecessary/directory
-    sudo rm /path/to/large/unnecessary/file
-    ```
-    Always double-check the path before hitting enter. There's no undo for `rm -rf /`!
-
-8.  **Extend Partition (If Feasible):**
-    If cleaning up isn't enough or the disk consistently fills up, you might need to extend the disk partition or add a new one. This typically involves modifying the underlying cloud VM instance, hypervisor, or physical disk configuration, followed by resizing the filesystem. This is a more involved process and often requires a planned outage.
-
-9.  **Monitor After Fix:**
-    After freeing up space, continue to monitor your disk usage to prevent recurrence. Implement automated log rotation, cleanup scripts, and monitoring alerts.
+8.  **Extend the Filesystem (Last Resort):**
+    If cleanup isn't sufficient, or if the system is genuinely undersized, you might need to extend the filesystem. This usually involves:
+    *   Resizing the underlying logical volume (LVM) or cloud disk (e.g., AWS EBS, Azure Disks).
+    *   Then, extending the filesystem itself (`resize2fs` for ext4, `xfs_growfs` for XFS). This typically requires root privileges and some downtime, or at least unmounting/remounting for some file systems.
 
 ## Code Examples
 
-These commands are crucial for troubleshooting and fixing `ENOSPC`.
-
-**1. Check Disk Space and Inode Usage:**
-
+**Check Disk Space Usage (Human Readable):**
 ```bash
-# Human-readable disk space usage
 df -h
+```
 
-# Inode usage
+**Check Inode Usage:**
+```bash
 df -i
 ```
 
-**2. Find Largest Directories (e.g., in /var):**
-
+**Find Top 10 Largest Directories from Current Location:**
 ```bash
-# Summarize disk usage for immediate subdirectories of /var, sorted largest first
-sudo du -sh /var/* | sort -rh | head -n 10
+sudo du -sh * | sort -rh | head -n 10
 ```
 
-**3. Find Large Files Globally (over 500MB):**
-
+**Find Top 10 Directories with the Most Files (Inode-heavy check, from root):**
 ```bash
-# Find files larger than 500MB on the root filesystem (exclude other filesystems)
-sudo find / -xdev -type f -size +500M -print0 | xargs -0 du -h | sort -rh | head -n 20
+sudo find / -xdev -printf '%h\n' | sort | uniq -c | sort -rh | head -n 10
 ```
 
-**4. Manage Systemd Journal Logs:**
-
+**Delete Log Files Older Than 30 Days in a Specific Directory:**
 ```bash
-# Check current journal log disk usage
-sudo journalctl --disk-usage
+sudo find /var/log/nginx -name "*.log" -mtime +30 -delete
+```
+*Note: Be very careful with `find ... -delete`.*
 
-# Vacuum (delete) old journal logs, keeping total size below 200MB
-sudo journalctl --vacuum-size=200M
-
-# Vacuum journal logs older than 7 days
-sudo journalctl --vacuum-time=7d
+**Clean APT Package Cache (Debian/Ubuntu):**
+```bash
+sudo apt clean
 ```
 
-**5. Clean Docker System:**
-
+**Clean YUM/DNF Package Cache (CentOS/RHEL):**
 ```bash
-# Show current Docker disk usage
-docker system df
+sudo yum clean all
+# or
+sudo dnf clean all
+```
 
-# Remove all unused containers, images, volumes, and networks
+**Remove Old Docker Images, Containers, Volumes, and Networks:**
+```bash
 docker system prune -a
+```
+
+**Find Largest Files (over 500MB) on the Root Filesystem:**
+```bash
+sudo find / -xdev -type f -size +500M -print0 | xargs -0 du -h | sort -rh | head -n 10
 ```
 
 ## Environment-Specific Notes
 
-The `ENOSPC` error can manifest differently or require specific solutions depending on your environment.
+*   **Cloud Environments (AWS EC2/EBS, Azure VMs/Disks, GCP Compute Engine/Persistent Disks):**
+    Cloud providers make resizing volumes relatively straightforward. If you're consistently hitting `ENOSPC`, it's often simpler and safer to increase the disk size than to aggressively prune. You'll typically increase the volume size through your cloud console, then connect to the instance and use `resize2fs` or `xfs_growfs` to extend the filesystem to use the newly available space. Monitor disk usage with cloud-native tools (e.g., CloudWatch, Azure Monitor) to proactively prevent issues. I often set up alarms for `DiskUsage > 90%`.
 
-*   **Cloud (AWS EC2, GCP, Azure VMs):**
-    *   **Disk Resizing:** Cloud providers offer straightforward ways to increase the size of an attached volume (EBS on AWS, Persistent Disk on GCP). After resizing the underlying volume, you'll still need to extend the filesystem *within* the OS (e.g., `resize2fs` for ext4, `xfs_growfs` for XFS).
-    *   **Ephemeral Storage:** Be wary of instances using ephemeral or instance store volumes. These are often smaller and are lost on instance termination, making them unsuitable for persistent data or applications with high disk usage without careful management.
-    *   **Monitoring:** Leverage cloud monitoring tools (CloudWatch, Stackdriver, Azure Monitor) to set up alerts for disk utilization. Proactive alerts are critical; I've used these extensively to catch `ENOSPC` before it impacts users.
-    *   **Log Sinks:** Consider sending logs to a dedicated log sink service (e.g., CloudWatch Logs, Stackdriver Logging) rather than storing them locally on the instance, reducing local disk pressure.
-
-*   **Docker Containers & Orchestration (Kubernetes):**
-    *   **Container Root Filesystem:** A common issue in containers is the container's own writable layer filling up. This often points to logs or temporary data being written inside the container instead of to mounted volumes.
-    *   **Volume Management:** Ensure your Docker volumes are properly managed. If you're not explicitly cleaning up volumes, they can persist even after containers are removed. `docker system prune -a` is vital for hosts running many containers.
-    *   **Kubernetes Pods:** In Kubernetes, `ENOSPC` can affect a specific pod (if its container writable layer is full) or the node itself (if `/var/lib/docker` or `/var/lib/kubelet` fills up). For pod-level issues, investigate what the application is writing. For node-level, it's often accumulated images or logs. `kubectl describe node` can offer clues on node disk pressure. Persistent Volume Claims (PVCs) help manage storage, but they too can fill up.
+*   **Docker / Containerized Applications:**
+    The `ENOSPC` error can occur both *inside* a container and on the *host* filesystem where Docker stores its data.
+    *   **Inside a container:** If an application inside a container is logging excessively or creating many temporary files, it can fill up the container's writable layer. This typically means you need to adjust log rotation within the container or remap `/var/log` to a dedicated host volume.
+    *   **On the host:** Docker itself can consume a lot of disk space for images, containers, and volumes. The `docker system prune -a` command is invaluable here for clearing out unused resources. Also, remember that volumes mounted from the host will still occupy space on the host's filesystem, so you'll need to check the host's disk usage directly.
 
 *   **Local Development Machines:**
-    *   **`node_modules` and Build Artifacts:** For developers, `node_modules` directories can be enormous. Tools like `npx rimraf node_modules` or `npm cache clean --force` can help. Similarly, build artifacts for large projects (e.g., C++ projects, Android builds) can consume tens of GBs.
-    *   **IDE Caches:** Integrated Development Environments (IDEs) like IntelliJ, VS Code, or Eclipse create large caches. Periodically clearing these (check your IDE's settings) can free up space.
-    *   **Snap Packages:** Ubuntu's Snap packages create large, self-contained bundles. Running `sudo snap save` and then `sudo snap remove --purge <snap-name>` for unused snaps, followed by `sudo snap set system refresh.retain=2` to limit old revisions, can reclaim space.
+    Local dev environments are notorious for `ENOSPC` due to massive `node_modules` directories, `target/` folders from Java/Rust builds, VM images, or multiple Git repositories with extensive histories.
+    *   `npm cache clean --force` or `pnpm store prune` for Node.js.
+    *   `cargo clean` for Rust projects.
+    *   Deleting old VM images or snapshots.
+    *   Manually review and delete large, no-longer-needed project directories.
 
 ## Frequently Asked Questions
 
-**Q: Can I ignore the "No space left on device" error?**
-**A:** Absolutely not. This error will prevent critical system operations, lead to application crashes, data loss, and ultimately system instability. It's a high-priority issue that demands immediate attention.
+**Q: `df -h` shows plenty of space, but I still get `ENOSPC`. What gives?**
+A: This is almost certainly an inode exhaustion issue. While you have free *data blocks*, you've run out of available *inodes*, meaning no new files (even tiny ones) can be created. Use `df -i` to confirm inode usage.
 
-**Q: My `df -h` shows plenty of free space, but I'm still getting `ENOSPC`. Why?**
-**A:** This is a classic symptom of **inode exhaustion**. Run `df -i` to check inode usage. If `IUse%` is 100%, you have too many small files. You'll need to locate and delete directories containing many tiny files (e.g., old cache directories, temporary files from failed processes) to free up inodes.
+**Q: Is it safe to delete files while the system is running?**
+A: Be cautious. Deleting a file that is still open and being used by a running process will mark the file for deletion, but its disk space won't be freed until the process completely releases its file handle. You might need to restart the process or even the service to free up space immediately. Use `lsof | grep deleted` to find open, deleted files.
 
-**Q: How can I prevent this error from happening again?**
-**A:** Proactive measures are key:
-*   Implement robust log rotation (e.g., `logrotate`).
-*   Set up disk usage monitoring with alerts (e.g., using `Prometheus` + `Grafana`, cloud monitoring, or simple `cron` jobs checking `df`).
-*   Regularly prune Docker resources (`docker system prune`).
-*   Review application configurations to ensure they don't store excessive temporary data or logs.
-*   Consider increasing disk size or using dedicated storage for high-growth data.
+**Q: How can I prevent `ENOSPC` from happening again?**
+A: Implement proactive monitoring (e.g., `df -h` in cron jobs, Prometheus/Grafana alerts), configure `logrotate` for all critical applications, set up automated cleanup scripts for temporary directories or old backups, and periodically review application configurations that might lead to excessive file creation.
 
-**Q: Is it safe to run `rm -rf /` to free up space?**
-**A:** **NO! ABSOLUTELY NOT!** This command recursively deletes everything from the root directory, effectively wiping your entire operating system and all its data. Always double-check your `rm` commands and use specific paths. When in doubt, use `rm -i` for interactive confirmation or `mv` to move suspect files to a temporary location first.
-
-**Q: What if I can't delete enough files to free up space?**
-**A:** If cleaning up isn't sufficient, you'll need to expand your storage. This involves either growing the existing disk partition (if there's unallocated space or if the underlying volume can be resized) or adding a new disk/volume and migrating data to it. In cloud environments, resizing a volume is often a straightforward process, though it usually requires a filesystem resize operation afterwards.
+**Q: My root partition is full, and I can't even install `du` or `find` to diagnose! What do I do?**
+A: This is a tricky situation. You'll likely need to boot into a rescue mode or a live Linux distribution (e.g., a USB stick). From there, you can mount your problematic root partition, and then use the tools available on the rescue system to diagnose and clean up. Minimal commands like `rm` and `ls` might still work if you can get a shell.
 
 ## Related Errors
-
-*   [docker-oomkilled](/errors/docker-oomkilled.html)
-*   [kubernetes-oomkilled](/errors/kubernetes-oomkilled.html)
