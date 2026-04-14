@@ -1,219 +1,255 @@
 # AuthenticationError: 401 Unauthorized
-> Encountering `AuthenticationError: 401 Unauthorized` with the OpenAI API means your request is missing or using an invalid API key; this guide explains how to fix it.
+> Encountering "AuthenticationError: 401 Unauthorized" with the OpenAI API means your API key is invalid or missing; this guide explains how to fix it with practical steps.
 
 ## What This Error Means
 
-The `AuthenticationError: 401 Unauthorized` message, specifically in the context of the OpenAI API, is a direct signal that your request to the API was rejected because of invalid or missing authentication credentials. In HTTP terms, a `401 Unauthorized` status code indicates that the client (your application) must authenticate itself to get the requested response. It's not a server-side error, but rather an issue with how your application is trying to gain access.
+When you encounter an `AuthenticationError: 401 Unauthorized` response from the OpenAI API, it's a clear signal from their servers: your request was received, but the authentication credentials you provided were either missing, incorrect, or invalid. The HTTP status code `401` specifically denotes "Unauthorized," indicating that the client (your application) failed to provide valid authentication to access the requested resource.
 
-For OpenAI, this almost exclusively points to a problem with your API key. It means the server received your request, understood what you were asking for, but could not verify your identity or permission to access the service with the credentials provided. It's a security gate, letting you know you haven't presented the correct "ticket" for entry.
+It's crucial to understand that a `401` error isn't a problem with the OpenAI service itself being down, nor is it typically a network connectivity issue on your end. Instead, it's a direct rejection of your API call based on the authentication header. In the context of OpenAI, this almost exclusively points to an issue with your API key. The server requires a valid key to identify you and grant access; without it, or with a faulty one, access is denied.
 
 ## Why It Happens
 
-At its core, this error occurs because the OpenAI API cannot validate who you are or if you have the necessary permissions to make a specific request. While there are many layers of authentication in complex systems, for the OpenAI API, the problem almost always boils down to one simple thing: the API key.
+The OpenAI API, like many modern web APIs, relies on API keys for authentication. These keys act as unique identifiers and secret tokens that your application sends with each request to prove its identity and authorize access. When you make an API call, your code includes this key, typically in an `Authorization` HTTP header with a `Bearer` token prefix.
 
-When you send a request to the OpenAI API, you're expected to include your unique secret API key in the `Authorization` header of your HTTP request. If this key is missing, malformed, expired, revoked, or simply incorrect, the API will respond with a `401 Unauthorized` error. It's a robust security measure designed to protect your account and prevent unauthorized usage of the models. In my experience, the vast majority of `401` errors with OpenAI stem from a fundamental misunderstanding or misconfiguration of how this key should be managed and passed.
+The `AuthenticationError: 401 Unauthorized` occurs because the OpenAI server, upon receiving your request, performs a check against the provided API key. If this check fails for any reason, the server immediately rejects the request with a `401` status. This could be because the key is entirely absent from the request, it's malformed, it doesn't match any active key in OpenAI's system, or it has been revoked or expired. From a security standpoint, this is a vital mechanism to prevent unauthorized access to your OpenAI account and resources.
 
 ## Common Causes
 
-Troubleshooting a `401 Unauthorized` error with OpenAI generally means going through a checklist of common pitfalls. Here are the most frequent reasons I've encountered for this error:
+In my experience, encountering a `401 Unauthorized` error when working with the OpenAI API usually boils down to one of a few common issues. Identifying the root cause is the first step toward a fix.
 
-1.  **Missing API Key:** This is perhaps the most straightforward cause. The API key simply isn't being included in your HTTP request at all. This might happen if an environment variable isn't loaded, or the code responsible for adding the header is skipped.
-2.  **Incorrect API Key:** You might have an API key, but it's the wrong one. This could be due to:
-    *   A typo when copying the key.
-    *   Using a key from a different OpenAI account or organization.
-    *   Using a key that has been regenerated, rendering the old one invalid.
-    *   Using a public key instead of a secret key (though OpenAI API keys are generally secret).
-3.  **Improper Key Placement or Format:** The OpenAI API expects the key in a specific format within the `Authorization` header: `Authorization: Bearer sk-YOUR_API_KEY`.
-    *   Forgetting the `Bearer ` prefix.
-    *   Placing the key in the wrong header (e.g., `X-API-Key` instead of `Authorization`).
-    *   Extra spaces or characters around the key or the `Bearer` prefix.
-4.  **Environment Variable Misconfiguration:** Many applications use environment variables (e.g., `OPENAI_API_KEY`) to store sensitive keys. If the variable isn't set correctly in the environment where your application runs, or if your application isn't correctly reading it, the key won't be passed. This is a very common scenario in Docker containers or CI/CD pipelines.
-5.  **Expired or Revoked Key:** While OpenAI API keys generally don't "expire" in the traditional sense, they can be revoked manually from your OpenAI dashboard if they are suspected of being compromised or if you regenerate them. If a key is revoked, any requests using it will fail with a 401.
-6.  **Account Billing Issues:** I've seen this in production when an organization's credit card on file expires or if there are other billing problems. OpenAI might temporarily suspend access to the API until the issues are resolved, which can manifest as a `401 Unauthorized` error because the account itself isn't in good standing to make requests.
-7.  **Network or Proxy Interference:** Less common for a 401, but a misconfigured network proxy or firewall *could* theoretically strip or alter HTTP headers, including the `Authorization` header, before the request reaches OpenAI. This is rare but worth considering in complex enterprise network setups.
+1.  **Missing API Key:** This is perhaps the most straightforward cause. The API request was sent without any API key in the `Authorization` header. This can happen if you forget to set the environment variable, or your code simply doesn't retrieve and include it.
+2.  **Incorrect API Key:** Even if a key is present, it might be the wrong one. This could be due to:
+    *   **Typographical errors:** A simple copy-paste mistake.
+    *   **Using a placeholder key:** Developers sometimes leave `YOUR_OPENAI_API_KEY` in their code for testing and forget to replace it.
+    *   **Using a key from a different environment/account:** You might be using a development key in a production environment, or a key belonging to another OpenAI account.
+    *   **Extra whitespace:** Leading or trailing spaces when copying the key can invalidate it.
+3.  **Expired or Revoked API Key:** API keys can have a lifecycle. OpenAI allows you to revoke keys for security reasons, and in some scenarios, keys might expire if not managed properly, though this is less common with OpenAI's primary API keys unless explicitly revoked. I've seen this in production when security policies mandate regular key rotation.
+4.  **Incorrect Environment Variable Name:** Many SDKs and applications expect the API key to be set in a specific environment variable, commonly `OPENAI_API_KEY`. If you use a different name (e.g., `OPENAI_KEY`, `MY_API_KEY`), the SDK won't find it.
+5.  **Misconfigured API Client or Library:** If you're using an OpenAI client library (e.g., `openai` for Python), it might not be initialized correctly with your key. This could involve setting the `api_key` attribute or ensuring the library is picking up the environment variable as expected.
+6.  **Network Proxies or Firewalls:** While less common, certain network configurations, proxies, or firewalls could potentially strip HTTP headers, including the `Authorization` header, before the request reaches the OpenAI servers. This is rare but worth considering in highly restricted corporate environments.
+7.  **Outdated Client Library:** Occasionally, an extremely old version of an OpenAI client library might not correctly handle authentication for newer API versions, though this usually manifests as different types of errors or unexpected behavior rather than a `401`.
 
 ## Step-by-Step Fix
 
-Solving the `401 Unauthorized` error is typically a methodical process of elimination. Follow these steps to diagnose and resolve the issue.
+Troubleshooting a `401 Unauthorized` error systematically is the most effective approach. Follow these steps to diagnose and resolve the issue.
 
-### Step 1: Verify Your OpenAI API Key
+### Step 1: Verify Your API Key on the OpenAI Dashboard
 
-First, confirm you have a valid, active API key.
+First, log in to your OpenAI platform account at [platform.openai.com](https://platform.openai.com). Navigate to the "API keys" section (usually under your profile settings or "API keys" on the left sidebar).
 
-1.  **Log in to your OpenAI account:** Go to [platform.openai.com](https://platform.openai.com/).
-2.  **Navigate to API keys:** On the left sidebar, find "API keys" (under `API keys` or `Settings > API keys`).
-3.  **Generate a new secret key:** If you're unsure about your existing keys, or if you suspect a key might have been compromised or accidentally deleted, it's often easiest and safest to generate a *new secret key*. Make sure to copy it immediately as you won't be able to see it again after navigating away.
-    *   **Crucial:** Do NOT share this key publicly or check it into version control. Treat it like a password.
+*   **Check existing keys:** Ensure you have at least one active API key listed.
+*   **Generate a new key:** If you don't see any, or if you suspect your current key might be compromised or invalid, generate a new secret key. Immediately copy it, as it will only be shown once. Treat it like a password.
 
-### Step 2: Check Code for Key Inclusion and Format
+### Step 2: Confirm Key Usage in Your Code/Environment
 
-Ensure your application code is correctly including the API key in the `Authorization` header with the correct `Bearer` prefix.
+This is where most issues lie. You need to ensure the correct key is being used in the correct place.
 
-1.  **Locate the API call:** Find where your application makes calls to the OpenAI API.
-2.  **Inspect the header construction:** Verify that the `Authorization` header is being set as `Bearer sk-YOUR_API_KEY`.
-    *   Common error: Missing the `Bearer ` prefix.
-    *   Common error: Trailing or leading spaces.
+1.  **Check Environment Variables:** This is the most recommended and secure way to manage API keys.
+    *   **Local Development:**
+        *   **Bash/Zsh:**
+            ```bash
+            echo $OPENAI_API_KEY
+            ```
+            If it's empty or incorrect, set it:
+            ```bash
+            export OPENAI_API_KEY="sk-YOUR_OPENAI_API_KEY_HERE"
+            # For persistence, add it to ~/.bashrc or ~/.zshrc
+            ```
+        *   **`.env` files:** If you're using libraries like `python-dotenv`, ensure your `.env` file contains:
+            ```
+            OPENAI_API_KEY="sk-YOUR_OPENAI_API_KEY_HERE"
+            ```
+            And that your code is loading it early: `from dotenv import load_dotenv; load_dotenv()`.
+    *   **Docker/Kubernetes:**
+        *   **`docker run`:** Check if `-e OPENAI_API_KEY="sk-..."` is used.
+        *   **`docker-compose.yml`:** Look under the `environment` section for your service.
+        *   **Kubernetes:** Verify that your `Deployment` or `Pod` definition correctly references a `Secret` that contains your `OPENAI_API_KEY`. I usually create secrets specifically for this.
+    *   **Cloud Functions/Serverless (e.g., AWS Lambda, GCP Cloud Functions, Azure Functions):** Ensure the environment variables are correctly configured in your function's settings within the cloud provider's console.
+    *   **CI/CD Pipelines:** Verify that your pipeline variables or secrets are correctly passing `OPENAI_API_KEY` to your build and deployment processes.
 
-### Step 3: Check Environment Variable Loading
+2.  **Inspect Your Application Code:**
+    *   **Hardcoded Key (not recommended):** If you've hardcoded the key for testing (e.g., `openai.api_key = "sk-..."`), double-check for typos or incorrect values.
+    *   **Loading from Environment:** If loading from `os.getenv("OPENAI_API_KEY")`, ensure the variable name is `OPENAI_API_KEY` and not a common misspelling.
+    *   **Client Initialization:** For Python, ensure your client is initialized correctly:
+        ```python
+        import os
+        import openai
 
-If you're using environment variables (which you absolutely should for API keys), confirm they are loaded correctly.
+        # Recommended: Picks up from environment variable
+        openai.api_key = os.getenv("OPENAI_API_KEY")
 
-1.  **For local development with `.env` files:**
-    *   Ensure you have a `.env` file in your project root.
-    *   It should contain a line like `OPENAI_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx`.
-    *   Make sure your code is using a library (e.g., `python-dotenv` for Python) to load these variables at startup.
-2.  **For system-wide environment variables:**
-    *   **Linux/macOS:** Open a terminal and type `echo $OPENAI_API_KEY`. It should output your key. If not, set it with `export OPENAI_API_KEY="sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"` (for the current session) or add it to your `~/.bashrc`, `~/.zshrc`, etc.
-    *   **Windows:** Search for "Environment Variables", click "Environment Variables...", then add or edit a system or user variable named `OPENAI_API_KEY`.
-3.  **In your application code, print the variable:** Before making the API call, add a debug statement to print the value your application believes `OPENAI_API_KEY` to be.
-    *   Python example: `import os; print(os.getenv("OPENAI_API_KEY"))`
+        # Less secure, but for testing, ensure it matches
+        # openai.api_key = "sk-YOUR_API_KEY_HERE"
+        ```
 
-### Step 4: Test with a Minimal Example
+### Step 3: Test the API Key Directly with cURL
 
-Isolate the problem from your main application by trying a simple, direct API call. This helps determine if the issue is with your key/environment or your application's logic.
+A quick `curl` command can confirm if the API key itself is the problem, isolating it from your application's logic.
 
-1.  **Using cURL:**
-    ```bash
-    curl https://api.openai.com/v1/models \
-      -H "Authorization: Bearer sk-YOUR_API_KEY"
-    ```
-    *Replace `sk-YOUR_API_KEY` with your actual key.* If this works, your key is valid and the issue lies within your application's setup.
+```bash
+curl https://api.openai.com/v1/completions \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer sk-YOUR_OPENAI_API_KEY_HERE" \
+  -d '{
+    "model": "text-davinci-003",
+    "prompt": "Say this is a test.",
+    "max_tokens": 7,
+    "temperature": 0
+  }'
+```
+**Replace `sk-YOUR_OPENAI_API_KEY_HERE` with your actual, secret API key.**
 
-2.  **Using a minimal Python script:**
-    ```python
-    import os
-    import openai
+If this `curl` command returns a successful response (not a `401`), then your API key is valid, and the problem lies within your application's code or environment configuration, not the key itself. If it still returns `401`, generate a new key and try again.
 
-    # Ensure this environment variable is set
-    # export OPENAI_API_KEY="sk-YOUR_API_KEY"
-    # or use dotenv if running locally
-    # from dotenv import load_dotenv
-    # load_dotenv()
+### Step 4: Review OpenAI Documentation & Library Specifics
 
-    api_key = os.getenv("OPENAI_API_KEY")
+Sometimes, specific client libraries or newer API versions might have slightly different ways of handling authentication. Consult the official OpenAI documentation for the language or library you are using to ensure you're following the latest best practices.
 
-    if not api_key:
-        print("Error: OPENAI_API_KEY environment variable not set.")
-    else:
-        openai.api_key = api_key
-        try:
-            response = openai.Model.list()
-            print("API call successful! Models available:")
-            for model in response.data:
-                print(f"- {model.id}")
-        except openai.error.AuthenticationError as e:
-            print(f"Authentication Error: {e}")
-        except Exception as e:
-            print(f"An unexpected error occurred: {e}")
-    ```
+### Step 5: Rotate Keys (Security Best Practice)
 
-### Step 5: Review OpenAI Account Status
-
-If all else fails, check your OpenAI account directly.
-
-1.  **Billing and Usage:** On the OpenAI platform, go to "Usage" and "Billing". Ensure your account is in good standing, that you haven't exceeded any usage limits, and that your payment method is up to date. An expired credit card can indeed cause `401` errors.
+If you've exposed a key or suspect it's compromised, rotate it immediately. Revoke the old key and generate a new one. This isn't just a troubleshooting step; it's a critical security practice, especially in production environments.
 
 ## Code Examples
 
-Here are concise, copy-paste ready examples demonstrating how to correctly pass your OpenAI API key.
+Here are concise, copy-paste-ready examples for common scenarios.
 
-### Python with `openai` library
+### Python (using `openai` library)
 
 ```python
 import os
 import openai
-from dotenv import load_dotenv # Recommended for local development
 
-# Load environment variables from .env file (if it exists)
-load_dotenv()
-
-# Retrieve the API key from an environment variable
-openai.api_key = os.getenv("OPENAI_API_KEY")
-
-if openai.api_key is None:
-    print("Error: OPENAI_API_KEY environment variable is not set.")
+# --- Recommended Approach: Load from environment variable ---
+# Ensure OPENAI_API_KEY is set in your environment
+# Example: export OPENAI_API_KEY="sk-YOUR_API_KEY_HERE"
+try:
+    openai.api_key = os.environ["OPENAI_API_KEY"]
+except KeyError:
+    print("Error: OPENAI_API_KEY environment variable not set.")
     exit(1)
 
+# --- Making an API call ---
 try:
-    # Example API call: list available models
-    models = openai.Model.list()
-    print("Successfully connected to OpenAI API. Available models:")
-    for model in models.data:
-        print(f"- {model.id}")
-
+    response = openai.Completion.create(
+        model="text-davinci-003",
+        prompt="Tell me a short story about a brave knight.",
+        max_tokens=60
+    )
+    print(response.choices[0].text.strip())
 except openai.error.AuthenticationError as e:
     print(f"Authentication Error: {e}")
-    print("Please check your OPENAI_API_KEY and account status.")
+    print("Please check your OpenAI API key.")
+except openai.error.APIError as e:
+    print(f"OpenAI API Error: {e}")
 except Exception as e:
     print(f"An unexpected error occurred: {e}")
+
+# --- Direct Assignment (for testing ONLY, not recommended for production) ---
+# openai.api_key = "sk-YOUR_API_KEY_HERE_DIRECTLY"
+# try:
+#     response = openai.Completion.create(model="text-davinci-003", prompt="Hello", max_tokens=5)
+#     print(response.choices[0].text.strip())
+# except openai.error.AuthenticationError as e:
+#     print(f"Authentication Error with direct key: {e}")
 ```
 
-### cURL for a quick test
+### cURL (for direct API key testing)
 
 ```bash
-# Replace 'sk-YOUR_ACTUAL_API_KEY' with your real OpenAI API key
-# Note the 'Bearer ' prefix is essential.
-curl https://api.openai.com/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer sk-YOUR_ACTUAL_API_KEY" \
+# Replace 'sk-YOUR_OPENAI_API_KEY_HERE' with your actual key
+curl -X POST \
+  https://api.openai.com/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer sk-YOUR_OPENAI_API_KEY_HERE' \
   -d '{
     "model": "gpt-3.5-turbo",
-    "messages": [
-      {
-        "role": "user",
-        "content": "Hello, world!"
-      }
-    ]
+    "messages": [{"role": "user", "content": "What is the capital of France?"}],
+    "temperature": 0.7
   }'
 ```
 
 ## Environment-Specific Notes
 
-The way you manage and provide your OpenAI API key can differ significantly based on your deployment environment. Secure secret management is paramount in all cases.
+How you manage and apply your OpenAI API key can vary significantly depending on your deployment environment.
 
-*   **Local Development:**
-    *   Use `.env` files (e.g., with `python-dotenv` for Python, `dotenv` for Node.js) to keep your API key out of your code and separated from version control. Never commit `.env` files to Git.
-    *   Set environment variables directly in your shell for testing (e.g., `export OPENAI_API_KEY="sk-..."`).
-*   **Docker Containers:**
-    *   **Do NOT bake API keys directly into your Docker images.** This creates a security vulnerability.
-    *   Pass keys as environment variables at runtime using `docker run -e OPENAI_API_KEY="sk-..."`.
-    *   For Docker Compose, use the `environment` section:
+### Local Development
+
+*   **Environment Variables:** The gold standard. Set `OPENAI_API_KEY` in your shell's profile (`.bashrc`, `.zshrc`) or use `.env` files with libraries like `python-dotenv` for per-project configuration. This prevents exposing keys in your codebase.
+*   **IDE Configuration:** Some IDEs (like VS Code) allow setting environment variables for debug configurations. Ensure these match your actual key.
+*   **Testing Scripts:** When running tests, ensure your test runner (e.g., `pytest`) picks up the environment variable or injects it correctly.
+
+### Cloud Environments (AWS Lambda, Google Cloud Functions, Azure Functions)
+
+*   **Serverless Function Configuration:** All major cloud providers offer mechanisms to set environment variables for serverless functions. This is the primary method for injecting API keys.
+    *   **AWS Lambda:** Set `OPENAI_API_KEY` under "Configuration" -> "Environment variables" for your function.
+    *   **GCP Cloud Functions:** Add `OPENAI_API_KEY` in the "Runtime, build, and connections settings" when deploying or editing a function.
+    *   **Azure Functions:** Use "Application settings" in the Azure Portal for your Function App.
+*   **Secrets Managers:** For enterprise-grade security and rotation, integrate with cloud-native secret management services:
+    *   **AWS Secrets Manager:** Store the key here and retrieve it at runtime using SDKs, often in conjunction with IAM roles for secure access.
+    *   **Google Secret Manager:** Similar to AWS, for GCP deployments.
+    *   **Azure Key Vault:** Azure's equivalent for securely storing and retrieving secrets. I've personally implemented solutions using Key Vault to manage API keys for various services.
+
+### Docker and Kubernetes
+
+*   **Docker:**
+    *   **Avoid `ENV` in `Dockerfile`:** Never bake your secrets directly into a Docker image using `ENV` instructions, as this makes the key part of the image layer.
+    *   **`docker run -e`:** Pass the environment variable at runtime: `docker run -e OPENAI_API_KEY="sk-..." my-app`.
+    *   **`docker-compose.yml`:** Define the environment variable for services:
         ```yaml
         services:
           my_app:
-            image: my_app_image
+            image: my-app-image
             environment:
-              - OPENAI_API_KEY=${OPENAI_API_KEY} # Reads from host .env
+              - OPENAI_API_KEY=${OPENAI_API_KEY} # Reads from host env
         ```
-    *   For production, consider Docker Secrets or Kubernetes Secrets.
-*   **Cloud Deployments (AWS, GCP, Azure, Kubernetes):**
-    *   **Secret Managers are your best friend.** Services like AWS Secrets Manager, Google Secret Manager, Azure Key Vault, or Kubernetes Secrets are designed to securely store and retrieve sensitive information like API keys.
-    *   Your application should fetch the key from the secret manager at runtime, rather than having it hardcoded or directly in environment variables (though environment variables are often used to point to the secret manager).
-    *   Use Identity and Access Management (IAM) roles or service accounts to grant your application *permission to access the secret manager*, but *not* direct access to the key itself from your code repository. This principle of least privilege is critical.
-    *   I've often seen teams initially hardcode keys in cloud functions or container environments, only to run into `401` errors when those keys are rotated or compromised. Investing time in proper secret management upfront prevents a lot of headaches later.
+*   **Kubernetes:**
+    *   **Kubernetes Secrets:** The absolute recommended way. Create a `Secret` object and reference it in your Deployment or Pod definition.
+        ```yaml
+        apiVersion: v1
+        kind: Secret
+        metadata:
+          name: openai-api-key
+        type: Opaque
+        data:
+          openai_api_key: <base64_encoded_key>
+        ---
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata:
+          name: my-openai-app
+        spec:
+          # ...
+          template:
+            # ...
+            spec:
+              containers:
+              - name: app-container
+                image: my-app-image
+                env:
+                - name: OPENAI_API_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: openai-api-key
+                      key: openai_api_key
+        ```
+    *   **Avoid `ConfigMaps` for Secrets:** `ConfigMaps` are for non-confidential data. Use `Secrets` for API keys.
 
 ## Frequently Asked Questions
 
-**Q: Can I hardcode my API key directly into my code?**
-**A:** Absolutely not. Hardcoding API keys is a major security risk. If your code is ever compromised or becomes public (e.g., accidentally pushed to a public Git repository), your API key will be exposed, leading to unauthorized usage, potential billing charges, and account compromise. Always use environment variables or a dedicated secret management solution.
+**Q: Why did my key stop working suddenly, even though it worked before?**
+**A:** If a previously working key suddenly throws a `401`, it's highly likely it was either revoked by an administrator (perhaps part of a security audit or accidental deletion), or it may have reached an expiration (less common for OpenAI keys but possible for others). In my experience, double-check your OpenAI dashboard for its status and consider generating a new key.
 
-**Q: My key *was* working, now it's not. What gives?**
-**A:** This usually points to one of a few issues:
-    *   **Key Revocation/Deletion:** You or someone with access to your OpenAI account might have revoked or deleted the key. Check your OpenAI API key dashboard.
-    *   **Account Issues:** Your OpenAI account might have billing problems, expired payment methods, or you might have hit usage limits that have temporarily suspended access. Check your billing and usage pages.
-    *   **Environment Change:** The environment where your application runs might have changed, causing the environment variable to no longer be loaded correctly. This is common in CI/CD pipelines or when moving between different deployment stages.
+**Q: Is it safe to hardcode my API key directly into my application code?**
+**A:** Absolutely not. Hardcoding API keys is a significant security vulnerability. It exposes your key to anyone with access to your source code repository or compiled application. Always use environment variables, `.env` files (for local dev), or dedicated secrets managers (for production cloud deployments) to handle API keys securely.
 
-**Q: Does using a VPN or proxy affect OpenAI API authentication?**
-**A:** Generally, a VPN or proxy should not directly cause a `401 Unauthorized` error, as they primarily route traffic. However, a poorly configured proxy *could* theoretically strip or modify HTTP headers, including the `Authorization` header, before the request reaches the OpenAI servers. If you suspect this, try bypassing the VPN/proxy for a test call. It's a less common cause but worth considering in complex network setups.
+**Q: I'm using `python-dotenv` but my application still can't find the `OPENAI_API_KEY`. What am I missing?**
+**A:** Ensure two things: 1) Your `.env` file is in the root directory of your project, or you're specifying its path correctly. 2) You're calling `load_dotenv()` very early in your application's bootstrap process, before any code attempts to access `os.getenv("OPENAI_API_KEY")`. Also, double-check that the variable name in your `.env` file matches `OPENAI_API_KEY` exactly, without extra spaces.
 
-**Q: I have multiple OpenAI accounts. Could I be using the wrong key?**
-**A:** Yes, this is a very common mistake. If you manage multiple OpenAI organizations or personal accounts, it's easy to copy a key from one account and try to use it with another's resources, or simply lose track of which key belongs where. Always double-check that the key you're using corresponds to the correct OpenAI account or organization you intend to access.
+**Q: My OpenAI API key works fine locally, but I get `401 Unauthorized` when deployed to production. Why?**
+**A:** This is a classic symptom of an environment variable mismatch. Your production environment (whether it's a server, container, or serverless function) is not configured with the `OPENAI_API_KEY` environment variable, or it's set with an incorrect value or name. Carefully review the environment variable settings of your production deployment target and ensure they mirror your local setup, using the correct production API key.
 
-**Q: How do I rotate my OpenAI API keys securely?**
-**A:** To rotate keys:
-    1.  Generate a new secret key from your OpenAI dashboard.
-    2.  Update all your applications and deployment environments (local `.env` files, Docker environment variables, cloud secret managers) with the new key.
-    3.  Thoroughly test your applications to ensure they are using the new key successfully.
-    4.  Once you're confident the new key is in use everywhere, delete the old key from your OpenAI dashboard. This ensures there's no downtime and limits the exposure window of the old key. Use secret management tools in production for easier rotation.
+**Q: Can I limit what an OpenAI API key can do, or create keys with specific permissions?**
+**A:** As of now, OpenAI's primary API keys generally have broad access to the models and features available to your account, subject to usage tiers and any organization-wide settings. Unlike some other platforms that offer granular permission scopes for individual keys, OpenAI's model is simpler. If you need to restrict access, it's typically done at the account or organizational level, or by carefully managing which keys are exposed to which applications.
 
 ## Related Errors
+*   *(None)*
