@@ -130,230 +130,269 @@
     <div class="article-content">
       <h1 id="git-merge-conflict-automatic-merge-failed-fix-conflicts">Git merge conflict – Automatic merge failed; fix conflicts</h1>
 <blockquote>
-<p>Encountering "Automatic merge failed" means Git cannot reconcile divergent changes; this guide explains how to fix it manually.</p>
+<p>Encountering "Automatic merge failed" means Git cannot automatically combine diverging changes; this guide explains how to fix it manually.</p>
 </blockquote>
 <h2 id="what-this-error-means">What This Error Means</h2>
-<p>When you attempt to merge one Git branch into another, you might encounter the message "Automatic merge failed; fix conflicts and then commit the result." This error isn't a showstopper; it's Git's way of telling you it needs human intervention. Specifically, it means that changes in the branch you're trying to merge (the "source" branch) and the branch you're merging into (the "target" branch, often <code>main</code> or <code>develop</code>) overlap in the same file and lines. Git, being a deterministic tool, cannot automatically decide which change should prevail. It halts the merge process, marks the conflicting areas in the affected files, and waits for you to resolve the ambiguity manually.</p>
-<p>In my experience, this message is a common sight when working in teams, especially on actively developed features. It means your repository is now in a "merging" state, awaiting your input. Until you resolve these conflicts and commit the merge, your branch remains in this intermediate state.</p>
+<p>When you attempt to merge one Git branch into another, and Git reports "Automatic merge failed; fix conflicts and then commit the result," it signifies that Git's automated merging algorithm could not reconcile differing changes in the same lines or sections of a file (or files). This isn't an error in the sense of a bug or system failure; rather, it's Git doing exactly what it's designed to do: identifying ambiguous situations where human intervention is required to decide how to integrate the disparate changes.</p>
+<p>At this point, Git pauses the merge operation. It doesn't complete the merge, nor does it automatically revert your working directory to its pre-merge state. Instead, it leaves your files with special "conflict markers" (<code>&lt;&lt;&lt;&lt;&lt;&lt;&lt;</code>, <code>=======</code>, <code>&gt;&gt;&gt;&gt;&gt;&gt;&gt;</code>) indicating the problematic sections. Your repository is in a "merging" state, and you must manually resolve these conflicts before you can complete the merge by committing the result. Until you resolve and commit, you cannot switch branches or perform other Git operations that would modify the working tree.</p>
 <h2 id="why-it-happens">Why It Happens</h2>
-<p>Git's merge algorithm is robust, capable of automatically merging changes that occur in different parts of a file or even in the same parts of different files. It uses a three-way merge strategy, comparing the common ancestor of the two branches with the latest state of each branch. It identifies what changes were made on each side.</p>
-<p>The conflict arises when Git detects that both branches have modified the <em>same specific lines</em> of code, or when one branch modifies a section of code that another branch has deleted, or vice-versa. In these scenarios, Git cannot determine the "correct" version without your guidance. It doesn't know whether to keep your changes, the other branch's changes, or a combination of both.</p>
-<p>For example, if you modify lines 5-10 of <code>index.js</code> on your feature branch, and a colleague modifies lines 7-12 of the <em>same</em> <code>index.js</code> on their branch, merging these two branches will likely result in a conflict because of the overlapping lines 7-10. Git cannot intelligently decide which specific version of those lines to retain.</p>
+<p>Git, at its core, is a content tracker designed to manage changes over time. When you merge two branches, <code>feature</code> into <code>main</code> for example, Git performs a three-way merge. It looks at three points in history: the common ancestor of <code>feature</code> and <code>main</code>, the tip of <code>feature</code>, and the tip of <code>main</code>. By comparing these, Git can usually figure out how to combine changes automatically.</p>
+<p>Conflicts arise when Git cannot unambiguously determine how to combine changes from two divergent branches. This typically occurs in a few key scenarios:</p>
+<ol>
+<li><strong>Direct Line Conflicts:</strong> Both branches modified the <em>exact same line(s)</em> in a file. Git doesn't know which version to keep.</li>
+<li><strong>Overlapping Changes:</strong> Changes were made to adjacent lines, making it difficult for Git to determine the correct order or combination.</li>
+<li><strong>File Deletion vs. Modification:</strong> One branch deleted a file that the other branch modified.</li>
+<li><strong>Renaming Conflicts:</strong> A file was renamed in one branch and modified in another, or two different files were renamed to the same new name.</li>
+</ol>
+<p>In my experience, this is a very common scenario in collaborative development, especially in teams with multiple developers working on the same features or refactoring efforts. It's a natural consequence of parallel work on a shared codebase.</p>
 <h2 id="common-causes">Common Causes</h2>
-<p>Merge conflicts are a natural part of collaborative software development. Here are some of the most common scenarios I've encountered:</p>
+<p>Understanding the common scenarios that lead to merge conflicts can help you anticipate and even prevent them:</p>
 <ul>
-<li><strong>Simultaneous Modification of the Same Lines:</strong> This is the most straightforward cause. Two developers make changes to the exact same lines of code within the same file. For example, both modify a function signature or a variable initialization.</li>
-<li><strong>Different Approaches to the Same Feature:</strong> Sometimes, two developers might independently implement parts of the same feature or fix, leading to divergent changes in related code blocks.</li>
-<li><strong>Refactoring Conflicts:</strong> One developer might refactor a section of code (renaming variables, extracting methods) while another simultaneously modifies that same original code. When merged, Git sees the refactored code and the original code as different, leading to conflicts.</li>
-<li><strong>Changes to Shared Configuration or Dependency Files:</strong> Files like <code>package.json</code>, <code>requirements.txt</code>, <code>pom.xml</code>, <code>.env</code>, or Dockerfiles are frequently modified by multiple team members. If two developers add different dependencies or configuration values, conflicts are almost guaranteed. I've seen this in production environments when multiple microservices teams update common library versions.</li>
-<li><strong>Line Ending Differences:</strong> Less common with modern Git configurations, but different operating systems (Windows vs. Unix/Linux/macOS) handle line endings differently (<code>CRLF</code> vs. <code>LF</code>). If not properly configured (e.g., <code>core.autocrlf</code>), this can sometimes lead to conflicts, especially in <code>.gitattributes</code> or scripts.</li>
-<li><strong>Long-Lived Branches:</strong> Branches that exist for a long time without being regularly merged with their target branch (<code>main</code> or <code>develop</code>) accumulate a significant number of divergent changes. When an eventual merge attempt is made, the sheer volume of differences increases the probability and complexity of conflicts.</li>
-<li><strong>File Renames/Deletions While Content is Modified:</strong> If one branch renames or deletes a file, while another branch modifies its content, Git might get confused. It needs your input to understand if the changes should be applied to the renamed file or if the deletion should take precedence.</li>
+<li><strong>Simultaneous Edits to the Same Code:</strong> This is by far the most frequent cause. Developer A modifies lines 10-15 of <code>src/App.js</code> on <code>feature-A</code>, while Developer B modifies lines 12-18 of the <em>same</em> <code>src/App.js</code> on <code>feature-B</code>. When <code>feature-A</code> is merged, then <code>feature-B</code> is merged, a conflict is highly likely.</li>
+<li><strong>Long-Lived Feature Branches:</strong> When feature branches are kept separate from the <code>main</code> or <code>develop</code> branch for extended periods, the <code>main</code> branch can diverge significantly. When it's finally time to merge the feature branch back, there can be numerous conflicts due to changes accumulated over weeks or months. I've seen this in production when teams neglect to regularly rebase or merge <code>main</code> into their feature branches.</li>
+<li><strong>Refactoring vs. Feature Work:</strong> One developer might be refactoring a common utility file or component (e.g., changing function signatures, moving logic), while another is building a new feature that uses the <em>old</em> version of that utility. When both branches converge, conflicts are almost guaranteed.</li>
+<li><strong>Different Line Endings or Editor Configurations:</strong> Though less common with modern IDEs and Git's <code>core.autocrlf</code> setting, inconsistent line endings (CRLF vs. LF) across different operating systems (Windows vs. macOS/Linux) can sometimes trigger "phantom" conflicts where Git perceives every line as changed. Properly configuring <code>.gitattributes</code> can mitigate this.</li>
+<li><strong>Merge Strategy Overrides:</strong> While Git's default recursive merge strategy is usually robust, advanced users might experiment with different strategies (e.g., <code>resolve</code>, <code>ours</code>, <code>theirs</code>). If not used carefully, these can sometimes complicate rather than simplify merges, though they are rarely the <em>direct</em> cause of a conflict being presented.</li>
 </ul>
 <h2 id="step-by-step-fix">Step-by-Step Fix</h2>
-<p>Resolving a merge conflict can seem daunting at first, but it follows a clear, repeatable process.</p>
+<p>Resolving a Git merge conflict involves a clear sequence of steps. Let's walk through it.</p>
 <ol>
 <li>
 <p><strong>Identify the Conflict:</strong><br />
-    The first step is always to run <code>git status</code>. This command will tell you that you are in the middle of a merge and list the files that have conflicts.</p>
-<p><code>bash
-git status</code></p>
-<p>You'll see output similar to this:</p>
-<p>```<br />
-On branch feature/my-new-feature<br />
-You have unmerged paths.<br />
-  (fix conflicts and run "git commit")<br />
-  (use "git merge --abort" to abandon merge)</p>
+    The first thing you'll notice is the error message in your terminal after a <code>git merge</code> or <code>git pull</code> command.<br />
+<code>bash
+    $ git merge feature/new-feature
+    Auto-merging src/components/Header.js
+    CONFLICT (content): Merge conflict in src/components/Header.js
+    Automatic merge failed; fix conflicts and then commit the result.</code><br />
+    Immediately run <code>git status</code> to see which files are in conflict:<br />
+    ```bash<br />
+    $ git status<br />
+    On branch main<br />
+    You have unmerged paths.<br />
+      (fix conflicts and run "git commit")<br />
+      (use "git merge --abort" to abandon merge)</p>
 <p>Unmerged paths:<br />
   (use "git add <file>..." to mark resolution)<br />
-        both modified:   src/components/MyComponent.js<br />
-        both modified:   README.md</p>
+        both modified:   src/components/Header.js</p>
 <p>no changes added to commit (use "git add" and/or "git commit -a")<br />
-```</p>
+<code>``
+This output tells you</code>src/components/Header.js` is the problem file.</p>
 </li>
 <li>
-<p><strong>Open Conflicting Files:</strong><br />
-    Open each file listed under "Unmerged paths" in your favorite text editor or IDE. Inside these files, Git inserts special markers to highlight the conflicting areas.</p>
-<p>```<br />
-&lt;&lt;&lt;&lt;&lt;&lt;&lt; HEAD<br />
-console.log("Feature A implementation.");<br />
-function calculateArea(length, width) {<br />
-    return length * width;<br />
-}<br />
-=======<br />
-console.log("Bug fix for existing feature.");<br />
-function calculateArea(l, w) {<br />
-    // Updated logic for edge cases<br />
-    if (l &lt; 0 || w &lt; 0) return 0;<br />
-    return l * w;<br />
-}</p>
-<blockquote>
-<blockquote>
-<blockquote>
-<blockquote>
-<blockquote>
-<blockquote>
-<blockquote>
-<p>feature/another-feature<br />
-```</p>
-</blockquote>
-</blockquote>
-</blockquote>
-</blockquote>
-</blockquote>
-</blockquote>
-</blockquote>
+<p><strong>Open Conflicted Files and Understand Markers:</strong><br />
+    Open the identified file(s) in your text editor. You'll see special markers inserted by Git:<br />
+<code>javascript
+    // ... some code above
+    &lt;&lt;&lt;&lt;&lt;&lt;&lt; HEAD
+    function renderHeader(title) {
+      console.log('Rendering main header:', title);
+      return `&lt;header&gt;&lt;h1&gt;${title}&lt;/h1&gt;&lt;/header&gt;`;
+    }
+    =======
+    function renderHeader(headerText) {
+      console.log('Rendering feature header:', headerText);
+      return `&lt;header class="feature-header"&gt;&lt;h2&gt;${headerText}&lt;/h2&gt;&lt;/header&gt;`;
+    }
+    &gt;&gt;&gt;&gt;&gt;&gt;&gt; feature/new-feature
+    // ... some code below</code></p>
 <ul>
-<li><code>&lt;&lt;&lt;&lt;&lt;&lt;&lt; HEAD</code>: Marks the beginning of the changes from the current branch you're merging <em>into</em>. (<code>HEAD</code> refers to your current branch).</li>
+<li><code>&lt;&lt;&lt;&lt;&lt;&lt;&lt; HEAD</code>: Marks the beginning of the changes from your <em>current</em> branch (the one you are merging <em>into</em>). <code>HEAD</code> refers to the tip of your current branch (<code>main</code> in this example).</li>
 <li><code>=======</code>: Separates the changes from the two branches.</li>
-<li><code>&gt;&gt;&gt;&gt;&gt;&gt;&gt; &lt;branch-name&gt;</code>: Marks the end of the changes from the branch you're merging <em>from</em>. (<code>feature/another-feature</code> in this example).</li>
+<li><code>&gt;&gt;&gt;&gt;&gt;&gt;&gt; feature/new-feature</code>: Marks the end of the changes from the <em>incoming</em> branch (<code>feature/new-feature</code> in this example).</li>
+<li>The content between <code>&lt;&lt;&lt;&lt;&lt;&lt;&lt; HEAD</code> and <code>=======</code> is what's on your <code>HEAD</code> branch.</li>
+<li>The content between <code>=======</code> and <code>&gt;&gt;&gt;&gt;&gt;&gt;&gt; feature/new-feature</code> is what's on the branch you are merging from.</li>
 </ul>
 </li>
 <li>
 <p><strong>Manually Resolve the Conflict:</strong><br />
-    Carefully examine the code between the markers. You need to decide which changes to keep. You have several options:</p>
-<ul>
-<li><strong>Keep "your" changes (from <code>HEAD</code>):</strong> Delete the <code>&lt;&lt;&lt;&lt;&lt;&lt;&lt;</code>, <code>=======</code>, <code>&gt;&gt;&gt;&gt;&gt;&gt;&gt;</code> markers and the code from the other branch.</li>
-<li><strong>Keep "their" changes (from the merged branch):</strong> Delete the <code>&lt;&lt;&lt;&lt;&lt;&lt;&lt;</code>, <code>=======</code>, <code>&gt;&gt;&gt;&gt;&gt;&gt;&gt;</code> markers and the code from <code>HEAD</code>.</li>
-<li><strong>Combine both:</strong> Integrate parts of both changes, modifying the code to correctly reflect the desired outcome. This is often the most common scenario.</li>
-<li><strong>Write entirely new code:</strong> If neither version is correct, you might need to rewrite the conflicting section.</li>
-</ul>
-<p>After resolution, the file should contain only the final, correct code, with no Git markers. For the example above, a resolution might look like:</p>
-<p><code>javascript
-console.log("Bug fix for existing feature, with new feature logging.");
-function calculateArea(length, width) { // Using descriptive variable names
-    // Updated logic for edge cases
-    if (length &lt; 0 || width &lt; 0) return 0;
-    return length * width;
-}</code></p>
+    Edit the file to combine the changes in the way that makes sense for your project. You must manually delete the <code>&lt;&lt;&lt;&lt;&lt;&lt;&lt;</code>, <code>=======</code>, and <code>&gt;&gt;&gt;&gt;&gt;&gt;&gt;</code> lines.<br />
+    For example, you might decide to keep parts of both, or only one, or write entirely new code:<br />
+<code>javascript
+    // ... some code above
+    function renderHeader(title) {
+      console.log('Rendering combined header:', title);
+      return `&lt;header class="app-header"&gt;&lt;h1&gt;${title}&lt;/h1&gt;&lt;/header&gt;`; // Combined logic
+    }
+    // ... some code below</code></p>
 </li>
 <li>
-<p><strong>Mark the File as Resolved:</strong><br />
-    Once you've edited a file and removed all conflict markers, you need to tell Git that you've resolved it.</p>
-<p><code>bash
-git add src/components/MyComponent.js
-git add README.md</code></p>
-<p>Repeat this for all conflicting files. You can verify your progress with <code>git status</code>; resolved files will move from "Unmerged paths" to "Changes to be committed."</p>
+<p><strong>Add Resolved Files to Staging Area:</strong><br />
+    Once you've resolved all conflicts in a file and removed the markers, you need to tell Git that the file is ready.<br />
+<code>bash
+    $ git add src/components/Header.js</code><br />
+    If you have multiple conflicting files, repeat this <code>git add</code> command for each one. You can check <code>git status</code> again; it should show the file under "Changes to be committed" instead of "Unmerged paths."</p>
 </li>
 <li>
 <p><strong>Commit the Merge:</strong><br />
-    After all conflicts are resolved and added, you can complete the merge by committing. Git will pre-populate a commit message for you, usually indicating it's a "Merge branch 'feature/another-feature'". It's good practice to keep this message, possibly adding details about the conflict resolution if it was particularly complex.</p>
-<p><code>bash
-git commit</code></p>
-<p>This will open your configured text editor with the merge commit message. Save and close it to complete the commit.</p>
+    After all conflicts are resolved and added, complete the merge by committing. Git will typically pre-populate the commit message for a merge commit. It's usually good practice to keep this message, possibly adding details about the specific resolutions if they were complex.<br />
+<code>bash
+    $ git commit</code><br />
+    This will open your default editor (e.g., Vim, Nano). Save and close the file to complete the commit. The default message will look something like:<br />
+    ```<br />
+    Merge branch 'feature/new-feature'</p>
+<h1 id="conflicts">Conflicts:</h1>
+<h1 id="srccomponentsheaderjs">src/components/Header.js</h1>
+<h1 id="_1"></h1>
+<h1 id="it-looks-like-you-may-be-merging-a-branch">It looks like you may be merging a branch.</h1>
+<h1 id="if-this-is-not-correct-please-remove-the-file">If this is not correct, please remove the file</h1>
+<h1 id="gitmerge_msg">.git/MERGE_MSG</h1>
+<h1 id="and-try-again">and try again.</h1>
+<h1 id="please-enter-the-commit-message-for-your-changes-lines-starting">Please enter the commit message for your changes. Lines starting</h1>
+<h1 id="with-will-be-ignored-and-an-empty-message-aborts-the-commit">with '#' will be ignored, and an empty message aborts the commit.</h1>
+<h1 id="on-branch-main">On branch main</h1>
+<h1 id="you-have-unmerged-paths">You have unmerged paths.</h1>
+<h1 id="all-conflicts-fixed-run-git-commit">(all conflicts fixed: run "git commit")</h1>
+<h1 id="_2"></h1>
+<h1 id="changes-to-be-committed">Changes to be committed:</h1>
+<h1 id="modified-srccomponentsheaderjs">modified:   src/components/Header.js</h1>
+<h1 id="_3"></h1>
+<p>```</p>
 </li>
 <li>
-<p><strong>Optional: Use a Merge Tool:</strong><br />
-    For complex conflicts, especially with many files, a visual merge tool can be invaluable. Git can integrate with tools like KDiff3, Beyond Compare, VS Code's built-in merge editor, or IntelliJ's merge tool. You can initiate these with:</p>
-<p><code>bash
-git mergetool</code></p>
-<p>This will open the tool for each conflicting file, allowing you to visually compare and pick changes. After saving and closing the merge tool for a file, Git will automatically <code>add</code> that file for you.</p>
-</li>
-<li>
-<p><strong>Optional: Abort the Merge:</strong><br />
-    If you get stuck or decide you want to restart the merge process, you can abort it at any time before committing.</p>
-<p><code>bash
-git merge --abort</code></p>
-<p>This command will reset your branch to the state it was in <em>before</em> you started the merge, discarding any conflict resolution you might have done. I've often used this when I realize the conflict is more complex than anticipated and I need to pull in upstream changes first.</p>
+<p><strong>Verify (Optional but Recommended):</strong><br />
+    You can use <code>git log --oneline --graph</code> to visualize your commit history and ensure the merge commit was created correctly.</p>
 </li>
 </ol>
 <h2 id="code-examples">Code Examples</h2>
-<p>Here are some concise, copy-paste ready code examples for typical merge conflict scenarios.</p>
-<p><strong>Initial <code>git status</code> when a conflict occurs:</strong></p>
-<div class="highlight"><pre><span></span><code>git<span class="w"> </span>status
+<p>Here's a concrete example of a conflict and its resolution.</p>
+<p><strong>Original file <code>data.js</code> on <code>main</code> branch:</strong></p>
+<div class="highlight"><pre><span></span><code><span class="c1">// data.js</span>
+<span class="kd">const</span><span class="w"> </span><span class="nx">users</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span>
+<span class="w">  </span><span class="p">{</span><span class="w"> </span><span class="nx">id</span><span class="o">:</span><span class="w"> </span><span class="mf">1</span><span class="p">,</span><span class="w"> </span><span class="nx">name</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;Alice&#39;</span><span class="w"> </span><span class="p">},</span>
+<span class="w">  </span><span class="p">{</span><span class="w"> </span><span class="nx">id</span><span class="o">:</span><span class="w"> </span><span class="mf">2</span><span class="p">,</span><span class="w"> </span><span class="nx">name</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;Bob&#39;</span><span class="w"> </span><span class="p">},</span>
+<span class="p">];</span>
+
+<span class="kd">function</span><span class="w"> </span><span class="nx">getUsers</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="nx">users</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="k">export</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">getUsers</span><span class="w"> </span><span class="p">};</span>
 </code></pre></div>
 
-<p>Output:</p>
-<div class="highlight"><pre><span></span><code>On branch my-feature
-You have unmerged paths.
-  (fix conflicts and run &quot;git commit&quot;)
-  (use &quot;git merge --abort&quot; to abandon merge)
+<p><strong><code>feature/add-charlie</code> branch modifies <code>data.js</code>:</strong></p>
+<div class="highlight"><pre><span></span><code><span class="c1">// data.js</span>
+<span class="kd">const</span><span class="w"> </span><span class="nx">users</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span>
+<span class="w">  </span><span class="p">{</span><span class="w"> </span><span class="nx">id</span><span class="o">:</span><span class="w"> </span><span class="mf">1</span><span class="p">,</span><span class="w"> </span><span class="nx">name</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;Alice&#39;</span><span class="w"> </span><span class="p">},</span>
+<span class="w">  </span><span class="p">{</span><span class="w"> </span><span class="nx">id</span><span class="o">:</span><span class="w"> </span><span class="mf">2</span><span class="p">,</span><span class="w"> </span><span class="nx">name</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;Bob&#39;</span><span class="w"> </span><span class="p">},</span>
+<span class="w">  </span><span class="p">{</span><span class="w"> </span><span class="nx">id</span><span class="o">:</span><span class="w"> </span><span class="mf">3</span><span class="p">,</span><span class="w"> </span><span class="nx">name</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;Charlie&#39;</span><span class="w"> </span><span class="p">},</span><span class="w"> </span><span class="c1">// Added Charlie</span>
+<span class="p">];</span>
 
-Unmerged paths:
-  (use &quot;git add &lt;file&gt;...&quot; to mark resolution)
-    both modified:   src/data.js
-    both modified:   styles/main.css
+<span class="kd">function</span><span class="w"> </span><span class="nx">getUsers</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="nx">users</span><span class="p">;</span>
+<span class="p">}</span>
 
-no changes added to commit (use &quot;git add&quot; and/or &quot;git commit -a&quot;)
+<span class="k">export</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">getUsers</span><span class="w"> </span><span class="p">};</span>
 </code></pre></div>
 
-<p><strong>Content of a conflicting file (<code>src/data.js</code>):</strong></p>
-<div class="highlight"><pre><span></span><code><span class="kd">const</span><span class="w"> </span><span class="nx">API_URL</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;https://api.example.com/v1&quot;</span><span class="p">;</span>
+<p><strong><code>feature/add-diana</code> branch also modifies <code>data.js</code> (but concurrently):</strong></p>
+<div class="highlight"><pre><span></span><code><span class="c1">// data.js</span>
+<span class="kd">const</span><span class="w"> </span><span class="nx">users</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span>
+<span class="w">  </span><span class="p">{</span><span class="w"> </span><span class="nx">id</span><span class="o">:</span><span class="w"> </span><span class="mf">1</span><span class="p">,</span><span class="w"> </span><span class="nx">name</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;Alice&#39;</span><span class="w"> </span><span class="p">},</span>
+<span class="w">  </span><span class="p">{</span><span class="w"> </span><span class="nx">id</span><span class="o">:</span><span class="w"> </span><span class="mf">2</span><span class="p">,</span><span class="w"> </span><span class="nx">name</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;Bob&#39;</span><span class="w"> </span><span class="p">},</span>
+<span class="w">  </span><span class="p">{</span><span class="w"> </span><span class="nx">id</span><span class="o">:</span><span class="w"> </span><span class="mf">4</span><span class="p">,</span><span class="w"> </span><span class="nx">name</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;Diana&#39;</span><span class="w"> </span><span class="p">},</span><span class="w"> </span><span class="c1">// Added Diana</span>
+<span class="p">];</span>
 
+<span class="kd">function</span><span class="w"> </span><span class="nx">getUsers</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="nx">users</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="k">export</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">getUsers</span><span class="w"> </span><span class="p">};</span>
+</code></pre></div>
+
+<p><strong>After merging <code>feature/add-charlie</code> into <code>main</code>, then trying to merge <code>feature/add-diana</code> into <code>main</code>:</strong></p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>git<span class="w"> </span>merge<span class="w"> </span>feature/add-diana
+Auto-merging<span class="w"> </span>data.js
+CONFLICT<span class="w"> </span><span class="o">(</span>content<span class="o">)</span>:<span class="w"> </span>Merge<span class="w"> </span>conflict<span class="w"> </span><span class="k">in</span><span class="w"> </span>data.js
+Automatic<span class="w"> </span>merge<span class="w"> </span>failed<span class="p">;</span><span class="w"> </span>fix<span class="w"> </span>conflicts<span class="w"> </span>and<span class="w"> </span><span class="k">then</span><span class="w"> </span>commit<span class="w"> </span>the<span class="w"> </span>result.
+</code></pre></div>
+
+<p><strong>The conflicted <code>data.js</code> file:</strong></p>
+<div class="highlight"><pre><span></span><code><span class="c1">// data.js</span>
+<span class="kd">const</span><span class="w"> </span><span class="nx">users</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span>
+<span class="w">  </span><span class="p">{</span><span class="w"> </span><span class="nx">id</span><span class="o">:</span><span class="w"> </span><span class="mf">1</span><span class="p">,</span><span class="w"> </span><span class="nx">name</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;Alice&#39;</span><span class="w"> </span><span class="p">},</span>
+<span class="w">  </span><span class="p">{</span><span class="w"> </span><span class="nx">id</span><span class="o">:</span><span class="w"> </span><span class="mf">2</span><span class="p">,</span><span class="w"> </span><span class="nx">name</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;Bob&#39;</span><span class="w"> </span><span class="p">},</span>
 <span class="o">&lt;&lt;&lt;&lt;&lt;&lt;&lt;</span><span class="w"> </span><span class="nx">HEAD</span>
-<span class="kd">const</span><span class="w"> </span><span class="nx">ITEMS_PER_PAGE</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">10</span><span class="p">;</span><span class="w"> </span><span class="c1">// New pagination setting</span>
-<span class="kd">function</span><span class="w"> </span><span class="nx">fetchData</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="c1">// Logic for fetching items with pagination</span>
-<span class="w">    </span><span class="nx">console</span><span class="p">.</span><span class="nx">log</span><span class="p">(</span><span class="s2">&quot;Fetching data with pagination.&quot;</span><span class="p">);</span>
-<span class="p">}</span>
+<span class="w">  </span><span class="p">{</span><span class="w"> </span><span class="nx">id</span><span class="o">:</span><span class="w"> </span><span class="mf">3</span><span class="p">,</span><span class="w"> </span><span class="nx">name</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;Charlie&#39;</span><span class="w"> </span><span class="p">},</span>
 <span class="o">=======</span>
-<span class="kd">const</span><span class="w"> </span><span class="nx">CACHE_DURATION</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">3600</span><span class="p">;</span><span class="w"> </span><span class="c1">// Cache duration in seconds</span>
-<span class="kd">function</span><span class="w"> </span><span class="nx">fetchData</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="c1">// Optimized data fetching logic</span>
-<span class="w">    </span><span class="nx">console</span><span class="p">.</span><span class="nx">log</span><span class="p">(</span><span class="s2">&quot;Optimized data fetch initiated.&quot;</span><span class="p">);</span>
+<span class="w">  </span><span class="p">{</span><span class="w"> </span><span class="nx">id</span><span class="o">:</span><span class="w"> </span><span class="mf">4</span><span class="p">,</span><span class="w"> </span><span class="nx">name</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;Diana&#39;</span><span class="w"> </span><span class="p">},</span>
+<span class="o">&gt;&gt;&gt;&gt;&gt;&gt;&gt;</span><span class="w"> </span><span class="nx">feature</span><span class="o">/</span><span class="nx">add</span><span class="o">-</span><span class="nx">diana</span>
+<span class="p">];</span>
+
+<span class="kd">function</span><span class="w"> </span><span class="nx">getUsers</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="nx">users</span><span class="p">;</span>
 <span class="p">}</span>
-<span class="o">&gt;&gt;&gt;&gt;&gt;&gt;&gt;</span><span class="w"> </span><span class="nx">develop</span>
+
+<span class="k">export</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">getUsers</span><span class="w"> </span><span class="p">};</span>
 </code></pre></div>
 
-<p><strong>Resolving the conflict (manual edit of <code>src/data.js</code>):</strong></p>
-<div class="highlight"><pre><span></span><code><span class="kd">const</span><span class="w"> </span><span class="nx">API_URL</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;https://api.example.com/v1&quot;</span><span class="p">;</span>
+<p><strong>Resolution (Manually edit <code>data.js</code>):</strong></p>
+<div class="highlight"><pre><span></span><code><span class="c1">// data.js</span>
+<span class="kd">const</span><span class="w"> </span><span class="nx">users</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span>
+<span class="w">  </span><span class="p">{</span><span class="w"> </span><span class="nx">id</span><span class="o">:</span><span class="w"> </span><span class="mf">1</span><span class="p">,</span><span class="w"> </span><span class="nx">name</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;Alice&#39;</span><span class="w"> </span><span class="p">},</span>
+<span class="w">  </span><span class="p">{</span><span class="w"> </span><span class="nx">id</span><span class="o">:</span><span class="w"> </span><span class="mf">2</span><span class="p">,</span><span class="w"> </span><span class="nx">name</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;Bob&#39;</span><span class="w"> </span><span class="p">},</span>
+<span class="w">  </span><span class="p">{</span><span class="w"> </span><span class="nx">id</span><span class="o">:</span><span class="w"> </span><span class="mf">3</span><span class="p">,</span><span class="w"> </span><span class="nx">name</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;Charlie&#39;</span><span class="w"> </span><span class="p">},</span><span class="w"> </span><span class="c1">// Kept Charlie</span>
+<span class="w">  </span><span class="p">{</span><span class="w"> </span><span class="nx">id</span><span class="o">:</span><span class="w"> </span><span class="mf">4</span><span class="p">,</span><span class="w"> </span><span class="nx">name</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;Diana&#39;</span><span class="w"> </span><span class="p">},</span><span class="w">   </span><span class="c1">// Also kept Diana</span>
+<span class="p">];</span>
 
-<span class="kd">const</span><span class="w"> </span><span class="nx">ITEMS_PER_PAGE</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">10</span><span class="p">;</span><span class="w"> </span><span class="c1">// New pagination setting</span>
-<span class="kd">const</span><span class="w"> </span><span class="nx">CACHE_DURATION</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">3600</span><span class="p">;</span><span class="w"> </span><span class="c1">// Cache duration in seconds</span>
-
-<span class="kd">function</span><span class="w"> </span><span class="nx">fetchData</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="c1">// Combined logic: Fetching data with pagination and optimized caching</span>
-<span class="w">    </span><span class="nx">console</span><span class="p">.</span><span class="nx">log</span><span class="p">(</span><span class="s2">&quot;Fetching data with pagination and caching strategy.&quot;</span><span class="p">);</span>
-<span class="w">    </span><span class="c1">// ... further combined logic ...</span>
+<span class="kd">function</span><span class="w"> </span><span class="nx">getUsers</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="nx">users</span><span class="p">;</span>
 <span class="p">}</span>
+
+<span class="k">export</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">getUsers</span><span class="w"> </span><span class="p">};</span>
 </code></pre></div>
 
-<p><strong>Adding the resolved file:</strong></p>
-<div class="highlight"><pre><span></span><code>git<span class="w"> </span>add<span class="w"> </span>src/data.js
-git<span class="w"> </span>add<span class="w"> </span>styles/main.css<span class="w"> </span><span class="c1"># If styles/main.css was also conflicted and resolved</span>
+<p><strong>Commands to complete the merge:</strong></p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>git<span class="w"> </span>add<span class="w"> </span>data.js
+$<span class="w"> </span>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;Merge branch &#39;feature/add-diana&#39; resolving user list conflict&quot;</span>
 </code></pre></div>
 
-<p><strong>Committing the merge:</strong></p>
-<div class="highlight"><pre><span></span><code>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;Merge branch &#39;develop&#39; into my-feature, resolving conflicts&quot;</span>
+<p><strong>Using <code>git mergetool</code>:</strong><br />
+For more complex conflicts, or if you prefer a visual interface, Git allows you to use external merge tools.</p>
+<div class="highlight"><pre><span></span><code>$<span class="w"> </span>git<span class="w"> </span>mergetool
 </code></pre></div>
 
-<p><strong>Using <code>git mergetool</code>:</strong></p>
-<div class="highlight"><pre><span></span><code>git<span class="w"> </span>mergetool
-</code></pre></div>
-
-<p>(This will launch your configured merge tool for each conflicting file.)</p>
-<p><strong>Aborting a merge:</strong></p>
+<p>This command will launch your configured merge tool (e.g., <code>Kdiff3</code>, <code>Beyond Compare</code>, <code>VS Code</code>'s built-in tool, etc.) for each conflicted file. The tool typically presents three or four panes: the common ancestor, your branch's version, the incoming branch's version, and the resulting merged file. Once you save and close the tool, Git treats the file as resolved, and you can proceed with <code>git add</code> and <code>git commit</code>.</p>
+<h2 id="environment-specific-notes">Environment-Specific Notes</h2>
+<p>While the core mechanics of Git merge conflicts remain consistent, the context in which you encounter and resolve them can vary slightly.</p>
+<ul>
+<li><strong>Local Development:</strong> This is where you'll most frequently resolve conflicts. Modern IDEs like VS Code, IntelliJ IDEA, and others have excellent built-in merge conflict resolution UIs. They often highlight the conflicting sections, provide "Accept Current Change," "Accept Incoming Change," and "Accept Both Changes" buttons, making the manual process much smoother than editing raw text files. Many developers also configure <code>git mergetool</code> to launch their preferred external diff/merge utility.</li>
+<li><strong>Cloud-Based Git Platforms (GitHub, GitLab, Bitbucket, Azure DevOps):</strong> These platforms are designed to <em>prevent</em> merge conflicts from reaching the main branch. When you create a Pull Request (PR) or Merge Request (MR), the platform will often check for mergeability. If it detects a conflict, it will explicitly state that the branch cannot be merged automatically. In such cases, the resolution <em>must</em> happen locally. You would pull the <code>main</code> branch into your feature branch (e.g., <code>git checkout feature-branch &amp;&amp; git pull origin main</code>), resolve the conflicts, commit the resolution, and then push your feature branch back to the remote. The PR/MR will then automatically update and show as mergeable.</li>
+<li><strong>CI/CD Pipelines:</strong> Merge conflicts primarily occur <em>before</em> code enters a CI/CD pipeline, as they prevent the merge operation itself. However, if a conflict were somehow overlooked (e.g., pushed without resolution, or a Fast-Forward merge was attempted and then reverted), a subsequent build or deployment step that relies on a clean, merged codebase could fail. More commonly, if a merge is attempted as part of an automated workflow (e.g., auto-merging approved PRs), and a conflict exists, the automation will simply halt with the "Automatic merge failed" error. It's a gatekeeper, ensuring manual review for ambiguous changes.</li>
+<li><strong>Docker/Containerized Development:</strong> Docker itself doesn't directly cause or resolve merge conflicts. Your Git repository lives on your host machine (or within a development container if you're using something like VS Code Dev Containers). The conflict resolution process is identical to local development. The main connection point is ensuring that your local Git configuration (especially around line endings) is consistent, to avoid conflicts caused by environmental differences between your host and a potential CI/CD container.</li>
+</ul>
+<h2 id="frequently-asked-questions">Frequently Asked Questions</h2>
+<p><strong>Q: Should I <code>git rebase</code> instead of <code>git merge</code> to avoid conflicts?</strong><br />
+<strong>A:</strong> <code>git rebase</code> can create a cleaner, linear history by replaying your commits on top of another branch, which might reduce the number of merge conflicts compared to a traditional <code>git merge</code>. However, rebasing itself can also lead to conflicts (known as rebase conflicts), which you must resolve. The primary difference is that <code>rebase</code> rewrites history, making it unsuitable for branches that have already been pushed and shared with others. For feature branches you're working on locally, rebasing can be very clean. For merging shared branches back into <code>main</code>, a standard <code>git merge</code> is generally safer as it preserves history.</p>
+<p><strong>Q: What if I want to abandon the merge conflict altogether?</strong><br />
+<strong>A:</strong> If you find yourself in a merge conflict state and decide you don't want to proceed with the merge, perhaps because the changes are too complex or you need more context, you can abort the merge.</p>
 <div class="highlight"><pre><span></span><code>git<span class="w"> </span>merge<span class="w"> </span>--abort
 </code></pre></div>
 
-<h2 id="environment-specific-notes">Environment-Specific Notes</h2>
-<p>While the core Git merge conflict resolution process remains consistent, its implications and typical workflows can vary across different development environments.</p>
-<ul>
-<li><strong>Local Development:</strong> This is where merge conflicts are almost exclusively resolved. Modern IDEs like VS Code, IntelliJ IDEA, and others have excellent built-in merge editors that simplify the process. They often highlight changes side-by-side or provide a three-way view (local, remote, merged output) with buttons to accept "Current Change," "Incoming Change," or "Both." This significantly streamlines manual resolution, making <code>git mergetool</code> less critical for many developers. For example, VS Code's merge editor is now my go-to for most text-based conflicts.</li>
-<li><strong>Cloud CI/CD Pipelines (e.g., GitHub Actions, GitLab CI, Jenkins):</strong> Merge conflicts typically prevent a pull request (or merge request) from being merged into the target branch. The CI/CD pipeline often won't even start a build if the merge fails locally (e.g., when GitHub checks for mergeability). If the conflict is only discovered deeper in the build process (rare for simple merge conflicts, more common for semantic issues), the build will simply fail. The resolution, however, <em>always</em> happens on a local developer machine. Once resolved and pushed, the CI/CD pipeline can proceed. It's a key reason why keeping branches up-to-date with <code>main</code> is important for fast feedback cycles.</li>
-<li><strong>Docker Environments:</strong> If your merge conflict lies within a <code>Dockerfile</code>, <code>docker-compose.yml</code>, or any files crucial for building or running your Docker containers, resolving it locally is critical before rebuilding your images. A conflicted <code>Dockerfile</code> will simply fail the <code>docker build</code> command. The same applies to application code; if the merged code introduces syntax errors due to an unresolved conflict, the application inside the container will fail to start or operate correctly. Always resolve, then rebuild (<code>docker-compose build</code> or <code>docker build .</code>) and retest.</li>
-<li><strong>Monorepos:</strong> Monorepos, where multiple projects or services reside in a single repository, can sometimes increase the <em>frequency</em> of merge conflicts. This is because changes to shared tooling, foundational libraries, or common configuration files (<code>.prettierrc</code>, <code>tsconfig.json</code>, build scripts) can impact a wider surface area. While the resolution process itself is the same, developers need to be acutely aware of the broader impact of their changes across services when resolving these conflicts. I've often seen conflicts in a root <code>package.json</code> where different teams add new scripts or dependencies.</li>
-</ul>
-<h2 id="frequently-asked-questions">Frequently Asked Questions</h2>
-<p><strong>Q: Can I prevent merge conflicts entirely?</strong><br />
-<strong>A:</strong> Not entirely, as they are inherent to collaborative development. However, you can significantly reduce their occurrence and complexity. Strategies include:<br />
-*   <strong>Feature branches:</strong> Keep feature branches small and short-lived.<br />
-*   <strong>Frequent merging/rebasing:</strong> Regularly pull changes from your target branch (e.g., <code>main</code>) into your feature branch to stay up-to-date.<br />
-*   <strong>Good communication:</strong> Coordinate with teammates about who is working on what files.<br />
-*   <strong>Atomic commits:</strong> Make small, focused commits that are easier to merge.</p>
-<p><strong>Q: What happens if I accidentally commit the merge markers (<code>&lt;&lt;&lt;&lt;&lt;&lt;&lt;</code>, <code>=======</code>, <code>&gt;&gt;&gt;&gt;&gt;&gt;&gt;</code>)?</strong><br />
-<strong>A:</strong> If you realize you've committed the markers, your code will likely break, and Git will see those markers as part of your content. You need to undo that commit. The simplest way is to use <code>git reset --soft HEAD~1</code> (which will uncommit but keep your changes staged), then fix the files, <code>git add</code> them again, and <code>git commit</code> properly. If the commit has already been pushed and others have pulled it, you might need <code>git revert</code> to create a new commit that undoes the problematic one.</p>
-<p><strong>Q: How do I handle conflicts in binary files (e.g., images, <code>.docx</code> files)?</strong><br />
-<strong>A:</strong> Git cannot perform a three-way merge on binary files. When a binary file conflicts, Git will typically list it as "both modified" but won't show markers in the file. You must manually decide which version to keep. You can do this by using <code>git checkout --ours &lt;filename&gt;</code> to keep your version, or <code>git checkout --theirs &lt;filename&gt;</code> to keep the version from the branch you're merging from. After choosing, <code>git add &lt;filename&gt;</code> and then <code>git commit</code>.</p>
-<p><strong>Q: Should I always use <code>git mergetool</code>?</strong><br />
-<strong>A:</strong> It depends on your preference and the complexity of the conflict. For simple text conflicts in one or two files, manually editing directly in your IDE might be faster. For complex conflicts involving many files or intricate code changes, a visual merge tool often provides a clearer overview and simplifies the decision-making process. Modern IDEs often offer excellent built-in merge editors that serve this purpose well.</p>
-<p><strong>Q: What's the difference between a merge conflict and a rebase conflict?</strong><br />
-<strong>A:</strong> The mechanism for resolving the conflict markers is essentially the same. The main difference lies in <em>when</em> and <em>how many times</em> conflicts can occur. During a <code>git merge</code>, conflicts are presented once for the entire set of changes. During a <code>git rebase</code>, Git applies your branch's commits one by one onto the target branch. If a conflict occurs, you resolve it, <code>git add</code> the file(s), and then <code>git rebase --continue</code>. This process can repeat for <em>each</em> of your commits if they conflict with the rebased changes. This makes rebase conflicts potentially more tedious but results in a cleaner, linear history.</p>
+<p>This command will revert your working directory and Git index to the state they were in before you started the merge, effectively canceling the operation.</p>
+<p><strong>Q: I accidentally committed the conflict markers! How do I fix it?</strong><br />
+<strong>A:</strong> If you accidentally commit a file with <code>&lt;&lt;&lt;&lt;&lt;&lt;&lt;</code>, <code>=======</code>, and <code>&gt;&gt;&gt;&gt;&gt;&gt;&gt;</code> markers, you need to amend that commit.</p>
+<div class="highlight"><pre><span></span><code>git<span class="w"> </span>reset<span class="w"> </span>--soft<span class="w"> </span>HEAD~1<span class="w">   </span><span class="c1"># Uncommit the last commit, keep changes in staging</span>
+<span class="c1"># or</span>
+<span class="c1"># git restore --staged &lt;file-with-conflict-markers&gt; # to remove file from staging</span>
+<span class="c1"># Then open the file, resolve conflicts, add it, and recommit normally.</span>
+</code></pre></div>
+
+<p>Alternatively, if it's the <em>very last</em> commit, you can resolve the conflicts, <code>git add</code> the files, and then use:</p>
+<div class="highlight"><pre><span></span><code>git<span class="w"> </span>commit<span class="w"> </span>--amend<span class="w"> </span>--no-edit
+</code></pre></div>
+
+<p>This will replace the previous commit (the one with markers) with a new commit containing your resolved changes, keeping the same commit message. If you've already pushed this faulty commit to a remote, you will need to <code>git push --force</code> or <code>git push --force-with-lease</code>, which can be risky on shared branches. Communicate with your team first.</p>
+<p><strong>Q: How can I prevent merge conflicts in the future?</strong><br />
+<strong>A:</strong> While conflicts are inevitable in collaborative development, you can minimize their frequency and severity:<br />
+*   <strong>Pull frequently:</strong> Regularly <code>git pull</code> (or <code>git fetch</code> and <code>git rebase</code> / <code>git merge</code>) changes from the <code>main</code> branch into your feature branch to keep it up-to-date.<br />
+*   <strong>Keep branches short-lived:</strong> Work on smaller features or tasks that can be completed and merged quickly.<br />
+*   <strong>Break down tasks:</strong> Divide large changes into smaller, independent commits and pull requests.<br />
+*   <strong>Communicate with your team:</strong> Coordinate with teammates if you know you'll be working on the same files or features.<br />
+*   <strong>Use code review:</strong> Peer review can catch potential conflicts or architectural issues early.</p>
+<p><strong>Q: What is <code>git mergetool</code> and when should I use it?</strong><br />
+<strong>A:</strong> <code>git mergetool</code> is a command that invokes an external diff/merge utility (like Kdiff3, Beyond Compare, Meld, or even your IDE's built-in tool) to help you resolve conflicts visually. It's particularly useful for complex conflicts involving many lines or files, as it provides a side-by-side or three-way view of the changes, often with options to accept sections from one branch or the other. You should use it when you find manually editing the conflict markers in a text editor to be cumbersome or prone to error.</p>
 <h2 id="related-errors">Related Errors</h2>
-<ul>
-<li><a href="/errors/git-detached-head.html">git-detached-head</a></li>
-<li><a href="/errors/git-push-rejected.html">git-push-rejected</a></li>
-</ul>
     </div>
 
     <!-- ── AdSense placement 2 – bottom of article ───────────────────────── -->
@@ -427,7 +466,7 @@ git<span class="w"> </span>add<span class="w"> </span>styles/main.css<span class
     <div class="container">
       <p class="footer-logo">⚡ ErrorFix.dev</p>
       <p>Practical, engineer-written guides for real-world software errors.</p>
-      <p style="margin-top:.5rem">Last updated: <time>April 14, 2026</time>.</p>
+      <p style="margin-top:.5rem">Last updated: <time>April 15, 2026</time>.</p>
       <p class="footer-links" style="margin-top:.75rem">
         <!-- ╔══════════════════════════════════════════════════════════════╗ -->
         <!-- ║  AFFILIATE LINKS – replace the href values below            ║ -->
