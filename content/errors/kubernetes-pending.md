@@ -1,305 +1,220 @@
 # Kubernetes pod stuck in Pending state
-> Encountering a Kubernetes pod stuck in Pending state means it cannot be scheduled onto a node due to resource constraints or other underlying node issues; this guide explains how to fix it.
+> Encountering a Kubernetes pod stuck in Pending state means your pod cannot be scheduled onto a node; this guide explains how to identify and resolve common scheduling issues.
 
 ## What This Error Means
 
-When a Kubernetes pod enters the `Pending` state, it signifies that the Kubernetes scheduler has not yet found a suitable node within the cluster to run the pod. This isn't an error in the traditional sense, but rather an indication that the cluster cannot currently satisfy all of the pod's scheduling requirements. The pod isn't crashing, nor are its containers failing to start; it's simply waiting to be placed.
+When a Kubernetes pod is in the `Pending` state, it means that the Kubernetes scheduler has not yet found a suitable node in the cluster to run the pod. This isn't an error in the traditional sense, but rather an indication that the pod is waiting for a critical condition to be met before it can start. It's essentially "waiting in line" for a turn that might never come if the underlying reasons aren't addressed.
 
-Unlike states like `CrashLoopBackOff` or `Error`, which suggest issues with the application code or container runtime, `Pending` points to an infrastructure-level challenge. The scheduler continuously attempts to find a node that meets criteria such as requested CPU and memory, node selectors, taints/tolerations, and available ports. Until such a node is identified and confirmed, the pod will remain in `Pending`.
-
-In my experience, `Pending` pods are often a wake-up call that your cluster resources are either insufficient or improperly configured for the workload you're trying to deploy. It's a proactive measure by Kubernetes to prevent oversubscription or deployment onto incompatible nodes, which could lead to instability.
+Unlike states like `CrashLoopBackOff` or `ErrImagePull`, which indicate problems *after* a pod has been scheduled, `Pending` points to an issue during the initial scheduling phase. The scheduler is constantly evaluating all unscheduled pods and available nodes, trying to match them based on criteria like resource requests, node selectors, taints/tolerations, and volume requirements. If no node satisfies all of a pod's requirements, it remains in `Pending`.
 
 ## Why It Happens
 
-The core reason a pod gets stuck in `Pending` is that the Kubernetes scheduler, `kube-scheduler`, cannot place it on any available node. The scheduler operates based on a series of predicates (filters) and priorities (rankings).
+A pod gets stuck in `Pending` primarily because the Kubernetes scheduler cannot place it onto any available node. This can happen for a variety of reasons, all stemming from a mismatch between the pod's requirements and the cluster's current capacity or configuration. In my experience, it often comes down to resource limitations or specific node configurations that prevent a pod from being placed where it needs to go.
 
-1.  **Predicates:** These are "hard" requirements. If a node fails any predicate, it's immediately excluded. Examples include:
-    *   `PodFitsResources`: Does the node have enough free CPU and memory (allocatable) to satisfy the pod's requests?
-    *   `HostPortPredicate`: Is the requested host port already in use on the node?
-    *   `MatchNodeSelector`: Does the node have all the labels specified by the pod's `nodeSelector`?
-    *   `TaintTolerationPredicate`: Does the pod tolerate all taints present on the node?
-    *   `PodFitsHost`: Does the pod explicitly request a specific host that is not available or ready?
-    *   `VolumeZonePredicate`: For persistent volumes, is the node in the correct availability zone/region?
-
-2.  **Priorities:** After filtering, the remaining nodes are ranked based on "soft" requirements, such as spreading pods across nodes, favoring nodes with fewer pods, or nodes with specific resource types. While priorities influence *which* node a pod lands on, they don't prevent scheduling entirely.
-
-If no node passes *all* of the necessary predicates, the scheduler cannot make a decision, and the pod remains in `Pending` indefinitely. This usually means a fundamental mismatch between what your pod needs and what your cluster can provide. I've seen this happen frequently in production environments where resource quotas are tightly managed or when a sudden spike in deployments exhausts available capacity.
+The scheduler, a core component of the Kubernetes control plane, is responsible for this matching process. When it fails to find a match, the pod remains in `Pending`. Understanding why this matching fails is key to resolving the issue.
 
 ## Common Causes
 
-Identifying the exact reason for a `Pending` pod requires careful investigation. Based on what I've encountered, these are the most common culprits:
+I've seen pods stuck in `Pending` for several recurring reasons in production and development environments. Here are the most common culprits:
 
-*   **Insufficient Node Resources (CPU/Memory):** This is by far the most frequent cause. Your pod requests more CPU or memory than any node currently has available (after accounting for already running pods and system overhead). Even if a node shows "free" memory, it might not be enough to satisfy the pod's request, especially for `requests` values which are reserved.
-*   **Node Selector Mismatch:** The pod's definition includes a `nodeSelector` or `nodeAffinity` rule that specifies a label (e.g., `disktype: ssd`, `gpu: true`) that no node in the cluster possesses, or all matching nodes are already at full capacity.
-*   **Taints and Tolerations:** A node might have a `taint` (e.g., `node-role.kubernetes.io/master:NoSchedule`) that prevents pods from being scheduled on it unless the pod explicitly defines a `toleration` for that specific taint.
-*   **Unbound Persistent Volume Claims (PVCs):** If your pod requires a `PersistentVolumeClaim` (PVC), and that PVC remains in a `Pending` state (meaning it hasn't successfully bound to a `PersistentVolume`), the pod waiting for it will also remain `Pending`. This often indicates issues with your storage provisioner, StorageClass, or available PVs.
-*   **Node Not Ready/Unreachable:** The scheduler will only consider nodes that are in a `Ready` state. If all nodes are `NotReady` or if there are networking issues preventing the `kube-scheduler` from communicating with nodes, pods will remain `Pending`.
-*   **HostPort Conflict:** If a pod requests a specific `hostPort` and that port is already in use on all suitable nodes, the pod will remain `Pending`.
-*   **Pod Anti-affinity Conflicts:** If a pod has a `podAntiAffinity` rule that prevents it from being scheduled on the same node as another specific pod, and all available nodes already host one of the forbidden pods, it will not be scheduled.
+1.  **Insufficient Cluster Resources (CPU/Memory):**
+    *   **Pod requests exceed node capacity:** The pod requests more CPU or memory than any single node in your cluster can provide. Even if the *total* cluster capacity is sufficient, if no *individual* node has enough free allocatable resources to satisfy the pod's `requests` (not `limits`), the pod will wait. This is by far the most frequent cause I encounter.
+    *   **Nodes are full:** All nodes that meet the pod's other criteria are already running pods that consume most of their allocatable resources, leaving no room for the new pod.
+
+2.  **Node Taints and Pod Tolerations:**
+    *   **Taints on nodes:** Nodes can have "taints" to repel certain pods. For example, a node might be tainted to only run critical system components.
+    *   **Missing pod tolerations:** If your pod doesn't have a `toleration` entry that matches a node's taint, the scheduler will not place that pod on the tainted node. This is common when nodes are dedicated for specific purposes (e.g., GPU nodes, control plane nodes).
+
+3.  **Node Selectors and Node Affinity Rules:**
+    *   **Specific node requirements:** Your pod's YAML might include `nodeSelector` or `nodeAffinity` rules, specifying that it must run on a node with particular labels (e.g., `kubernetes.io/hostname: my-specific-node`).
+    *   **No matching nodes:** If no node in the cluster has the required label, or if the matching nodes are unavailable or lack sufficient resources, the pod will remain unscheduled.
+
+4.  **Persistent Volume Claim (PVC) Issues:**
+    *   **Unsatisfied PVC:** If your pod requires a `PersistentVolumeClaim` (PVC) and that PVC isn't bound to an available `PersistentVolume` (PV), the pod cannot start. This could be because there's no PV matching the PVC's requirements (access mode, storage capacity, storage class) or the storage provisioner is failing.
+    *   **Storage class misconfiguration:** The `StorageClass` requested by the PVC might not exist or might be misconfigured in your cluster, preventing PV provisioning.
+
+5.  **Lack of Schedulable Nodes:**
+    *   **All nodes are `NotReady`:** All nodes in your cluster might be in a `NotReady` state due to underlying issues (network problems, kubelet crashes, resource exhaustion).
+    *   **Nodes marked `unschedulable`:** A node administrator might have manually marked nodes as `unschedulable` to perform maintenance, preventing new pods from being placed on them.
 
 ## Step-by-Step Fix
 
-Troubleshooting a `Pending` pod is typically a methodical process of elimination. Here’s how I usually approach it:
+Troubleshooting a `Pending` pod involves a systematic approach, often starting with the pod itself and then checking the cluster's nodes and resources.
 
-### 1. Identify the Problematic Pod
+1.  **Inspect the Pod's Events:**
+    This is always my first step. The `Events` section of a pod's description often contains the exact reason the scheduler couldn't place it.
+    ```bash
+    kubectl describe pod <pod-name> -n <namespace>
+    ```
+    Look for messages from the `scheduler` in the `Events` section. Common messages include:
+    *   `0/X nodes are available: Y insufficient cpu, Z insufficient memory.` (Resource constraint)
+    *   `0/X nodes are available: Y node(s) had taints that the pod didn't tolerate.` (Taints/Tolerations)
+    *   `0/X nodes are available: Y node(s) didn't match the pod's node affinity/selector.` (Node affinity/selector)
+    *   `persistentvolumeclaim "my-pvc" not found` or `waiting for first consumer to be created before binding` (PVC issue)
 
-First, you need to know which pod is stuck.
-
-```bash
-kubectl get pods --all-namespaces -o wide
-```
-
-Look for any pods in the `Pending` state. Note down the pod's name and its namespace.
-
-### 2. Get Detailed Pod Events
-
-This is the most critical step. Kubernetes will usually tell you exactly why a pod isn't scheduling in its events log.
-
-```bash
-kubectl describe pod <pod-name> -n <namespace>
-```
-
-Scroll down to the `Events` section. Look for messages from the `kube-scheduler` or `default-scheduler`. Common messages include:
-
-*   `0/X nodes are available: Y insufficient cpu, Z insufficient memory.`
-*   `0/X nodes are available: Y node(s) had taints that the pod didn't tolerate.`
-*   `0/X nodes are available: Y node(s) didn't match node selector.`
-*   `persistentvolumeclaim "my-pvc" is not bound.`
-
-This output almost always gives you the specific predicate failure.
-
-### 3. Check Node Resources (if `insufficient cpu/memory` is the issue)
-
-If the events indicate resource constraints, investigate your nodes:
-
-*   **List Nodes:**
+2.  **Check Cluster Node Status and Resources:**
+    If the `describe pod` output points to resource issues or node unavailability, check your nodes.
     ```bash
     kubectl get nodes
     ```
-    Ensure all nodes are `Ready`.
-
-*   **Check Node Allocatable Resources and Usage:**
+    Verify that nodes are in the `Ready` state. If any are `NotReady`, investigate those nodes.
+    Then, for resource issues, inspect individual nodes to see their allocatable capacity:
     ```bash
     kubectl describe node <node-name>
     ```
-    Examine `Allocatable` resources (CPU, Memory) and compare them with `Capacity`. Then, check the `Allocated resources` section to see how much of the allocatable resources are currently being used by pods.
+    Look at `Allocatable` and `Capacity` under the `Resources` section. Pay attention to how much CPU and memory are being `Allocated` by existing pods. Compare this against your `Pending` pod's `requests`.
 
-*   **View Live Node Resource Usage (requires `metrics-server`):**
-    ```bash
-    kubectl top nodes
-    ```
-    This gives you a quick overview of current CPU and memory consumption across your cluster. If `kubectl top` doesn't work, install `metrics-server`.
+3.  **Examine Pod Configuration for Scheduling Constraints:**
+    Review the pod's YAML configuration, especially for:
+    *   `resources.requests`: Are these too high for your cluster's nodes?
+    *   `nodeSelector` or `affinity`: Does this require specific labels that no node possesses, or are all matching nodes busy?
+    *   `tolerations`: If your cluster uses taints (e.g., dedicated nodes), does your pod have the necessary tolerations?
+    *   `volumes` and `persistentVolumeClaim`: If using PVCs, ensure they are correctly defined.
 
-*   **Action:** If resources are genuinely scarce, you have a few options:
-    *   **Increase Cluster Size:** Add more nodes to your cluster.
-    *   **Scale Down Other Workloads:** Terminate or scale down less critical deployments to free up resources.
-    *   **Adjust Pod Requests/Limits:** Reduce the `resources.requests.cpu` and `resources.requests.memory` in your pod's YAML. Be cautious, as this might impact performance.
-    *   **Identify Misconfigured Pods:** Look for pods that are requesting excessive resources unnecessarily.
-
-### 4. Examine Node Selectors, Affinity, and Tolerations
-
-If the events point to node selectors or taints:
-
-*   **Review Pod Spec:**
-    ```bash
-    kubectl get pod <pod-name> -n <namespace> -o yaml
-    ```
-    Look for `nodeSelector`, `affinity` (nodeAffinity, podAffinity, podAntiAffinity), and `tolerations` sections.
-
-*   **Check Node Labels and Taints:**
-    ```bash
-    kubectl describe node <node-name>
-    ```
-    Compare the node's `Labels` and `Taints` with your pod's requirements.
-
-*   **Action:**
-    *   **Modify Pod Spec:** Adjust the `nodeSelector` or `tolerations` to match available nodes, or remove them if they're too restrictive.
-    *   **Modify Node Labels/Taints:** Add/remove labels from nodes or update taints if it's an operational decision.
-
-### 5. Persistent Volume Claim (PVC) Issues
-
-If the `describe pod` output mentions an unbound PVC:
-
-*   **Inspect PVC Status:**
+4.  **Investigate Persistent Volume Claims (PVCs):**
+    If the `describe pod` output mentions PVC issues, check the PVC status:
     ```bash
     kubectl get pvc <pvc-name> -n <namespace>
     kubectl describe pvc <pvc-name> -n <namespace>
     ```
-    Check its status (`Pending`, `Bound`) and events.
+    Ensure the PVC is in the `Bound` state. If it's `Pending`, investigate why:
+    *   Is there a `PersistentVolume` (PV) available that matches the PVC's criteria (storage class, size, access modes)?
+    *   Is your `StorageClass` configured correctly, and is the underlying storage provisioner working?
+    ```bash
+    kubectl get pv
+    kubectl get storageclass
+    ```
 
-*   **Action:**
-    *   **Check StorageClass:** Ensure the `StorageClass` referenced by the PVC (or the default if none specified) exists and is correctly configured.
-    *   **Verify Provisioner:** Confirm that your storage provisioner is running and healthy (e.g., `csi-provisioner` pods).
-    *   **Available PVs:** If using static provisioning, ensure `PersistentVolume` objects exist and match the PVC's requirements.
+5.  **Review Cluster Events (Broader View):**
+    Sometimes, a broader view of events can shed light on issues not directly tied to the pod.
+    ```bash
+    kubectl get events -n <namespace>
+    ```
+    Look for events related to `FailedScheduling` or problems with node health or storage provisioning.
 
-### 6. Review Kube-scheduler Logs (Advanced)
-
-If `kubectl describe pod` provides no useful information (rare), or you suspect a scheduler issue itself, check the scheduler's logs.
-
-```bash
-kubectl get pods -n kube-system -l component=kube-scheduler
-kubectl logs <kube-scheduler-pod-name> -n kube-system
-```
-Look for errors or warnings related to scheduling decisions.
+6.  **Actionable Solutions:**
+    Based on your findings:
+    *   **Resource Constraints:**
+        *   **Scale up:** Add more nodes to your cluster.
+        *   **Scale down:** Reduce resource requests for your pod if they are unnecessarily high, or reduce the number of replicas for other pods to free up resources.
+        *   **Optimize node usage:** Check for `Guaranteed` QoS pods taking up unnecessary resources, or adjust `limits` for non-critical pods.
+    *   **Taints/Tolerations:**
+        *   Add appropriate `tolerations` to your pod's YAML if it's meant to run on a tainted node.
+        *   Consider if the taint is necessary, or if the pod should really be on a different node type.
+    *   **Node Selectors/Affinity:**
+        *   Add the required labels to an appropriate node.
+        *   Modify the pod's `nodeSelector` or `nodeAffinity` if the original requirement is no longer valid or too restrictive.
+    *   **PVC Issues:**
+        *   Ensure a suitable `PersistentVolume` is available or can be dynamically provisioned. This might involve creating a PV manually or correcting your `StorageClass` configuration.
+        *   If the PVC is stuck in `Pending`, I often check the logs of the storage provisioner pod (if dynamic provisioning is used) for errors.
+    *   **No Schedulable Nodes:**
+        *   Bring `NotReady` nodes back online.
+        *   Mark `unschedulable` nodes back to `schedulable` if maintenance is complete.
+        *   Provision new nodes if the cluster is genuinely out of capacity.
 
 ## Code Examples
 
-Here are some common commands and YAML snippets you might use when troubleshooting or adjusting:
+Here are some common `kubectl` commands and YAML snippets you'll use during troubleshooting:
 
-### Get Pod Details
-
-```bash
-# Get all pods in default namespace
-kubectl get pods
-
-# Get all pods across all namespaces
-kubectl get pods --all-namespaces
-
-# Get detailed information about a specific pod in a specific namespace
-kubectl describe pod my-nginx-deployment-abcde -n default
-```
-
-### Check Node Information
+**1. Describing a Pending Pod:**
 
 ```bash
-# Get summary of all nodes
-kubectl get nodes
-
-# Get detailed information about a specific node
-kubectl describe node worker-node-1
-
-# View current CPU/Memory usage of nodes (requires metrics-server)
-kubectl top nodes
+kubectl describe pod my-pending-pod -n default
 ```
 
-### Example Pod Manifest Adjustments
+**2. Checking Node Resources and Taints:**
 
-**Original Pod (potential Pending due to resource/node constraints):**
+```bash
+# Get a list of nodes and their labels
+kubectl get nodes --show-labels
+
+# Describe a specific node to see allocatable resources, taints, and allocated resources
+kubectl describe node worker-node-01
+```
+
+**3. Pod with Resource Requests:**
 
 ```yaml
 apiVersion: v1
 kind: Pod
 metadata:
-  name: my-app
+  name: busybox-resources
 spec:
   containers:
-  - name: my-container
-    image: my-repo/my-app:1.0
+  - name: busybox
+    image: busybox
+    command: ["sh", "-c", "echo Hello, Kubernetes! && sleep 3600"]
     resources:
       requests:
-        memory: "2Gi"  # Requests 2GB memory
-        cpu: "1"       # Requests 1 CPU core
+        memory: "256Mi"
+        cpu: "500m" # 0.5 CPU core
+      limits:
+        memory: "512Mi"
+        cpu: "1"
 ```
 
-**Scenario 1: Insufficient Resources**
-
-If `kubectl describe pod` shows "insufficient cpu" or "insufficient memory", you might need to reduce the requests (if your application can handle it) or add more nodes.
+**4. Pod with Node Selector and Tolerations:**
 
 ```yaml
 apiVersion: v1
 kind: Pod
 metadata:
-  name: my-app-reduced
+  name: app-on-gpu-node
 spec:
   containers:
-  - name: my-container
-    image: my-repo/my-app:1.0
-    resources:
-      requests:
-        memory: "512Mi" # Reduced memory request
-        cpu: "250m"    # Reduced CPU request (0.25 core)
-```
-
-**Scenario 2: Node Selector Mismatch**
-
-If `kubectl describe pod` shows "didn't match node selector", you might need to remove or modify the `nodeSelector`.
-
-```yaml
-apiVersion: v1
-kind: Pod
-metadata:
-  name: my-app-with-selector
-spec:
+  - name: app
+    image: my-gpu-app
   nodeSelector:
-    kubernetes.io/hostname: specific-worker-node-1 # Pod requires this specific node
-  containers:
-  - name: my-container
-    image: my-repo/my-app:1.0
-    # ... (resources omitted for brevity)
-```
-To fix this, either update `kubernetes.io/hostname` to an existing node, or, if the requirement is not strict, remove the `nodeSelector` entirely.
-
-**Scenario 3: Taints and Tolerations**
-
-If `kubectl describe pod` shows "had taints that the pod didn't tolerate", you need to add a toleration to your pod.
-
-```yaml
-apiVersion: v1
-kind: Pod
-metadata:
-  name: my-app-with-toleration
-spec:
+    disktype: ssd # Pod will only run on nodes with label 'disktype=ssd'
   tolerations:
-  - key: "special-purpose"        # Key of the taint
-    operator: "Exists"            # Matches any value for this key
-    effect: "NoSchedule"          # Effect of the taint (e.g., NoSchedule, PreferNoSchedule)
-  containers:
-  - name: my-container
-    image: my-repo/my-app:1.0
-    # ... (resources omitted for brevity)
+  - key: "gpu" # Pod will tolerate nodes tainted with key "gpu"
+    operator: "Exists"
+    effect: "NoSchedule"
+```
+
+**5. Describing a Persistent Volume Claim:**
+
+```bash
+kubectl describe pvc my-app-pvc -n default
 ```
 
 ## Environment-Specific Notes
 
-The general troubleshooting steps apply across environments, but certain aspects become more prominent depending on where your Kubernetes cluster is running.
+The general troubleshooting steps apply across environments, but there are nuances depending on your Kubernetes setup.
 
-### Cloud Providers (EKS, GKE, AKS, DigitalOcean, etc.)
+*   **Cloud (EKS, GKE, AKS, etc.):**
+    *   **Auto-scaling:** In cloud environments, `Pending` pods due to resource constraints often indicate that your cluster's auto-scaling mechanism (like Cluster Autoscaler) is either misconfigured, hitting its limits (max nodes), or simply hasn't had time to provision new nodes yet. Check the autoscaler logs or events for issues.
+    *   **Node Types:** Ensure you have the correct instance types available for specialized workloads (e.g., GPU instances for GPU-requiring pods).
+    *   **Managed Node Groups:** If using managed node groups, ensure they are correctly sized and configured, and that there are no issues with the underlying cloud provider resources preventing them from scaling.
+    *   **Cloud Provider Storage:** PVC issues are often tied to the underlying cloud storage provisioner. Check cloud provider-specific logs for storage creation failures. I've seen issues where IAM/service account permissions prevent the Kubernetes CSI driver from provisioning storage.
 
-*   **Autoscaling:** Cloud environments often leverage cluster autoscaling. If pods are `Pending` due to insufficient resources, ensure your Cluster Autoscaler (if configured) has the correct permissions, is monitoring the right node groups, and isn't hitting any maximum capacity limits for your node pools or underlying instance types. I've often seen cases where the ASG maximum is too low, or it's trying to provision an instance type that isn't available in the specified region/zone.
-*   **Managed Services:** For services like EKS, GKE, or AKS, issues with `kube-scheduler` itself are rare, as it's a managed component. Focus your attention on node health, resource availability, and specific cloud resource quotas (e.g., maximum instances, persistent disk limits).
-*   **Storage Provisioning:** PVCs often rely on cloud-specific CSI drivers. Ensure your IAM roles/service accounts have the necessary permissions to provision storage volumes (e.g., EBS, Persistent Disk, Azure Disks).
-*   **Networking:** Confirm your nodes have proper network connectivity within your VPC/VNet, especially to the API server and other cluster components. Incorrect security group rules or network ACLs can cause nodes to appear `NotReady`.
+*   **Docker Desktop Kubernetes / Minikube / Kind:**
+    *   **Resource Limits:** These local setups run Kubernetes inside a VM or Docker container with finite resources. A common reason for `Pending` pods here is simply exhausting the allocated CPU and memory for the VM/container. You'll need to increase the resources allocated to Docker Desktop, Minikube, or Kind itself. For Minikube, this means `minikube stop` then `minikube start --cpus N --memory M`.
+    *   **Single-Node Cluster:** These are typically single-node clusters. Node selectors or taints usually aren't relevant unless explicitly configured, making resource constraints and PVC issues the primary culprits.
+    *   **Local Storage:** Persistent Volume provisioning might rely on hostPath or other local storage options. Ensure the paths exist and have correct permissions if you're managing PVs manually.
 
-### Docker Desktop / Minikube (Local Development)
-
-*   **Resource Limits of the VM:** For local development environments like Docker Desktop or Minikube, the most common cause of `Pending` pods is the underlying virtual machine running out of resources. You're operating on a single "node" (the VM), so there's no flexibility for the scheduler to place the pod elsewhere.
-*   **Adjust VM Settings:** You need to increase the CPU and memory allocated to your Docker Desktop VM or Minikube instance.
-    *   **Docker Desktop:** Go to Docker Desktop Settings -> Resources.
-    *   **Minikube:** Use `minikube config set memory 8192` and `minikube config set cpus 4`, then `minikube delete` and `minikube start`.
-*   **Single-Node Cluster:** Remember that these are single-node clusters by default. If your pod has advanced scheduling requirements (like anti-affinity or multiple node selectors), they might be impossible to satisfy in such a limited setup.
-
-### On-Premise / Bare Metal
-
-*   **Manual Provisioning:** On-premise clusters typically require manual node provisioning. Ensure that newly added nodes are correctly registered with the cluster, have all necessary Kubernetes components running (kubelet, kube-proxy, container runtime), and are genuinely `Ready`.
-*   **Hardware Resources:** Physical resource limitations are a strict boundary. Carefully plan your resource requests/limits against actual server capacity.
-*   **Storage:** Persistent Volume provisioning for PVCs can be more complex without integrated cloud storage. Solutions like NFS, Ceph, or iSCSI must be correctly set up and integrated with a `StorageClass` or static PVs. I've frequently debugged `Pending` pods where the storage backend was either full or improperly configured for volume provisioning.
-*   **Network Configuration:** Pay close attention to network configuration, especially for multi-node setups and CNI plugins. Ensure all nodes can communicate, and that services like DNS are reachable.
+*   **Bare-Metal/On-Premise:**
+    *   **Manual Node Provisioning:** Node scaling is a manual process. You'll need to physically add or configure new servers and join them to the cluster.
+    *   **Storage Setup:** PVs often rely on network file systems (NFS, iSCSI) or local storage configured with appropriate StorageClasses and provisioners. Ensure the storage infrastructure is healthy and accessible from your nodes. I've spent a lot of time debugging networking issues here that prevent nodes from reaching shared storage.
+    *   **Network Configuration:** Ensure proper network connectivity between nodes, especially for pod networking and storage access.
 
 ## Frequently Asked Questions
 
-**Q: What's the difference between a pod in `Pending` and a pod in `ContainerCreating`?**
-A: A pod in `Pending` means the Kubernetes scheduler hasn't found a suitable node to run it on yet. It hasn't even started the process of downloading images or creating containers. A pod in `ContainerCreating` means it has been scheduled to a node, but the `kubelet` on that node is still in the process of starting its containers. This might involve pulling images, mounting volumes, or running init containers.
+**Q: Can a `Pending` pod ever recover on its own?**
+A: Yes, potentially. If the reason for `Pending` is temporary (e.g., a node was temporarily unschedulable for a few minutes, or Cluster Autoscaler is in the process of adding a new node), the pod might get scheduled once the condition is resolved. However, if it's due to persistent resource exhaustion or misconfiguration, it will remain `Pending` indefinitely until manual intervention.
 
-**Q: How can I prevent pods from getting stuck in `Pending` proactively?**
+**Q: What if `kubectl describe pod` doesn't show enough information?**
+A: If the pod description events are too generic, check `kubectl get events -n <namespace>` for broader cluster events, especially those related to `FailedScheduling`. You might also need to check the logs of the `kube-scheduler` pod in the `kube-system` namespace if you suspect an issue with the scheduler itself, though this is rare.
+
+**Q: How do I prevent `Pending` pods?**
 A: Proactive measures include:
-    1.  **Accurate Resource Requests/Limits:** Set realistic CPU and memory `requests` for your pods.
-    2.  **Cluster Autoscaling:** Implement and configure cluster autoscaling to automatically add nodes when resource pressure is high.
-    3.  **Monitoring:** Regularly monitor your cluster's resource utilization (`kubectl top nodes`, Prometheus/Grafana dashboards) to identify potential bottlenecks before they cause `Pending` pods.
-    4.  **Resource Quotas:** Use `ResourceQuota` objects to limit the total resources a namespace can consume, preventing one team from monopolizing resources.
+    *   **Resource requests:** Set realistic `requests` for your pods. Monitor resource usage to fine-tune these.
+    *   **Cluster Autoscaler:** Implement and correctly configure Cluster Autoscaler in cloud environments to dynamically add nodes when capacity is low.
+    *   **Resource Quotas:** Use `ResourceQuota` to prevent any single namespace from consuming all cluster resources.
+    *   **Horizontal Pod Autoscaler (HPA) and Vertical Pod Autoscaler (VPA):** Use HPA to scale pods based on demand and VPA to recommend optimal resource requests.
+    *   **Monitoring:** Monitor cluster resource utilization (CPU, memory, storage) to anticipate bottlenecks.
 
-**Q: Can a `Pending` pod eventually start on its own without intervention?**
-A: Yes, it can. If cluster resources become available (e.g., another pod terminates, a node scales down/up, an unhealthy node becomes `Ready`), the `kube-scheduler` will continuously re-evaluate `Pending` pods and attempt to schedule them. However, if the issue is a fundamental mismatch (like an impossible `nodeSelector`), it will remain `Pending` indefinitely.
-
-**Q: What if `kubectl describe pod` doesn't show any events or useful information?**
-A: This is rare but indicates a deeper problem.
-    *   **API Server Issues:** The `kube-apiserver` might be unhealthy or unreachable, preventing event propagation.
-    *   **Kube-scheduler Issues:** The `kube-scheduler` itself might be down or misconfigured. Check its logs in the `kube-system` namespace.
-    *   **Networking:** There might be network issues preventing `kube-scheduler` from communicating with the API server or nodes.
-
-**Q: My pod is `Pending`, but `kubectl top nodes` shows plenty of free resources. Why?**
-A: `kubectl top nodes` shows current resource *usage*, not *allocatable* resources for scheduling. The scheduler considers `requests` rather than actual usage. Even if a node shows low usage, it might not have enough *available capacity* to satisfy the pod's `requests` after accounting for existing `requests` from other pods. Additionally, `nodeSelectors`, `tolerations`, `hostPorts`, or `PVC` issues could be the problem, which aren't reflected in `kubectl top`. Always consult `kubectl describe pod` for the actual scheduling failure reason.
+**Q: Is it safe to delete a `Pending` pod?**
+A: Generally, yes. Deleting a `Pending` pod that's part of a `Deployment`, `ReplicaSet`, or `StatefulSet` will simply cause the controller to create a new pod instance to meet the desired replica count. If the underlying scheduling issue isn't fixed, the new pod will also likely get stuck in `Pending`. If it's a bare pod not managed by a controller, deleting it will remove it permanently. Deleting a pending pod doesn't usually cause further harm but won't solve the root cause.
 
 ## Related Errors
-
-*   [kubernetes-crashloopbackoff](/errors/kubernetes-crashloopbackoff.html)
-*   [kubernetes-oomkilled](/errors/kubernetes-oomkilled.html)
