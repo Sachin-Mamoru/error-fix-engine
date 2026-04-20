@@ -1,224 +1,260 @@
 # Next.js Module not found: Can't resolve 'X'
-> Encountering "Module not found: Can't resolve 'X'" means Next.js cannot locate an imported dependency; this guide explains how to fix it with practical steps.
+> Encountering "Module not found: Can't resolve 'X'" in Next.js indicates a problem with locating an imported dependency during build or runtime; this guide explains how to diagnose and fix it.
 
 ## What This Error Means
 
-When Next.js throws a "Module not found: Can't resolve 'X'" error, it indicates that the Webpack compiler, which Next.js uses internally, failed to locate a module or file that you're attempting to import. The 'X' in the error message will be the specific path or package name that could not be resolved. This can happen during `npm run dev` (development server), `npm run build` (production build), or `npm run start` (production server runtime if the module is dynamically imported server-side).
+When you encounter the "Module not found: Can't resolve 'X'" error in a Next.js application, it signifies that the underlying JavaScript bundler (Webpack or Turbopack) is unable to locate a file or package that your code is attempting to import. The 'X' in the error message is a placeholder for the actual module name or path that the bundler failed to resolve.
 
-Essentially, your code is asking for something that isn't where Next.js expects it to be, or perhaps doesn't exist at all within the project's accessible paths. It's a critical error because the application cannot compile or run without all its required modules.
+This error typically manifests in two primary contexts:
+1.  **During Build (`next build`):** The most common scenario. The bundler scans your project, creates the optimized production bundles, and fails because it cannot find a necessary dependency. This prevents your application from being built and deployed.
+2.  **During Development (`next dev`):** While less frequent for fundamental path issues (as the dev server often offers more dynamic resolution), it can still occur, particularly if the file system watcher misses changes or there are deep-seated configuration problems. If your development server can't find a module, it usually means your application won't compile and render correctly in the browser.
+
+Essentially, your code has an `import` or `require` statement for 'X', but when the bundler looks for 'X' in all the places it's configured to search (like `node_modules`, specified paths, or relative paths), it comes up empty-handed. This issue must be resolved for your Next.js application to function.
 
 ## Why It Happens
 
-Module resolution is a core part of how JavaScript applications work, especially in environments like Node.js and client-side bundlers like Webpack. When you write `import SomeModule from 'path/to/SomeModule'` or `import SomePackage from 'some-package'`, the module resolver follows a set of rules to find that module.
+At its core, the "Module not found" error stems from a mismatch between where your code expects a module to be and where the bundler actually looks for it. Next.js, leveraging tools like Webpack or Turbopack, follows a specific resolution strategy to find modules. This strategy involves checking relative paths, `node_modules` directories, and any custom aliases or path mappings defined in your project's configuration (e.g., `tsconfig.json` for TypeScript).
 
-For local files, it looks at relative paths (`./`, `../`) or absolute paths defined by configuration (like `baseUrl` or `paths` in `tsconfig.json`/`jsconfig.json`). For installed packages, it typically checks the `node_modules` directory, searching for the package name and then its entry point (defined in the package's `package.json`).
+When this error appears, it tells me that one of these search avenues has failed. It's not usually a mysterious bug in Next.js itself, but rather a configuration oversight or a mistake in how a dependency is referenced or installed within your project.
 
-This error occurs when one of these resolution attempts fails. In my experience, it's often a simple oversight, but it can sometimes point to more complex configuration issues, especially in larger projects or monorepos.
+I've seen this error pop up in a variety of situations, from simple typos to complex monorepo configurations. The key is to systematically investigate the import path and the environment to pinpoint the exact reason why the module 'X' remains elusive.
 
 ## Common Causes
 
-Based on my experience as a Platform Engineer, these are the most frequent reasons I've encountered for the "Module not found" error in Next.js applications:
+Based on my experience as a Senior Platform Engineer, here are the most common culprits behind the "Module not found: Can't resolve 'X'" error in Next.js applications:
 
-1.  **Typos in Import Paths or Package Names:** The most straightforward cause. A misspelled filename, directory name, or package name will prevent the resolver from finding the target.
-2.  **Missing or Uninstalled Node Module:** If you `import 'some-package'` but `some-package` isn't listed in your `package.json` dependencies or hasn't been installed (e.g., `npm install` or `yarn install` wasn't run), Next.js won't find it in `node_modules`.
-3.  **Incorrect Relative Paths:** Misjudging the current file's location relative to the imported file (e.g., `../` vs `./` vs `../../`). This is particularly common when refactoring files.
-4.  **Absolute Path Configuration Issues:** If you're using absolute imports (e.g., `import Button from '@/components/Button'`), the aliases defined in `tsconfig.json` (for TypeScript) or `jsconfig.json` (for JavaScript) might be incorrect, missing, or not correctly understood by Next.js.
-5.  **Case Sensitivity Mismatches:** File systems on macOS and Windows are often case-insensitive by default, while Linux (common in CI/CD, Docker, and production servers) is case-sensitive. `components/Button.tsx` and `Components/Button.tsx` are different files on Linux. If your local dev environment tolerates `import Button from './components/button'`, but the actual file is `Button.tsx`, it will break in a Linux build environment. This is a classic "works on my machine" scenario.
-6.  **Caching Issues:** Sometimes, stale caches (`.next/`, `node_modules/`) can confuse the module resolver, especially after adding new dependencies or refactoring.
-7.  **Monorepo / Workspace Complications:** In a monorepo, packages might be symlinked. If the root `node_modules` isn't correctly structured or `next.config.js` isn't configured with `transpilePackages` for local packages, Next.js might fail to resolve or transpile modules.
-8.  **Client-side Import of Node.js-only Modules:** Next.js uses Webpack to bundle client-side code. If you try to `import 'fs'` (Node.js File System module) directly into a component rendered on the client, Webpack will fail because 'fs' is not available in the browser environment.
-9.  **Next.js Specific `transpilePackages` or `serverComponentsExternalPackages` Misconfiguration:** For packages that need to be transpiled (e.g., ESM-only packages in a CJS context or internal monorepo packages), `transpilePackages` in `next.config.js` is crucial. Similarly, `serverComponentsExternalPackages` helps manage server components.
+1.  **Missing `node_modules` Dependency:**
+    *   **The package isn't installed:** You `import` a package (e.g., `react-icons`) but forgot to run `npm install react-icons` or `yarn add react-icons`.
+    *   **Dependency removed:** The package was installed but later removed from `package.json` or accidentally uninstalled.
+    *   **Incorrect `package.json` entry:** The package is listed in `devDependencies` but is actually needed at runtime, especially in a production build where `devDependencies` might not be installed.
+    *   **Corrupted `node_modules`:** Sometimes, the `node_modules` directory can get into a bad state.
+
+2.  **Incorrect Import Path:**
+    *   **Typos:** The most basic but often overlooked cause. A simple misspelling in the module name or path (e.g., `components/buttoon` instead of `components/Button`).
+    *   **Case Sensitivity:** File systems on macOS and Linux are case-sensitive, while Windows is generally not. If you develop on Windows and deploy to a Linux-based CI/CD environment or server, `import MyComponent from './mycomponent';` will fail if the actual file is `MyComponent.tsx`.
+    *   **Relative Path Issues:** Incorrect `.` or `..` usage when navigating directories. For example, `import Component from '../../utils/helper';` when it should be `../utils/helper`.
+    *   **Missing File Extension:** While Next.js often resolves `.js`, `.jsx`, `.ts`, `.tsx`, sometimes an explicit extension is needed, especially for non-standard file types or specific configurations.
+
+3.  **Missing File or Module:**
+    *   The file you're trying to import simply doesn't exist at the specified path. This could be due to deletion, misplacement, or incorrect creation.
+
+4.  **TypeScript `tsconfig.json` Misconfiguration:**
+    *   **`baseUrl` and `paths`:** If you're using path aliases (e.g., `@/components/Button`), these rely on `tsconfig.json`'s `baseUrl` and `paths` configuration. If these are incorrect or not picked up by the bundler, the aliases won't resolve.
+    *   **`include` / `exclude`:** Files might be unintentionally excluded from the TypeScript compilation process, leading to resolution failures.
+
+5.  **Next.js Custom Configuration (`next.config.js`) Issues:**
+    *   **Custom Webpack setup:** If you've customized Next.js's Webpack configuration (e.g., adding resolvers, aliases, or loaders), an error in this setup can prevent modules from being found. For instance, I've seen issues when `next-transpile-modules` isn't correctly configured for packages outside the project root.
+    *   **Unsupported file types:** If you're importing a non-standard file type (e.g., a specific SVG format or a custom data file) without a corresponding Webpack loader defined, the bundler won't know how to process it.
+
+6.  **Monorepo Complexities:**
+    *   In monorepos using tools like Yarn Workspaces or pnpm, packages might not be hoisted correctly, or the linking between workspaces might be broken. This can lead to internal package dependencies not being resolved.
+
+7.  **Build Cache Corruption:**
+    *   While less common, sometimes the `.next` build cache or npm/Yarn/pnpm caches can become corrupted, leading to stale resolution information.
 
 ## Step-by-Step Fix
 
-Here’s my go-to troubleshooting process when I encounter a "Module not found" error:
+When faced with "Module not found: Can't resolve 'X'", a systematic approach is crucial. Here’s the troubleshooting guide I typically follow:
 
-1.  **Verify the Import Path and Module Name (Critical First Step):**
-    *   **Double-check spelling:** Is 'X' in the error message exactly what you intended to import?
-    *   **Relative vs. Absolute:** If it's a relative path (e.g., `./components/Button`), manually trace the path from the importing file to the target file. Ensure all slashes and directory names are correct. If it's an absolute path (e.g., `@/components/Button`), verify the alias configuration (see step 4).
-    *   **Case Sensitivity:** Ensure the casing of the import path exactly matches the actual file/folder names on disk. This is especially important if you're developing on macOS/Windows and deploying to Linux.
+1.  **Identify 'X' Precisely:**
+    *   The first and most important step is to carefully read the error message and identify the exact module path or name that Next.js cannot resolve. This is your 'X'. It could be `react-query`, `./components/MyButton`, or `@/lib/api`. Knowing 'X' is half the battle.
 
-2.  **Check `package.json` and `node_modules`:**
-    *   If 'X' is a third-party package name (e.g., `lodash`, `react-query`), confirm it's listed under `dependencies` or `devDependencies` in your `package.json`.
-    *   If it is, try re-installing your dependencies:
+2.  **Check for Missing `node_modules` Dependency:**
+    *   **Is 'X' a third-party package?** If 'X' looks like a package name (e.g., `axios`, `lodash`, `date-fns`), it's likely a missing dependency.
+    *   **Verify installation:**
         ```bash
-        # For npm
-        rm -rf node_modules
-        npm install
-
-        # For yarn
-        rm -rf node_modules
-        yarn install
-
-        # For pnpm (if applicable)
-        pnpm recursive install # or pnpm install -r
+        # Using npm
+        npm ls <your-package-name>
+        # Using yarn
+        yarn why <your-package-name>
+        # Using pnpm
+        pnpm why <your-package-name>
         ```
-    *   After installation, verify that the package's folder exists in `node_modules/X`.
-
-3.  **Clear Next.js and Node Caches:**
-    *   Stale build artifacts or module caches can sometimes cause these issues.
-    *   Stop your development server (`Ctrl+C`).
-    *   Remove the Next.js build cache and `node_modules`:
+        If the package is not found or shows an incorrect version, install it:
         ```bash
-        rm -rf .next
-        rm -rf node_modules
+        # For a regular dependency
+        npm install <your-package-name>
+        # or
+        yarn add <your-package-name>
+        # or
+        pnpm add <your-package-name>
+
+        # For a dev dependency (if needed)
+        npm install --save-dev <your-package-name>
+        # or
+        yarn add --dev <your-package-name>
+        # or
+        pnpm add --save-dev <your-package-name>
         ```
-    *   Reinstall dependencies and restart the development server:
+    *   **Reinstall all dependencies:** Sometimes, `node_modules` can become corrupted.
         ```bash
-        npm install # or yarn install / pnpm install
-        npm run dev
+        rm -rf node_modules
+        rm -f package-lock.json # Or yarn.lock / pnpm-lock.yaml
+        npm install             # Or yarn / pnpm install
         ```
 
-4.  **Review `tsconfig.json` / `jsconfig.json` for Path Aliases:**
-    *   If you're using absolute imports (e.g., `import MyComponent from '@/components/MyComponent'`), ensure your `baseUrl` and `paths` are correctly configured.
-    *   For TypeScript, open `tsconfig.json`. For JavaScript, open `jsconfig.json`.
-    *   Look for the `compilerOptions` section:
+3.  **Verify Import Path and File Existence:**
+    *   **Locate the import statement:** Find where 'X' is being imported in your code.
+    *   **Check for typos:** Carefully compare the import path with the actual file/directory name. Look for simple spelling mistakes.
+    *   **Case sensitivity:** Ensure the casing of the import path exactly matches the file system's casing. On Linux-based systems (most CI/CD, Docker, cloud environments), `mycomponent.tsx` is different from `MyComponent.tsx`.
+    *   **Relative vs. Absolute:** If using a relative path (e.g., `./`, `../`), manually trace the path to ensure it leads to the correct file. If using an absolute path or alias (e.g., `@/components`), refer to step 4.
+    *   **Does the file exist?** The simplest check: navigate to the expected file location in your terminal or file explorer. If it's not there, that's your problem.
+
+4.  **Review `tsconfig.json` (for TypeScript Projects):**
+    *   If you're using path aliases like `@/components` or `~lib`, these are configured in your `tsconfig.json` under `compilerOptions.baseUrl` and `compilerOptions.paths`.
+    *   Ensure `baseUrl` is correctly set (often `.` for the project root).
+    *   Verify that `paths` correctly maps your aliases to actual directories.
+    *   Example:
         ```json
+        // tsconfig.json
         {
           "compilerOptions": {
-            "baseUrl": ".", // This usually means root of your project
+            "baseUrl": ".",
             "paths": {
-              "@/*": ["./*"], // This maps "@/" to your project root
-              "@components/*": ["components/*"] // Example for specific alias
+              "@/components/*": ["components/*"],
+              "@/lib/*": ["lib/*"]
             }
           }
         }
         ```
-    *   Adjust `baseUrl` and `paths` to correctly point to your desired directories. I've often seen `baseUrl` pointing to `src` while imports were trying to resolve from root, causing confusion.
+        If your `components` folder is directly in the project root, this setup maps `@/components/MyComponent` to `./components/MyComponent`. I've often seen `baseUrl` being wrong or `paths` not matching the actual file structure.
 
-5.  **Examine `next.config.js`:**
-    *   If you're dealing with a monorepo, an external UI library, or packages that need specific Webpack treatment, `transpilePackages` might be necessary.
-    *   ```javascript
-        /** @type {import('next').NextConfig} */
-        const nextConfig = {
-          reactStrictMode: true,
-          transpilePackages: ['some-ui-library', 'my-local-package'], // Add packages here
-          // ... other configs
-        };
+5.  **Inspect `next.config.js` for Custom Webpack Configurations:**
+    *   If you've customized Next.js's Webpack configuration, review it for any custom resolvers, aliases, or loaders that might be misconfigured or missing.
+    *   For example, if you're importing SVGs as React components, you need a specific Webpack rule. If that rule is broken, you might see "Can't resolve 'my-icon.svg'".
+    *   Check for packages like `next-transpile-modules` which are used for transpiling packages outside the `node_modules` directory, common in monorepos. An incorrect `transpilePackages` array can lead to this error.
 
-        module.exports = nextConfig;
+6.  **Clear Next.js and Package Manager Caches:**
+    *   Sometimes, stale build artifacts or package manager caches can interfere.
+    *   **Delete `.next` folder:** This clears Next.js's build cache.
+        ```bash
+        rm -rf .next
         ```
-    *   If you're importing a Node.js-only module in a Server Component, you might need to externalize it or mark it for specific handling using `serverComponentsExternalPackages`.
+    *   **Clean package manager cache (optional but can help):**
+        ```bash
+        npm cache clean --force # For npm
+        # yarn cache clean       # For yarn (older versions)
+        # pnpm store prune      # For pnpm
+        ```
+    *   After clearing, rerun `npm install` (or equivalent) and `next dev` or `next build`.
 
-6.  **Identify Node.js Built-in Module Imports:**
-    *   If 'X' is a Node.js built-in module like `fs`, `path`, `crypto`, `http`, and the error occurs in a client-side component, it means you're trying to use server-only functionality in the browser.
-    *   **Solution:**
-        *   Move the logic that uses these modules to an API route, a server component, or a server-side utility function.
-        *   If the module has a browser-compatible polyfill, consider using that (though this is less common with Next.js's server-side rendering).
-        *   Use dynamic imports (`await import('...')`) with `ssr: false` to ensure it's only loaded client-side *if* a polyfill exists or if the browser environment supports it.
-
-7.  **Restart Your Development Server:** After making any changes, always restart your development server (`npm run dev`) to ensure Webpack recompiles with the new configurations.
+7.  **Consider Monorepo Specifics:**
+    *   If in a monorepo, ensure `package.json` `workspaces` are correctly defined.
+    *   Verify that internal packages are properly linked or installed in the root `node_modules`. Sometimes, running `npm install` or `yarn install` at the monorepo root is needed to resolve links.
 
 ## Code Examples
 
-Here are some concise, copy-paste ready examples for common scenarios:
+Here are some concise, copy-paste ready examples of common fixes:
 
-**1. Correct Relative Import:**
-Suppose you have `pages/index.tsx` and `components/Button.tsx`.
-`pages/index.tsx`:
-```typescript
-import Button from '../components/Button'; // Correct relative path from pages/ to components/
+**1. Installing a Missing Third-Party Package:**
 
-export default function HomePage() {
-  return <Button>Click me</Button>;
-}
+If the error is: `Module not found: Can't resolve 'react-query'`
+
+```bash
+# Using npm
+npm install @tanstack/react-query
+# Using yarn
+yarn add @tanstack/react-query
+# Using pnpm
+pnpm add @tanstack/react-query
 ```
 
-**2. Absolute Import with `tsconfig.json`:**
-To enable imports like `import Button from '@/components/Button';`
-`tsconfig.json`:
+**2. Correcting a Local Path Typo or Case Mismatch:**
+
+If you have a file `./components/MyButton.tsx` and the error is: `Module not found: Can't resolve './components/mybutton'`
+
+```javascript
+// Incorrect import statement
+import MyButton from './components/mybutton'; // 'mybutton' is lowercase
+
+// Correct import statement (case-sensitive filename)
+import MyButton from './components/MyButton';
+```
+
+**3. Configuring `tsconfig.json` for Path Aliases:**
+
+If the error is: `Module not found: Can't resolve '@/lib/utils'` and you want to use absolute imports.
+
+First, ensure your `tsconfig.json` (or `jsconfig.json` for JS projects) is configured:
+
 ```json
+// tsconfig.json (at your project root)
 {
   "compilerOptions": {
-    "baseUrl": ".",
+    "baseUrl": ".", // Important: this sets the base for your paths
     "paths": {
-      "@/*": ["./*"] // Maps @/ to the project root
+      "@/components/*": ["components/*"], // Maps @/components to the 'components' folder
+      "@/lib/*": ["lib/*"],             // Maps @/lib to the 'lib' folder
+      "@/styles/*": ["styles/*"]         // Example for styles
     },
     // ... other compiler options
   },
-  // ...
-}
-```
-`pages/index.tsx`:
-```typescript
-import Button from '@/components/Button'; // Assuming components/Button.tsx exists at project root/components/Button.tsx
-
-export default function HomePage() {
-  return <Button>Click me</Button>;
+  // ... other tsconfig options
 }
 ```
 
-**3. `next.config.js` for Transpiling Local Packages (Monorepo):**
-If `my-local-package` is a package within your monorepo that Next.js needs to transpile.
-`next.config.js`:
+Then, use the alias in your code:
+
 ```javascript
-/** @type {import('next').NextConfig} */
-const nextConfig = {
-  reactStrictMode: true,
-  transpilePackages: ['my-local-package'],
-};
-
-module.exports = nextConfig;
-```
-
-**4. Handling Node.js Built-in Modules on the Server:**
-If you need to read a file, do it in a server component or API route.
-`app/page.tsx` (Server Component):
-```typescript
-import { promises as fs } from 'fs'; // This import will only run on the server
-
-export default async function HomePage() {
-  let content = '';
-  try {
-    content = await fs.readFile(process.cwd() + '/public/data.txt', 'utf8');
-  } catch (error) {
-    console.error('Failed to read file:', error);
-  }
-
-  return (
-    <div>
-      <h1>File Content:</h1>
-      <pre>{content}</pre>
-    </div>
-  );
-}
+// src/app/page.tsx or any other file
+import { someUtilityFunction } from '@/lib/utils';
+import MyHeader from '@/components/Header';
 ```
 
 ## Environment-Specific Notes
 
-The "Module not found" error can manifest differently or be caused by unique factors depending on your deployment environment.
+The "Module not found" error can behave slightly differently or have unique triggers depending on your environment.
 
-*   **Local Development:** This is where you'll typically first encounter the error due to typos, new package installations, or minor path changes. The key here is quick iteration: restarting the dev server, clearing caches (`.next`, `node_modules`), and double-checking file paths and `tsconfig.json`. Case sensitivity is less of an issue here unless you've configured your local system to be case-sensitive.
+### Local Development (`next dev`)
 
-*   **Docker Containers:** When building or running Next.js in a Docker container, I've seen this error primarily because:
-    *   **Incorrect `COPY` instructions in Dockerfile:** `node_modules` might not be copied correctly, or the build context might be wrong. Ensure your `COPY . .` happens *after* `npm install` and that your `.dockerignore` isn't inadvertently excluding essential files or directories.
-    *   **Different OS:** The Docker image likely runs Linux. This makes case sensitivity a significant factor if your local development was on macOS or Windows. Always match case precisely.
-    *   **Build-time vs. Runtime:** Some modules might resolve fine during `npm run build` in a builder stage but then fail at runtime if the runtime image doesn't have the necessary dependencies or environment variables.
+*   **File System Watchers:** While `next dev` is usually robust, sometimes the file system watcher can miss changes, especially for newly added files or changes in `tsconfig.json`. Restarting the dev server (`npm run dev` or `yarn dev`) often resolves this.
+*   **Case Sensitivity:** If developing on Windows, the case-insensitivity of the file system can mask real case errors. The error might not appear until deployment to a Linux-based environment (e.g., CI/CD, Docker, Vercel). Always be explicit with casing.
+*   **Hot Module Replacement (HMR):** With HMR, changes are injected without a full refresh. If the error appears after an HMR update but disappears after a full page refresh (or server restart), it might be an HMR-specific issue, though less common for module resolution.
 
-*   **Cloud Platforms (Vercel, AWS Amplify, Netlify):** These platforms often abstract away much of the build environment, but they run on Linux-based systems.
-    *   **Case Sensitivity:** This is the most common culprit when "it works on my machine" but fails in CI/CD.
-    *   **Build Command Issues:** Ensure your build command (`next build`) runs successfully and that all dependencies are installed. Sometimes platforms use `yarn` by default, but your project might expect `npm`. Configure the correct package manager if necessary.
-    *   **Monorepo Configuration:** For Vercel, ensuring your project root and included files are correctly configured in `vercel.json` or the Vercel UI is crucial, especially for monorepos where Next.js apps might be nested. Similarly for AWS Amplify, ensuring correct build settings and artifact paths is key.
-    *   **Environment Variables:** If a module's resolution depends on an environment variable (e.g., for conditional imports or pathing), ensure that variable is correctly set in the cloud build environment.
+### Build Environment (CI/CD, Vercel, Netlify, etc.)
+
+*   **Fresh Installs:** Cloud build environments typically perform a clean `npm install` (or `yarn`/`pnpm`) from scratch. This means `node_modules` corruption is less likely, but *missing* `dependencies` (especially if they were accidentally in `devDependencies` locally) will be exposed.
+*   **Strict `NODE_ENV`:** Build processes usually run with `NODE_ENV=production`. Ensure your `next.config.js` or any conditional logic doesn't inadvertently exclude necessary modules or paths based on this environment variable.
+*   **Case Sensitivity:** This is the biggest culprit I've encountered in CI/CD. Developers on Windows create `components/Button.tsx` but import `components/button.tsx`. Their local `next dev` works, but the Linux-based build server fails. Running `git config core.ignorecase false` locally can help detect these issues before pushing to production.
+*   **Build Caching:** While CI/CD often builds from scratch, some platforms offer build caching. If `node_modules` or `.next` are cached incorrectly, it can sometimes lead to stale resolution issues. Clearing the build cache on the platform might be necessary.
+
+### Docker Containers
+
+*   **`COPY` and `WORKDIR`:** Ensure your `Dockerfile` correctly copies all necessary source files, `package.json`, and lock files into the container. The `WORKDIR` instruction must also be set correctly, as all subsequent commands (like `npm install`) will run relative to this directory.
+    ```dockerfile
+    # Example Dockerfile snippet
+    WORKDIR /app
+    COPY package.json yarn.lock ./
+    RUN yarn install --frozen-lockfile
+    COPY . . # Copy source code
+    RUN yarn build
+    ```
+    If you forget to `COPY` your `lib` folder, for instance, any imports from `@/lib` will fail inside the container.
+*   **Multi-Stage Builds:** In a multi-stage build, be careful not to accidentally exclude necessary files when moving from the build stage to the final runtime stage. Only copy what's absolutely needed, but ensure *all* resolved files from the build step are present.
+*   **Node.js Version:** In rare cases, a specific Node.js version might have subtle differences in module resolution or how it interacts with Webpack. Ensure your Docker image uses a Node.js version compatible with your Next.js project.
 
 ## Frequently Asked Questions
 
-**Q: Why does my project build locally but fail with "Module not found" in CI/CD?**
-**A:** This is almost always a case sensitivity issue or a difference in the build environment. Locally, your file system might be case-insensitive, but CI/CD environments (typically Linux) are case-sensitive. Double-check all file and directory names in your import paths for exact case matches. Also, ensure all `node_modules` are correctly installed in the CI/CD pipeline, and clear any potential caches.
+**Q: The module 'X' exists in my project, and I double-checked the path. Why does it still fail?**
+**A:** This usually points to a configuration issue or a cache problem.
+1.  **TypeScript `tsconfig.json`:** If using path aliases (e.g., `@/components`), ensure `baseUrl` and `paths` are correctly set and that the alias points to the correct location relative to `baseUrl`.
+2.  **Case Sensitivity:** Confirm the import path's casing perfectly matches the file system's casing, especially if you developed on a case-insensitive OS (Windows) and are building on a case-sensitive one (Linux).
+3.  **Next.js Cache:** Delete the `.next` directory and `node_modules`, then reinstall dependencies and restart your dev server or rebuild.
+4.  **`next.config.js`:** Check if any custom Webpack configuration is interfering with module resolution.
 
-**Q: What if 'X' is a CSS, SCSS, or image file?**
-**A:** If it's a styling or asset file, the "Module not found" error usually indicates a wrong path or a missing Webpack loader configuration.
-*   **Path:** Verify the import path is correct, just like for JavaScript/TypeScript files.
-*   **Loader:** Ensure you have the necessary Next.js configuration or Webpack loaders (e.g., `sass` for SCSS, `css` for CSS, Next.js handles images by default but `next/image` requires specific setup). For example, `npm install sass` is needed for SCSS.
+**Q: What if 'X' is a local file (e.g., `./utils/helper.js`), not a package from `node_modules`?**
+**A:** Focus on step 3 (`Verify Import Path and File Existence`).
+1.  **Exact Path:** Manually trace the `import` path relative to the importing file. Is `.` or `..` used correctly?
+2.  **File Existence & Name:** Confirm the file `helper.js` truly exists in the `utils` directory at that exact path, and its name and extension are spelled correctly with the right casing.
+3.  **`tsconfig.json` (`paths`):** If you're using an alias (e.g., `@/utils/helper`), ensure your `tsconfig.json` correctly maps `@/utils` to your `utils` directory.
 
-**Q: How do `baseUrl` and `paths` work together in `tsconfig.json` / `jsconfig.json`?**
-**A:** `baseUrl` defines the base directory from which all non-relative module imports are resolved. `paths` allows you to create aliases that map specific module names or patterns to a set of locations, relative to the `baseUrl`. For example, `baseUrl: "./"` and `paths: { "@/*": ["src/*"] }` would mean `import Some from '@/util/Some'` would look for `src/util/Some` from the project root.
+**Q: Does `next.config.js` actually affect this type of error? I thought it was just for server-side configurations.**
+**A:** Yes, absolutely. `next.config.js` allows you to customize the underlying Webpack configuration for both client and server bundles. Any modifications you make to Webpack's `resolve` object (e.g., adding `alias` entries, custom `modules`, or `extensions`), or specific `module.rules` for handling different file types (like SVGs or specific CSS preprocessors), can directly cause or fix "Module not found" errors. For instance, if you're using a library that requires specific transpilation (e.g., ES Modules in `node_modules`), you might need `next-transpile-modules` configured in `next.config.js`.
 
-**Q: Can this error be related to `next.config.js`?**
-**A:** Absolutely. As mentioned, `transpilePackages` is crucial for monorepos or specific packages. Additionally, custom Webpack configurations within `next.config.js` (`webpack` function) can inadvertently break module resolution if not handled carefully. For instance, modifying default resolution rules can lead to conflicts.
-
-**Q: I'm getting "Module not found: Can't resolve 'fs'" (or similar Node.js modules) in a client-side component. How do I fix this?**
-**A:** This means you're trying to import a Node.js built-in module, like the file system (`fs`), directly into code that Next.js intends to run in the browser. These modules are not available in browser environments. You must move any logic using these modules to server-side code (e.g., API routes, server components, or `getServerSideProps`/`getStaticProps`).
+**Q: I'm using TypeScript, and everything works locally with `next dev`, but `next build` fails with this error. What's different?**
+**A:** This is a classic symptom of case sensitivity or `tsconfig.json` issues on your build server.
+1.  **Case Sensitivity:** Your local Windows machine might tolerate `import styles from './styles.module.css';` even if the file is `Styles.module.css`, but a Linux build server will not. This is the most common reason I've seen.
+2.  **`tsconfig.json` differences:** Ensure the build environment is picking up the correct `tsconfig.json` and that all `paths` and `baseUrl` configurations are robust.
+3.  **Environmental Variables:** Very occasionally, environment variables present in your local dev setup but absent during build could affect conditional imports or module loading.
 
 ## Related Errors
-*   [typescript-ts2307](/errors/typescript-ts2307.html)
