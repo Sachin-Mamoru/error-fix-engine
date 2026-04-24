@@ -130,155 +130,159 @@
     <div class="article-content">
       <h1 id="docker-pull-image-not-found-manifest-unknown">Docker pull – image not found (manifest unknown)</h1>
 <blockquote>
-<p>Encountering "Docker pull – image not found (manifest unknown)" means the specified Docker image or tag does not exist in the registry; this guide explains how to fix it.</p>
+<p>Encountering Docker pull – image not found (manifest unknown) means the requested image or tag couldn't be located in the specified registry; this guide explains how to fix it by verifying image names, tags, and registry access.</p>
 </blockquote>
 <h2 id="what-this-error-means">What This Error Means</h2>
-<p>When you encounter the <code>docker pull – image not found (manifest unknown)</code> error, it signifies that the Docker daemon, after attempting to communicate with a Docker registry (like Docker Hub, Amazon ECR, Google Container Registry, or a private registry), could not locate the specific image manifest for the image name and tag you provided.</p>
-<p>In simpler terms, Docker successfully connected to the registry, but when it asked for the blueprint (the "manifest") of the image you requested, the registry responded that it didn't have one for that exact name and tag. Docker images are composed of layers, and the manifest is essentially an index or table of contents for these layers, along with other metadata like architecture and operating system. If this manifest can't be found, the image doesn't exist at that reference point.</p>
-<p>This error is distinct from network connectivity issues (e.g., "connection refused" or "timeout"), which would indicate Docker couldn't even <em>reach</em> the registry. Here, the registry itself is confirming the absence of the requested image.</p>
+<p>When you execute a <code>docker pull</code> command and encounter the error <code>Error response from daemon: manifest unknown: manifest unknown</code>, it signifies that Docker was unable to locate the image manifest for the specified image name and tag in the target registry. The "manifest" is essentially a JSON document that describes the image, including its layers, architecture compatibility, and other metadata. If Docker can't find this manifest, it means the image as you've requested it either does not exist at all, or it doesn't exist under that specific tag or in that particular registry.</p>
+<p>In my experience, this error is a definitive "resource not found" message, not typically a transient network issue. Docker successfully connected to the registry, but the registry itself reported that it doesn't have a record of the image manifest for the combination you provided.</p>
 <h2 id="why-it-happens">Why It Happens</h2>
-<p>The fundamental reason this error occurs is a mismatch between the image reference (repository name and tag) you're using in your <code>docker pull</code> command and what actually exists in the target Docker registry. Docker is very particular about exact image paths and tags. Even a single character difference or an incorrect case can lead to this "manifest unknown" response.</p>
-<p>From my experience, this usually boils down to the request pointing to something that either never existed, was deleted, or is inaccessible due to misconfiguration. It's often a case of "the registry said 'I don't know that image/tag,' not 'I can't talk to you.'"</p>
+<p>This error primarily occurs because Docker cannot match your request to an existing image manifest within the specified registry. While seemingly complex, the underlying reasons are usually straightforward. It boils down to a mismatch between what you're asking for and what the registry actually hosts.</p>
+<p>Common scenarios I've encountered that lead to this include:</p>
+<ol>
+<li><strong>Typographical Errors:</strong> The most frequent culprit. A slight misspelling in the image name or tag.</li>
+<li><strong>Incorrect Image Tag:</strong> You're requesting a tag that doesn't exist (e.g., <code>myapp:v2.0</code> when only <code>v1.0</code> is present, or using <code>latest</code> when a specific version is required).</li>
+<li><strong>Private Registry Access Issues:</strong> You're trying to pull from a private registry without being properly authenticated, or your authentication has expired.</li>
+<li><strong>Image or Tag Deletion:</strong> The image or specific tag you're looking for has been intentionally (or accidentally) removed from the registry.</li>
+<li><strong>Incorrect Registry Specification:</strong> Docker defaults to Docker Hub (<code>docker.io</code>). If your image is on a different registry (e.g., a private company registry, AWS ECR, GCP GCR, Azure ACR), you must specify the full registry URL.</li>
+<li><strong>Architecture Mismatch (Less Common for this specific error):</strong> While Docker usually handles architecture negotiation, sometimes an explicitly requested tag might only exist for a different architecture, leading to a "manifest unknown" if no compatible manifest is found.</li>
+</ol>
 <h2 id="common-causes">Common Causes</h2>
-<p>Understanding the common culprits can significantly speed up troubleshooting:</p>
-<ol>
-<li><strong>Typo in Image Name or Tag:</strong> This is, hands down, the most frequent cause. A simple spelling mistake in the repository name (e.g., <code>ubntu</code> instead of <code>ubuntu</code>) or an incorrect tag (e.g., <code>v1.0-release</code> instead of <code>v1.0.0-release</code>) will prevent Docker from finding the manifest. Image names and tags are often case-sensitive.</li>
-<li><strong>Incorrect or Non-Existent Image Tag:</strong> Every Docker image has tags, with <code>latest</code> being the default if none is specified. If you try to pull <code>my-app:dev</code> and no tag named <code>dev</code> exists, or the <code>latest</code> tag isn't what you expect, you'll hit this error. Sometimes, specific version tags are deprecated or removed by image publishers. I've seen this in production when a build pipeline relied on an ephemeral tag that was cleaned up.</li>
-<li><strong>Image Not Pushed or Deleted from Registry:</strong> The image you're trying to pull might have been built locally but never pushed to the remote registry, or it might have been pushed and subsequently deleted by an automated cleanup policy or a manual action.</li>
-<li><strong>Private Registry or Repository, Not Logged In:</strong> If the image resides in a private repository (e.g., a private Docker Hub repository, AWS ECR, GCP GCR, Azure ACR, or a self-hosted registry), and your Docker client is not authenticated with appropriate credentials, the registry will not reveal the image's existence, leading to an "image not found" error, often with "manifest unknown" specifics.</li>
-<li><strong>Wrong Registry Specified or Implied:</strong> By default, <code>docker pull</code> looks for images on Docker Hub. If your image is in a different registry (e.g., <code>my-private-registry.com/my-image</code>), you <em>must</em> specify the full registry path. Omitting it will cause Docker to look for <code>my-image</code> on Docker Hub, where it won't be found.</li>
-<li><strong>Network Issues (Less Common for this Specific Error):</strong> While "manifest unknown" generally implies successful communication with the registry, highly restrictive firewalls, incorrect proxy settings, or DNS resolution problems <em>before</em> reaching the registry could, in rare cases, manifest in ways that prevent the initial manifest lookup. However, direct "connection refused" or "timeout" errors are more typical for network blocks.</li>
-</ol>
+<p>Let's break down the frequent causes into more actionable points:</p>
+<ul>
+<li><strong>Typo in Image Name:</strong> A classic. You might type <code>my-app</code> instead of <code>my_app</code>, or <code>ubuntu-server</code> instead of <code>ubuntu/server</code>. Double-check every character.</li>
+<li><strong>Incorrect Image Tag:</strong> Many images use specific version tags (e.g., <code>nginx:1.21.6</code>). If you try <code>nginx:stable</code> or <code>nginx:latest</code> and those tags aren't maintained or refer to a different version than you expect, you'll get this error. Some repositories might not even use <code>latest</code>.</li>
+<li><strong>Missing or Expired Private Registry Authentication:</strong> If the image resides in a private repository (like a company's artifact registry or a cloud provider's container registry), you must authenticate using <code>docker login</code> before you can pull. An expired session will also trigger this.</li>
+<li><strong>Image Was Deleted or Never Pushed:</strong> It's possible the image you're trying to pull was never successfully pushed to the registry in the first place, or it was pushed but later deleted. This happens, especially with development or test images.</li>
+<li><strong>Wrong Registry URL:</strong> Docker Hub is the default. If your image is on <code>myregistry.com/myuser/myimage:tag</code>, you <em>must</em> include <code>myregistry.com</code> in your pull command. Forgetting this means Docker searches Docker Hub, where it won't find your image.</li>
+<li><strong>Network/Proxy Configuration Issues:</strong> While less directly tied to "manifest unknown" (which implies the registry was reached), sometimes deeply embedded network issues or misconfigured proxies can prevent <em>any</em> communication with the registry, leading to this error if the initial registry lookup fails in a way that maps to "not found." However, you'd typically see a different network-related error in such cases.</li>
+</ul>
 <h2 id="step-by-step-fix">Step-by-Step Fix</h2>
-<p>Here’s a methodical approach to resolving the "manifest unknown" error:</p>
-<ol>
-<li>
-<p><strong>Verify Image Name and Tag:</strong></p>
-<ul>
-<li><strong>Double-check for typos:</strong> Carefully compare the image name and tag in your <code>docker pull</code> command against the correct reference. Even subtle differences in case (<code>MyApp</code> vs <code>my-app</code>) can matter.</li>
-<li><strong>Consult documentation:</strong> If you're pulling a third-party image, refer to their official documentation or repository page for the exact image name and available tags.</li>
-<li><strong>Example:</strong> If you're trying <code>docker pull myorg/myproject:v1.2.3</code>, ensure <code>v1.2.3</code> is the exact tag. It might be <code>1.2.3</code> or <code>v1.2.3-release</code>.</li>
-</ul>
-</li>
-<li>
-<p><strong>Check Available Tags in the Registry:</strong></p>
-<ul>
-<li><strong>Use the registry's web UI:</strong> Most major registries (Docker Hub, ECR, GCR, ACR) provide a web interface where you can browse repositories and their available tags. This is often the quickest way to confirm an image's existence and correct tags.</li>
-<li><strong>Use registry-specific CLIs:</strong> Cloud providers offer CLIs (e.g., <code>aws ecr describe-images</code>) to list available images and tags in your repositories.</li>
-<li><strong>Public images (Docker Hub example):</strong> For public images on Docker Hub, you can sometimes use <code>curl</code> to list tags (though this is a bit advanced for basic troubleshooting and may require <code>jq</code> for parsing):<br />
-<code>bash
-    curl -s "https://registry.hub.docker.com/v2/library/nginx/tags/list" | jq .tags[] | grep "alpine"</code><br />
-    This command would list tags for the official NGINX image and filter for those containing "alpine".</li>
-</ul>
-</li>
-<li>
-<p><strong>Authenticate to the Docker Registry:</strong></p>
-<ul>
-<li>If the image is in a private repository, you must be logged in. Use <code>docker login</code>.</li>
-<li>For Docker Hub:<br />
-<code>bash
-    docker login
-    # You will be prompted for your username and password.</code></li>
-<li>For other private registries (e.g., <code>my-private-registry.com</code>):<br />
-<code>bash
-    docker login my-private-registry.com
-    # You will be prompted for your username and password.</code></li>
-<li>Cloud registries have specific login methods (see "Environment-Specific Notes").</li>
-</ul>
-</li>
-<li>
-<p><strong>Specify the Correct Registry (if not Docker Hub):</strong></p>
-<ul>
-<li>Always prefix the image name with the full registry URL if it's not Docker Hub.</li>
-<li><strong>Incorrect:</strong> <code>docker pull my-app:latest</code> (attempts to pull <code>my-app:latest</code> from Docker Hub)</li>
-<li><strong>Correct:</strong> <code>docker pull my-private-registry.com/my-team/my-app:latest</code></li>
-</ul>
-</li>
-<li>
-<p><strong>Consult Image Provider Documentation/Support:</strong></p>
-<ul>
-<li>If you're pulling a third-party image and have verified all the above, there might be specific instructions or prerequisites for that image. Sometimes an image is only available for certain architectures, or it might be behind an access restriction.</li>
-</ul>
-</li>
-</ol>
+<p>Here's a systematic approach to troubleshoot and resolve the <code>manifest unknown</code> error.</p>
+<h3 id="step-1-verify-image-name-and-tag">Step 1: Verify Image Name and Tag</h3>
+<p>This is the most crucial step. Re-examine the <code>docker pull</code> command you used.<br />
+*   <strong>Check for typos:</strong> Is the image name spelled exactly as it appears in the registry? Are there hyphens, underscores, or specific casing requirements?<br />
+*   <strong>Confirm the tag:</strong> Does the tag <code>v1.0</code>, <code>latest</code>, <code>dev</code>, etc., actually exist for that image? Many images specify exact version numbers.</p>
+<p><strong>Action:</strong> Go to the registry's UI (e.g., Docker Hub, AWS ECR console) and visually confirm the exact image name and the tag you intend to use.</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># Example of what to check:</span>
+<span class="c1"># If you ran: docker pull myorg/mywebapp:v1.0.0</span>
+<span class="c1"># Is it actually &#39;myorg/my-webapp:1.0.0&#39; or &#39;myorg/mywebapp:latest&#39;?</span>
+</code></pre></div>
+
+<h3 id="step-2-specify-the-full-registry-path">Step 2: Specify the Full Registry Path</h3>
+<p>If the image is not on Docker Hub, you <em>must</em> include the full registry domain.</p>
+<p><strong>Action:</strong> Add the registry URL to your command.</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># For a public image on Docker Hub (often implicit, but good to be explicit for clarity):</span>
+docker<span class="w"> </span>pull<span class="w"> </span>docker.io/library/ubuntu:latest
+
+<span class="c1"># For a private registry:</span>
+docker<span class="w"> </span>pull<span class="w"> </span>myregistry.com/myorg/myimage:tag
+</code></pre></div>
+
+<h3 id="step-3-authenticate-to-private-registries">Step 3: Authenticate to Private Registries</h3>
+<p>If you're pulling from a private registry (like your company's own registry, or a cloud provider's ECR/GCR/ACR), you need to be logged in.</p>
+<p><strong>Action:</strong> Use <code>docker login</code> to authenticate.</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># For Docker Hub or a generic private registry:</span>
+docker<span class="w"> </span>login<span class="w"> </span>myregistry.com
+<span class="c1"># You&#39;ll be prompted for Username and Password.</span>
+
+<span class="c1"># For cloud registries, authentication often involves a specific CLI command</span>
+<span class="c1"># to get temporary credentials, then piping them to docker login.</span>
+<span class="c1"># Example for AWS ECR (replace &lt;REGION&gt; and &lt;AWS_ACCOUNT_ID&gt;):</span>
+<span class="c1"># aws ecr get-login-password --region &lt;REGION&gt; | docker login --username AWS --password-stdin &lt;AWS_ACCOUNT_ID&gt;.dkr.ecr.&lt;REGION&gt;.amazonaws.com</span>
+</code></pre></div>
+
+<p>After successful login, try the <code>docker pull</code> command again.</p>
+<h3 id="step-4-confirm-image-existence-in-the-registry">Step 4: Confirm Image Existence in the Registry</h3>
+<p>Sometimes, an image or tag genuinely doesn't exist anymore.</p>
+<p><strong>Action:</strong><br />
+*   Check the registry's web interface or CLI tools to list available images and tags.<br />
+*   For Docker Hub, you can use <code>docker search &lt;image-name&gt;</code> for public images, but direct browser search is often more reliable for tags.<br />
+*   For private registries, consult your organization's documentation or the registry's GUI.</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># Example for searching public images on Docker Hub:</span>
+docker<span class="w"> </span>search<span class="w"> </span>nginx
+</code></pre></div>
+
+<p>If the image or tag is truly missing, you'll need to find an alternative or investigate why it was removed.</p>
+<h3 id="step-5-check-network-and-proxy-configuration-less-common">Step 5: Check Network and Proxy Configuration (Less Common)</h3>
+<p>While "manifest unknown" typically isn't a direct network error, an inability to reach <em>any</em> registry could sometimes lead to this.</p>
+<p><strong>Action:</strong><br />
+*   <strong>Verify internet connectivity:</strong> Can you reach other websites or <code>ping google.com</code>?<br />
+*   <strong>Check Docker daemon proxy settings:</strong> If you're behind a corporate proxy, ensure Docker is configured to use it. This often involves editing <code>/etc/docker/daemon.json</code> (on Linux) or adjusting Docker Desktop settings.<br />
+<code>json
+    {
+      "proxies": {
+        "http-proxy": "http://proxy.example.com:3128",
+        "https-proxy": "https://proxy.example.com:3129",
+        "no-proxy": "*.test.com,127.0.0.0/8"
+      }
+    }</code><br />
+    Remember to restart the Docker daemon after making changes.<br />
+*   <strong>Check environment variables:</strong> Ensure <code>HTTP_PROXY</code>, <code>HTTPS_PROXY</code>, <code>NO_PROXY</code> are correctly set if Docker relies on them in your environment.</p>
+<h3 id="step-6-review-docker-client-configuration">Step 6: Review Docker Client Configuration</h3>
+<p>In rare cases, a misconfigured Docker client or credential helper could interfere.</p>
+<p><strong>Action:</strong><br />
+*   Ensure your <code>~/.docker/config.json</code> isn't corrupt or pointing to incorrect credential helpers.<br />
+*   Try restarting your Docker daemon or Docker Desktop.</p>
 <h2 id="code-examples">Code Examples</h2>
-<p>Here are some concise, copy-paste ready examples illustrating common scenarios and fixes.</p>
-<p><strong>Scenario 1: Incorrect Tag Specified</strong></p>
-<div class="highlight"><pre><span></span><code><span class="c1"># This command will likely fail with &quot;manifest unknown&quot; if &#39;22.04.5&#39; is not an existing tag</span>
-docker<span class="w"> </span>pull<span class="w"> </span>ubuntu:22.04.5
-</code></pre></div>
+<p>Here are common <code>docker pull</code> scenarios and how to correctly execute them.</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># Pulling a public image from Docker Hub with a specific tag</span>
+<span class="c1"># (docker.io is the default registry, &#39;library/&#39; is for official images)</span>
+docker<span class="w"> </span>pull<span class="w"> </span>docker.io/library/ubuntu:22.04
 
-<div class="highlight"><pre><span></span><code><span class="c1"># Corrected command after checking available tags (e.g., on Docker Hub)</span>
-docker<span class="w"> </span>pull<span class="w"> </span>ubuntu:22.04
-</code></pre></div>
+<span class="c1"># Pulling a public image from Docker Hub using a shorter name (implicit docker.io/library/)</span>
+docker<span class="w"> </span>pull<span class="w"> </span>nginx:1.23.4-alpine
 
-<p><strong>Scenario 2: Pulling from a Private Registry Without Login</strong></p>
-<div class="highlight"><pre><span></span><code><span class="c1"># This command will fail if you are not logged in to my-private-registry.com</span>
-docker<span class="w"> </span>pull<span class="w"> </span>my-private-registry.com/my-org/my-app:v1.0
-</code></pre></div>
+<span class="c1"># Logging into a private registry</span>
+docker<span class="w"> </span>login<span class="w"> </span>myregistry.com
+<span class="c1"># Enter username and password when prompted.</span>
 
-<div class="highlight"><pre><span></span><code><span class="c1"># Step 1: Login to the private registry</span>
-docker<span class="w"> </span>login<span class="w"> </span>my-private-registry.com
-<span class="c1"># Enter username: myuser</span>
-<span class="c1"># Enter password:</span>
-<span class="c1"># Login Succeeded</span>
+<span class="c1"># Pulling an image from a private registry after authentication</span>
+docker<span class="w"> </span>pull<span class="w"> </span>myregistry.com/myorg/my-app:development
 
-<span class="c1"># Step 2: Now, pull the image</span>
-docker<span class="w"> </span>pull<span class="w"> </span>my-private-registry.com/my-org/my-app:v1.0
-</code></pre></div>
+<span class="c1"># Example for logging into AWS ECR (replace &lt;REGION&gt; and &lt;AWS_ACCOUNT_ID&gt;)</span>
+aws<span class="w"> </span>ecr<span class="w"> </span>get-login-password<span class="w"> </span>--region<span class="w"> </span>us-east-1<span class="w"> </span><span class="p">|</span><span class="w"> </span>docker<span class="w"> </span>login<span class="w"> </span>--username<span class="w"> </span>AWS<span class="w"> </span>--password-stdin<span class="w"> </span><span class="m">123456789012</span>.dkr.ecr.us-east-1.amazonaws.com
 
-<p><strong>Scenario 3: Omitting the Registry Name for a Non-Docker Hub Image</strong></p>
-<div class="highlight"><pre><span></span><code><span class="c1"># This assumes &#39;my-image:latest&#39; exists on Docker Hub, which it likely doesn&#39;t</span>
-docker<span class="w"> </span>pull<span class="w"> </span>my-image:latest
-</code></pre></div>
-
-<div class="highlight"><pre><span></span><code><span class="c1"># Corrected command, specifying the full registry path</span>
-docker<span class="w"> </span>pull<span class="w"> </span>gcr.io/my-gcp-project/my-image:latest
+<span class="c1"># Listing local images to verify if it was already pulled (or if a similar one exists)</span>
+docker<span class="w"> </span>images
 </code></pre></div>
 
 <h2 id="environment-specific-notes">Environment-Specific Notes</h2>
-<p>The nuances of handling image pulls can vary slightly depending on your environment.</p>
+<p>The "manifest unknown" error can present slightly differently or require specific considerations depending on your environment.</p>
 <ul>
 <li>
-<p><strong>Cloud Registries (AWS ECR, GCP GCR, Azure ACR):</strong></p>
+<p><strong>Cloud Container Registries (AWS ECR, GCP GCR, Azure ACR):</strong></p>
 <ul>
-<li><strong>Authentication:</strong> These registries typically require specific CLI tools or IAM/RBAC configurations for login. For AWS ECR, for instance, you'd use:<br />
-<code>bash
-    aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 123456789012.dkr.ecr.us-east-1.amazonaws.com</code><br />
-    (Replace <code>us-east-1</code> with your region and <code>123456789012</code> with your AWS account ID). Similar commands exist for Azure and GCP.</li>
-<li><strong>Permissions:</strong> Beyond being logged in, the identity performing the pull (your user, an IAM role, a service account) must have the necessary permissions to access the specific repository. For ECR, this includes actions like <code>ecr:BatchCheckLayerAvailability</code>, <code>ecr:GetDownloadUrlForLayer</code>, and <code>ecr:GetAuthorizationToken</code>. I've seen situations where the login was successful, but the <em>pull</em> failed because the associated role lacked permissions to the specific repository.</li>
-<li><strong>Image Path:</strong> Cloud registry image paths are verbose. Always ensure you're using the full path including the region, account ID (for AWS), or project ID (for GCP/Azure). Example: <code>123456789012.dkr.ecr.us-east-1.amazonaws.com/my-repo/my-image:my-tag</code>.</li>
+<li><strong>Authentication:</strong> This is often the biggest hurdle. These registries require specific authentication flows, usually involving their respective cloud CLIs (<code>aws ecr</code>, <code>gcloud auth</code>, <code>az acr login</code>) to obtain temporary credentials or configure Docker's credential helper. Simply running <code>docker login</code> with a username/password usually won't work out-of-the-box. I've seen this in production many times where a CI/CD pipeline fails because the IAM role's permissions or token expired.</li>
+<li><strong>Permissions:</strong> Beyond authentication, the IAM user or role performing the pull needs the correct permissions to access the registry and the specific repository. For ECR, this includes actions like <code>ecr:GetDownloadUrlForLayer</code>, <code>ecr:BatchGetImage</code>, <code>ecr:BatchCheckLayerAvailability</code>.</li>
+<li><strong>Region:</strong> Ensure the registry URL explicitly includes the correct region (e.g., <code>123456789012.dkr.ecr.us-west-2.amazonaws.com</code>). Pulling from <code>us-east-1</code> when the image is in <code>us-west-2</code> will result in "manifest unknown."</li>
 </ul>
 </li>
 <li>
-<p><strong>Local Development:</strong></p>
+<p><strong>Docker Desktop (Local Development):</strong></p>
 <ul>
-<li>Most local development uses Docker Hub. The primary causes here are almost always typos in the image name or tag, or trying to pull a private image without logging in.</li>
-<li>If you're running a local Docker registry (e.g., for testing), ensure it's up, running, and accessible on the correct port, and that you're using the correct <code>localhost:port/image:tag</code> path.</li>
+<li><strong>Credential Helper:</strong> Docker Desktop typically manages credentials for Docker Hub smoothly. For other private registries, ensure the credential helper (if configured) is working correctly.</li>
+<li><strong>VPN/Proxy:</strong> If you're using a corporate VPN or local proxy, ensure Docker Desktop's network settings are configured to respect them. Sometimes, local DNS issues can also contribute.</li>
 </ul>
 </li>
 <li>
-<p><strong>CI/CD Pipelines:</strong></p>
+<p><strong>Local Development with <code>docker-compose</code>:</strong></p>
 <ul>
-<li>This is a common place for <code>manifest unknown</code> errors. Issues often stem from:<ul>
-<li><strong>Stale Credentials:</strong> The service account or pipeline runner's credentials for the Docker registry might have expired or been revoked.</li>
-<li><strong>Incorrect Image References:</strong> Environment variables or parameters passed to the <code>docker pull</code> command within the pipeline might be incorrect or resolve to a non-existent tag. I've frequently encountered cases where a build tag didn't match the pushed tag.</li>
-<li><strong>Permissions:</strong> Similar to cloud registries, the CI/CD agent or service principal needs explicit permissions to pull from the target repository.</li>
-</ul>
-</li>
-<li>Always verify the logs of your CI/CD pipeline for the exact <code>docker pull</code> command being executed and any preceding authentication steps.</li>
+<li><strong><code>image</code> field:</strong> The <code>image</code> field in your <code>docker-compose.yml</code> file is prone to the same typos or incorrect tag issues as direct <code>docker pull</code> commands. Double-check its value.</li>
+<li><strong>Build vs. Pull:</strong> Ensure you intend to <em>pull</em> the image and haven't accidentally configured <code>docker-compose</code> to <em>build</em> it locally from a non-existent <code>build</code> context, or vice-versa.</li>
 </ul>
 </li>
 </ul>
 <h2 id="frequently-asked-questions">Frequently Asked Questions</h2>
-<p><strong>Q: Is "manifest unknown" a network error?</strong><br />
-<strong>A:</strong> Generally, no. This error indicates that Docker successfully connected to the registry, but the requested image and tag combination was not found. If it were a pure network error, you'd typically see messages like "connection refused," "dial tcp: lookup registry.example.com," or "i/o timeout."</p>
-<p><strong>Q: Why does <code>docker images</code> not show my image, even after a successful build?</strong><br />
-<strong>A:</strong> The <code>docker images</code> command lists images <em>locally</em> stored on your machine. When you run <code>docker pull</code>, you're attempting to retrieve an image from a <em>remote</em> Docker registry. If you've just built an image and haven't tagged it or pushed it to a remote registry, <code>docker pull</code> won't find it in a remote location because it only exists locally.</p>
-<p><strong>Q: Can proxy settings cause this error?</strong><br />
-<strong>A:</strong> Indirectly. If your proxy settings are misconfigured to the point that Docker cannot reach the registry <em>at all</em>, you would typically see a connection-related error. However, if a proxy is configured but is somehow corrupting the HTTP requests or responses for manifest retrieval, it <em>could</em> theoretically lead to a "manifest unknown" error, although this is far less common than simple typos or authentication issues.</p>
-<p><strong>Q: How do I find all available tags for an image in a registry?</strong><br />
-<strong>A:</strong> The most straightforward way is to use the web interface of the Docker registry (e.g., Docker Hub, AWS ECR console). For Docker Hub, you can navigate to the image page, and it will list all available tags. Programmatically, it depends on the registry's API; for public Docker Hub images, a <code>curl</code> command to <code>https://registry.hub.docker.com/v2/library/&lt;image_name&gt;/tags/list</code> can list tags.</p>
+<p><strong>Q: Is <code>manifest unknown</code> always a network error?</strong><br />
+A: No, in my experience, it's very rarely a direct network connectivity error in the sense of "cannot reach host." It almost universally means Docker <em>could</em> communicate with the registry, but the registry reported that the requested image name and tag combination simply does not exist. If there were a connectivity issue, you'd typically see a different error like "connection refused" or "timeout."</p>
+<p><strong>Q: Can a deleted image cause this error?</strong><br />
+A: Absolutely. If an image, or a specific tag of an image, has been removed from the registry (either intentionally or accidentally), any subsequent <code>docker pull</code> attempts for that image and tag will result in the <code>manifest unknown</code> error.</p>
+<p><strong>Q: I'm using a cloud registry (e.g., ECR). How do I ensure I'm pulling from the correct region?</strong><br />
+A: The region is a critical part of the registry URL for cloud providers. For ECR, for example, it's <code>[AWS_ACCOUNT_ID].dkr.ecr.[REGION].amazonaws.com</code>. You must ensure your <code>docker login</code> command and subsequent <code>docker pull</code> command both specify the correct, full regional URL where your image is hosted.</p>
+<p><strong>Q: What if I'm behind a corporate proxy?</strong><br />
+A: You need to configure the Docker daemon to use your proxy. This is typically done by editing the <code>daemon.json</code> file (e.g., <code>/etc/docker/daemon.json</code> on Linux) and adding proxy settings for <code>http-proxy</code>, <code>https-proxy</code>, and <code>no-proxy</code>. After modifying, you must restart the Docker daemon. Docker Desktop has proxy settings within its GUI.</p>
+<p><strong>Q: My image was working yesterday, but today I get <code>manifest unknown</code>. What happened?</strong><br />
+A: This scenario strongly suggests that the image or the specific tag you were using has been deleted, renamed, or modified in the registry since your last successful pull. This often happens in development environments where images are frequently cleaned up or overwritten. Check the registry's audit logs or consult with the team responsible for managing that registry.</p>
 <h2 id="related-errors">Related Errors</h2>
     </div>
 
@@ -353,7 +357,7 @@ docker<span class="w"> </span>pull<span class="w"> </span>gcr.io/my-gcp-project/
     <div class="container">
       <p class="footer-logo">⚡ ErrorFix.dev</p>
       <p>Practical, engineer-written guides for real-world software errors.</p>
-      <p style="margin-top:.5rem">Last updated: <time>April 23, 2026</time>.</p>
+      <p style="margin-top:.5rem">Last updated: <time>April 24, 2026</time>.</p>
       <p class="footer-links" style="margin-top:.75rem">
         <!-- ╔══════════════════════════════════════════════════════════════╗ -->
         <!-- ║  AFFILIATE LINKS – replace the href values below            ║ -->
