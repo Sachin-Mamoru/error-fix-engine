@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Nginx error: permission denied while connecting to upstream – How to Fix | error-fix-engine</title>
+  <meta name="description" content="How to fix Nginx error: permission denied while connecting to upstream in Nginx. SELinux or filesystem permissions block Nginx from reaching the socket. Step-by-step guide with code examples." />
+  <link rel="canonical" href="https://errorfix.dev/errors/nginx-permission-denied.html" />
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="article" />
+  <meta property="og:title" content="Nginx error: permission denied while connecting to upstream – How to Fix | error-fix-engine" />
+  <meta property="og:description" content="How to fix Nginx error: permission denied while connecting to upstream in Nginx. SELinux or filesystem permissions block Nginx from reaching the socket. Step-by-step guide with code examples." />
+  <meta property="og:url" content="https://errorfix.dev/errors/nginx-permission-denied.html" />
+  <meta property="og:site_name" content="Error Fix Engine" />
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary" />
+  <meta name="twitter:title" content="Nginx error: permission denied while connecting to upstream – How to Fix | error-fix-engine" />
+  <meta name="twitter:description" content="How to fix Nginx error: permission denied while connecting to upstream in Nginx. SELinux or filesystem permissions block Nginx from reaching the socket. Step-by-step guide with code examples." />
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/svg+xml" href="https://errorfix.dev/assets/favicon.svg" />
+  <link rel="shortcut icon" href="https://errorfix.dev/assets/favicon.svg" />
+
+  <!-- Fonts preconnect -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+
+  <!-- Stylesheet -->
+  <link rel="stylesheet" href="https://errorfix.dev/assets/style.css" />
+
+  <!-- Google AdSense -->
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9992550558723787" crossorigin="anonymous"></script>
+
+  
+<!-- JSON-LD structured data for Google rich results -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "Nginx error: permission denied while connecting to upstream",
+  "description": "How to fix Nginx error: permission denied while connecting to upstream in Nginx. SELinux or filesystem permissions block Nginx from reaching the socket. Step-by-step guide with code examples.",
+  "url": "https://errorfix.dev/errors/nginx-permission-denied.html",
+  "keywords": "nginx, permissions, selinux",
+  "inLanguage": "en",
+  "author": {
+    "@type": "Person",
+    "name": "Priya Nair",
+    "jobTitle": "Site Reliability Engineer"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "ErrorFix.dev",
+    "url": "https://errorfix.dev"
+  }
+}
+</script>
+
+</head>
+<body>
+
+  <!-- ── Site header ─────────────────────────────────────────────────────── -->
+  <header class="site-header">
+    <div class="container">
+      <a href="https://errorfix.dev/" class="logo">
+        <span class="logo-icon-wrap" aria-hidden="true">⚡</span>
+        <span class="logo-text">ErrorFix<span style="color:#a5b4fc">.dev</span></span>
+        <span class="logo-badge">Beta</span>
+      </a>
+      <nav class="site-nav">
+        <a href="https://errorfix.dev/">All Errors</a>
+        <a href="https://errorfix.dev/sitemap.xml">Sitemap</a>
+      </nav>
+    </div>
+  </header>
+
+  <!-- ── Main content ────────────────────────────────────────────────────── -->
+  <main class="container">
+    
+<div class="page-layout">
+
+  <!-- ── Main article ──────────────────────────────────────────────────────── -->
+  <article class="article-body">
+
+    <!-- Breadcrumb -->
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <a href="https://errorfix.dev/">Home</a>
+      <span aria-hidden="true"> › </span>
+      <span>Nginx</span>
+      <span aria-hidden="true"> › </span>
+      <span>permission-denied</span>
+    </nav>
+
+    <!-- Tool + context badge -->
+    <div class="meta-badges">
+      <span class="badge badge-tool">Nginx</span>
+      <span class="badge badge-context">server / Linux</span>
+      
+        <span class="badge">nginx</span>
+      
+        <span class="badge">permissions</span>
+      
+        <span class="badge">selinux</span>
+      
+    </div>
+
+    <!-- Author byline -->
+    <div class="author-byline">
+      <div class="author-avatar" aria-hidden="true">PN</div>
+      <div class="author-info">
+        <span class="author-name">Priya Nair</span>
+        <span class="author-title">Site Reliability Engineer</span>
+      </div>
+    </div>
+
+    <!-- ── AdSense placement 1 – top of article ──────────────────────────── -->
+    <!-- Paste your ad unit code here (leaderboard 728×90 or responsive)      -->
+    <div class="ad-slot ad-slot--top" aria-label="Advertisement">
+      <!-- ins class="adsbygoogle" ... -->
+    </div>
+
+    <!-- Article HTML rendered from Markdown -->
+    <div class="article-content">
+      <h1 id="nginx-error-permission-denied-while-connecting-to-upstream">Nginx error: permission denied while connecting to upstream</h1>
+<blockquote>
+<p>Encountering "permission denied while connecting to upstream" means Nginx can't reach its upstream server due to access restrictions; this guide explains how to fix it.</p>
+</blockquote>
+<p>As a Site Reliability Engineer, few errors are as common, yet persistently frustrating, as "permission denied." When Nginx throws this error while trying to connect to an upstream service, it's a clear signal that the Nginx process lacks the necessary access rights to either the socket file or the directory containing it. I've debugged this one countless times, from high-traffic production environments to simple development setups, and in my experience, it almost always boils down to one of two culprits: filesystem permissions or SELinux/AppArmor.</p>
+<h2 id="what-this-error-means">What This Error Means</h2>
+<p>When Nginx serves web content, it often acts as a reverse proxy, forwarding requests to other services—like PHP-FPM for PHP applications, Gunicorn or uWSGI for Python apps, or Node.js servers. These backend services are collectively known as "upstream" servers. Communication typically happens over a network port (e.g., <code>127.0.0.1:9000</code>) or, more commonly and efficiently on the same host, via a Unix domain socket (e.g., <code>/var/run/php-fpm/www.sock</code>).</p>
+<p>The error message <code>permission denied while connecting to upstream</code> means that Nginx, when attempting to open or connect to this Unix domain socket, was explicitly denied access by the operating system. It's not that the socket doesn't exist (that would be "No such file or directory") or that the upstream service isn't listening (that would be "Connection refused"). Instead, the system itself is preventing Nginx from even attempting the connection due to security policies.</p>
+<p>From a user's perspective, this usually manifests as a <code>502 Bad Gateway</code> error served by Nginx, indicating it couldn't get a valid response from its backend. The exact error will be logged in Nginx's error logs (typically <code>/var/log/nginx/error.log</code>).</p>
+<h2 id="why-it-happens">Why It Happens</h2>
+<p>This error arises because the Nginx process, running under a specific user and group (commonly <code>www-data</code> on Debian/Ubuntu or <code>nginx</code> on RHEL/CentOS), does not have the permissions required to access the Unix domain socket created by the upstream application.</p>
+<p>Here's a breakdown of the core reasons:</p>
+<ol>
+<li><strong>Filesystem Ownership or Permissions:</strong> The Unix domain socket file itself, or one of its parent directories, is owned by a different user/group, or has restrictive permissions (e.g., <code>chmod 600</code>) that prevent the Nginx user from reading or writing to it. For Nginx to connect, it typically needs at least read/write access to the socket file.</li>
+<li><strong>Security Enhanced Linux (SELinux):</strong> On RHEL-based systems (CentOS, Fedora, Rocky Linux, AlmaLinux), SELinux is enabled by default and operates independently of standard filesystem permissions. It enforces mandatory access control (MAC) policies that can block processes (like Nginx) from accessing resources (like sockets) even if standard <code>chmod</code>/<code>chown</code> settings would permit it. This is a very common scenario in production environments where default policies are strict.</li>
+<li><strong>AppArmor:</strong> Similar to SELinux, AppArmor is a MAC security module often found on Debian/Ubuntu systems. It confines programs to a limited set of resources, and a misconfigured or overly strict AppArmor profile can prevent Nginx from reaching its upstream socket.</li>
+<li><strong>Incorrect Nginx User Configuration:</strong> Less common, but sometimes the <code>user</code> directive in <code>nginx.conf</code> is misconfigured, causing Nginx to run as a user that doesn't have the appropriate permissions, even if other components are set up correctly.</li>
+</ol>
+<p>In essence, the operating system is acting as a gatekeeper, and Nginx isn't being given the key.</p>
+<h2 id="common-causes">Common Causes</h2>
+<p>Let's get more specific about the most frequent causes I encounter:</p>
+<ul>
+<li><strong>Socket in a Restricted Directory:</strong> Often, upstream applications create their Unix sockets in <code>/var/run/</code> or <code>/run/</code>. While these directories are generally accessible, if an application creates a subdirectory within them (e.g., <code>/var/run/php-fpm/</code>) and sets restrictive permissions, Nginx might be blocked. I've seen this in production when a script creates a directory with <code>umask</code> set incorrectly.</li>
+<li><strong>Mismatched User/Group:</strong> The upstream application (e.g., PHP-FPM) might create the socket with its own user/group (e.g., <code>php-fpm:php-fpm</code>), but Nginx runs as <code>nginx:nginx</code> or <code>www-data:www-data</code>. If the socket file doesn't have permissions for "others" or a shared group, Nginx will be denied. A common fix is to ensure the socket is created with <code>0660</code> permissions and belongs to a group that Nginx is also a member of (e.g., <code>www-data</code> for both).</li>
+<li><strong>SELinux Context Mismatch:</strong> This is by far the most elusive and common cause on RHEL systems. Even if <code>ls -l</code> shows perfect <code>rwx</code> permissions for the Nginx user/group, SELinux might be denying access because the <em>context label</em> of the socket file (e.g., <code>system_u:object_r:php_var_run_t:s0</code>) is not allowed for the Nginx process's context (e.g., <code>system_u:system_r:httpd_t:s0</code>). SELinux logs these denials in <code>/var/log/audit/audit.log</code> or <code>dmesg</code>.</li>
+<li><strong>Socket Path Mismatch:</strong> While not a "permission denied" specifically, sometimes the path configured in Nginx (e.g., <code>fastcgi_pass unix:/var/run/php-fpm/www.sock;</code>) doesn't exactly match where the upstream service is <em>actually</em> creating its socket. Always double-check both configuration files.</li>
+</ul>
+<h2 id="step-by-step-fix">Step-by-Step Fix</h2>
+<p>Here's my systematic approach to troubleshooting and fixing this Nginx permission error:</p>
+<h3 id="step-1-verify-the-nginx-user-and-upstream-socket-path">Step 1: Verify the Nginx User and Upstream Socket Path</h3>
+<p>First, confirm which user Nginx is running as and where it expects the socket to be.</p>
+<ol>
+<li>
+<p><strong>Identify Nginx User:</strong><br />
+    Check your <code>nginx.conf</code> (usually <code>/etc/nginx/nginx.conf</code>) for the <code>user</code> directive. If not specified, it defaults to <code>nginx</code> or <code>www-data</code> depending on your OS. You can also see the running user:<br />
+<code>bash
+    ps aux | grep nginx</code><br />
+    Look for entries like <code>nginx: master process /usr/sbin/nginx</code> and <code>nginx: worker process</code>. The user column will show the effective user.</p>
+</li>
+<li>
+<p><strong>Locate Upstream Socket Path:</strong><br />
+    Check your Nginx configuration files (often in <code>/etc/nginx/sites-available/</code> or <code>/etc/nginx/conf.d/</code>) for the <code>proxy_pass</code> or <code>fastcgi_pass</code> directives.<br />
+    Example for PHP-FPM:<br />
+<code>nginx
+    fastcgi_pass unix:/var/run/php-fpm/www.sock;</code><br />
+    Example for Gunicorn/uWSGI:<br />
+<code>nginx
+    proxy_pass http://unix:/var/run/gunicorn.sock;</code><br />
+    Note down the exact path to the <code>.sock</code> file.</p>
+</li>
+</ol>
+<h3 id="step-2-check-filesystem-permissions">Step 2: Check Filesystem Permissions</h3>
+<p>With the Nginx user and socket path identified, inspect the permissions of the socket file and its parent directories.</p>
+<ol>
+<li>
+<p><strong>Check Socket File Permissions:</strong><br />
+    Assuming the socket path is <code>/var/run/php-fpm/www.sock</code>:<br />
+<code>bash
+    ls -la /var/run/php-fpm/www.sock</code><br />
+    Look at the owner, group, and permissions (e.g., <code>-rw-rw----</code>). The Nginx user needs read/write access.<br />
+    Ideally, the socket should be owned by the upstream service's user (e.g., <code>php-fpm</code>) and a group that Nginx is also a part of (e.g., <code>www-data</code> or <code>nginx</code>), with permissions <code>0660</code>.</p>
+</li>
+<li>
+<p><strong>Check Parent Directory Permissions:</strong><br />
+    Recursively check the permissions of the directories leading to the socket.<br />
+<code>bash
+    ls -ld /var/run/php-fpm/
+    ls -ld /var/run/</code><br />
+    The Nginx user (or its group) needs execute permissions on all parent directories to traverse them, and read/write permissions on the immediate parent directory where the socket resides to create/access the socket. If the directory permissions are too restrictive (e.g., <code>drwx------</code> owned by <code>root</code>), Nginx won't even be able to look inside.</p>
+</li>
+<li>
+<p><strong>Adjust Filesystem Permissions (if needed):</strong></p>
+<ul>
+<li><strong>Modify upstream config:</strong> The <em>best</em> solution is to configure the upstream application (e.g., PHP-FPM, Gunicorn) to create the socket with appropriate permissions.<br />
+    For PHP-FPM, in <code>www.conf</code> (e.g., <code>/etc/php/8.1/fpm/pool.d/www.conf</code>):<br />
+<code>ini
+    listen = /var/run/php-fpm/www.sock
+    listen.owner = php-fpm
+    listen.group = nginx # Or www-data, depending on Nginx user
+    listen.mode = 0660</code><br />
+    Then restart PHP-FPM: <code>sudo systemctl restart php8.1-fpm</code> (adjust version).</li>
+<li><strong>Manual <code>chown</code>/<code>chmod</code> (temporary/debugging):</strong> If you can't reconfigure the upstream app immediately, or for a quick test, you can manually adjust permissions. <strong>Be aware:</strong> These changes might be reverted if the upstream application restarts and recreates the socket with its default permissions.<br />
+<code>bash
+    # Allow nginx group to access the socket
+    sudo chown php-fpm:nginx /var/run/php-fpm/www.sock
+    sudo chmod 660 /var/run/php-fpm/www.sock
+    # Ensure parent directory is traversable for nginx
+    sudo chown root:nginx /var/run/php-fpm/ # if directory ownership is an issue
+    sudo chmod 750 /var/run/php-fpm/</code><br />
+    Remember to restart Nginx after any potential changes to permissions that persist: <code>sudo systemctl restart nginx</code>.</li>
+</ul>
+</li>
+</ol>
+<h3 id="step-3-address-selinux-rhelcentosfedora">Step 3: Address SELinux (RHEL/CentOS/Fedora)</h3>
+<p>If filesystem permissions look correct, SELinux is the next prime suspect.</p>
+<ol>
+<li>
+<p><strong>Check SELinux Status:</strong><br />
+<code>bash
+    sestatus
+    getenforce</code><br />
+    If <code>getenforce</code> returns <code>Enforcing</code>, SELinux is active. If it's <code>Disabled</code> or <code>Permissive</code>, then SELinux is not the cause of <code>permission denied</code>.</p>
+</li>
+<li>
+<p><strong>Look for SELinux Denials:</strong><br />
+    The SELinux audit log is your best friend.<br />
+<code>bash
+    sudo tail -f /var/log/audit/audit.log | grep AVC
+    # Or, for a quick check:
+    sudo grep "nginx" /var/log/audit/audit.log</code><br />
+    While watching the log, try to reproduce the error (e.g., refresh the webpage). You should see <code>AVC</code> denial messages if SELinux is blocking Nginx. An <code>AVC</code> message will typically show the <code>scontext</code> (source context, e.g., <code>httpd_t</code> for Nginx) and <code>tcontext</code> (target context, e.g., <code>php_var_run_t</code> for PHP-FPM socket).</p>
+</li>
+<li>
+<p><strong>Generate a Custom SELinux Policy (Recommended):</strong><br />
+    This is often the most robust solution.<br />
+    ```bash<br />
+    # Install required tools if not present<br />
+    sudo yum install policycoreutils policycoreutils-python-utils -y</p>
+<h1 id="find-the-relevant-denials-and-generate-a-policy-module">Find the relevant denials and generate a policy module</h1>
+<p>sudo ausearch -c nginx --raw | audit2allow -M nginx-upstream</p>
+<h1 id="you-might-need-to-adjust-the-command-to-capture-more-relevant-denials">You might need to adjust the command to capture more relevant denials,</h1>
+<h1 id="for-example-by-filtering-based-on-target-context-tcontext">for example, by filtering based on target context (tcontext)</h1>
+<h1 id="or-by-time-if-the-logs-are-very-noisy">or by time if the logs are very noisy.</h1>
+<h1 id="inspect-the-generated-te-file-text-policy">Inspect the generated .te file (text policy)</h1>
+<p>cat nginx-upstream.te</p>
+<h1 id="install-the-policy-module">Install the policy module</h1>
+<p>sudo semodule -i nginx-upstream.pp<br />
+<code>``
+Restart Nginx (</code>sudo systemctl restart nginx`) and test. If you still see denials, repeat the process as new denials might appear.</p>
+</li>
+<li>
+<p><strong>Change SELinux Context (Alternative/Complementary):</strong><br />
+    Sometimes, the socket or its directory has an incorrect SELinux context. You can manually relabel it.<br />
+    ```bash<br />
+    # Check current context<br />
+    ls -Z /var/run/php-fpm/www.sock<br />
+    ls -Zd /var/run/php-fpm/</p>
+<h1 id="for-php-fpm-sockets-they-often-need-httpd_var_run_t-or-php_var_run_t">For PHP-FPM sockets, they often need 'httpd_var_run_t' or 'php_var_run_t'</h1>
+<h1 id="for-general-upstream-sockets-httpd_var_run_t-is-a-good-candidate">For general upstream sockets, 'httpd_var_run_t' is a good candidate.</h1>
+<h1 id="set-the-context-type-on-the-directory-then-restore">Set the context type on the directory, then restore.</h1>
+<p>sudo semanage fcontext -a -t httpd_var_run_t "/var/run/php-fpm(/.*)?"<br />
+sudo restorecon -Rv /var/run/php-fpm/<br />
+```<br />
+Restart Nginx and the upstream service.</p>
+</li>
+<li>
+<p><strong>Enable SELinux Booleans (If applicable for TCP sockets, less for Unix socket <code>permission denied</code>):</strong><br />
+    While <code>permission denied</code> for Unix sockets is usually about <code>type enforcement</code>, if Nginx were trying to connect to a <em>network</em> socket (e.g., <code>127.0.0.1:9000</code>) and SELinux blocked it, <code>httpd_can_network_connect</code> would be relevant.<br />
+<code>bash
+    sudo setsebool -P httpd_can_network_connect 1</code><br />
+    This boolean allows the <code>httpd_t</code> domain (Nginx) to initiate network connections. It’s less likely to directly solve a "permission denied" on a Unix domain socket, but it's a common SELinux troubleshooting step for Nginx proxy issues.</p>
+</li>
+</ol>
+<h3 id="step-4-address-apparmor-debianubuntu">Step 4: Address AppArmor (Debian/Ubuntu)</h3>
+<p>If you're on a Debian/Ubuntu system and SELinux is not active, AppArmor could be the culprit.</p>
+<ol>
+<li>
+<p><strong>Check AppArmor Status:</strong><br />
+<code>bash
+    sudo aa-status</code><br />
+    Look for <code>nginx</code> or <code>php-fpm</code> profiles. If they are in <code>enforce</code> mode, they might be blocking access.</p>
+</li>
+<li>
+<p><strong>Look for AppArmor Denials:</strong><br />
+    AppArmor denials are typically logged in <code>dmesg</code> or <code>/var/log/syslog</code>.<br />
+<code>bash
+    sudo dmesg | grep DENIED
+    sudo grep "apparmor.*nginx" /var/log/syslog</code></p>
+</li>
+<li>
+<p><strong>Adjust AppArmor Profile:</strong><br />
+    This is generally more involved, requiring modification of the Nginx profile (e.g., <code>/etc/apparmor.d/usr.sbin.nginx</code>) to explicitly permit access to the socket path.<br />
+    A quick, <em>temporary</em> way to check if AppArmor is the issue is to put the profile into <code>complain</code> mode:<br />
+<code>bash
+    sudo aa-complain /usr/sbin/nginx
+    # Or, if you need to completely disable it for testing (use with caution!)
+    sudo aa-disable /usr/sbin/nginx</code><br />
+    If the error resolves, you'll need to create a proper AppArmor rule to allow the access.</p>
+</li>
+</ol>
+<h3 id="step-5-restart-services">Step 5: Restart Services</h3>
+<p>After making any changes, always remember to restart both Nginx and the upstream application service.</p>
+<div class="highlight"><pre><span></span><code>sudo<span class="w"> </span>systemctl<span class="w"> </span>restart<span class="w"> </span>nginx
+sudo<span class="w"> </span>systemctl<span class="w"> </span>restart<span class="w"> </span>php8.1-fpm<span class="w"> </span><span class="c1"># or gunicorn, uwsgi, etc.</span>
+</code></pre></div>
+
+<h2 id="code-examples">Code Examples</h2>
+<h3 id="nginx-configuration-for-php-fpm">Nginx Configuration for PHP-FPM</h3>
+<div class="highlight"><pre><span></span><code><span class="k">server</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="kn">listen</span><span class="w"> </span><span class="mi">80</span><span class="p">;</span>
+<span class="w">    </span><span class="kn">server_name</span><span class="w"> </span><span class="s">example.com</span><span class="p">;</span>
+<span class="w">    </span><span class="kn">root</span><span class="w"> </span><span class="s">/var/www/html</span><span class="p">;</span>
+<span class="w">    </span><span class="kn">index</span><span class="w"> </span><span class="s">index.php</span><span class="w"> </span><span class="s">index.html</span><span class="p">;</span>
+
+<span class="w">    </span><span class="kn">location</span><span class="w"> </span><span class="s">/</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="kn">try_files</span><span class="w"> </span><span class="nv">$uri</span><span class="w"> </span><span class="nv">$uri/</span><span class="w"> </span><span class="p">=</span><span class="mi">404</span><span class="p">;</span>
+<span class="w">    </span><span class="p">}</span>
+
+<span class="w">    </span><span class="kn">location</span><span class="w"> </span><span class="p">~</span><span class="w"> </span><span class="sr">\.php$</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="kn">include</span><span class="w"> </span><span class="s">fastcgi_params</span><span class="p">;</span>
+<span class="w">        </span><span class="kn">fastcgi_pass</span><span class="w"> </span><span class="s">unix:/var/run/php-fpm/www.sock</span><span class="p">;</span><span class="w"> </span><span class="c1"># The crucial line</span>
+<span class="w">        </span><span class="kn">fastcgi_param</span><span class="w"> </span><span class="s">SCRIPT_FILENAME</span><span class="w"> </span><span class="nv">$document_root$fastcgi_script_name</span><span class="p">;</span>
+<span class="w">        </span><span class="kn">fastcgi_param</span><span class="w"> </span><span class="s">PATH_INFO</span><span class="w"> </span><span class="nv">$fastcgi_path_info</span><span class="p">;</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<h3 id="php-fpm-pool-configuration-eg-etcphp81fpmpooldwwwconf">PHP-FPM Pool Configuration (e.g., <code>/etc/php/8.1/fpm/pool.d/www.conf</code>)</h3>
+<div class="highlight"><pre><span></span><code><span class="k">[www]</span>
+<span class="na">user</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">php-fpm</span>
+<span class="na">group</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">php-fpm</span>
+<span class="na">listen</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">/var/run/php-fpm/www.sock</span>
+<span class="na">listen.owner</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">php-fpm</span><span class="w">  </span><span class="c1">; The user that owns the socket</span>
+<span class="na">listen.group</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">nginx</span><span class="w">    </span><span class="c1">; The group that owns the socket (make sure Nginx is in this group)</span>
+<span class="na">listen.mode</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">0660</span><span class="w">      </span><span class="c1">; Permissions for the socket file (rw for owner/group)</span>
+<span class="c1">; Other settings...</span>
+</code></pre></div>
+
+<h3 id="basic-bash-commands-for-troubleshooting-permissions">Basic Bash Commands for Troubleshooting Permissions</h3>
+<div class="highlight"><pre><span></span><code><span class="c1"># Check Nginx user</span>
+grep<span class="w"> </span><span class="s2">&quot;user&quot;</span><span class="w"> </span>/etc/nginx/nginx.conf
+
+<span class="c1"># List socket file details (including SELinux context)</span>
+ls<span class="w"> </span>-laZ<span class="w"> </span>/var/run/php-fpm/www.sock
+
+<span class="c1"># List parent directory details (including SELinux context)</span>
+ls<span class="w"> </span>-ldZ<span class="w"> </span>/var/run/php-fpm/
+
+<span class="c1"># Monitor SELinux audit log for denials</span>
+tail<span class="w"> </span>-f<span class="w"> </span>/var/log/audit/audit.log<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>AVC
+
+<span class="c1"># Restore default SELinux contexts for a directory</span>
+sudo<span class="w"> </span>restorecon<span class="w"> </span>-Rv<span class="w"> </span>/var/run/php-fpm/
+</code></pre></div>
+
+<h2 id="environment-specific-notes">Environment-Specific Notes</h2>
+<p>The context of your deployment environment significantly impacts how you approach this error.</p>
+<ul>
+<li>
+<p><strong>Cloud VMs (AWS EC2, GCP Compute, Azure VMs):</strong> On a fresh cloud instance, especially if using a RHEL-based image (like Amazon Linux 2, CentOS Stream), SELinux is almost certainly <code>Enforcing</code>. This is where <code>audit2allow</code> becomes an indispensable tool. Be cautious with <code>setenforce 0</code> (Permissive mode) or <code>setenforce 1</code> (Enforcing mode) as a debugging step; always restore to <code>Enforcing</code> in production. Also, remember that cloud firewall rules (Security Groups, Network ACLs) would typically result in "Connection refused" or timeouts, not "Permission denied," so focus on local system permissions or SELinux/AppArmor.</p>
+</li>
+<li>
+<p><strong>Docker/Containers:</strong></p>
+<ul>
+<li><strong>Permissions Inside the Container:</strong> If both Nginx and your upstream app are in the <em>same</em> container, the permission issues are typically standard filesystem <code>chown</code>/<code>chmod</code> problems within the container's filesystem. You'd fix these either in your Dockerfile (e.g., <code>RUN chmod 660 /var/run/app.sock</code>) or in your entrypoint script.</li>
+<li><strong>Volume Mounts:</strong> When you mount a host directory into a container (e.g., <code>-v /host/path:/container/path</code>), the permissions on the host can affect the container. If your upstream app creates a socket on a host-mounted volume, and Nginx in <em>another</em> container tries to access it (via a shared volume), the <code>user</code> and <code>group</code> IDs inside the containers must align with the ownership on the host. I've often seen <code>permission denied</code> here because the Nginx container's user (e.g., <code>nginx</code> with UID 101) doesn't match the host user that owns the socket file. Use consistent UIDs/GIDs or ensure wider group permissions (e.g., add Nginx container user to the host group that owns the socket, or use <code>bindfs</code> on the host).</li>
+<li><strong>SELinux on the Host:</strong> Even with containers, if the host OS has SELinux enabled, it can still block containers from accessing host-mounted volumes or specific paths. The <code>Z</code> flag in <code>docker run</code> (e.g., <code>--volume /host/path:/container/path:Z</code> or <code>:z</code>) tells Docker to relabel the volume with an appropriate SELinux context, which often resolves these issues.</li>
+</ul>
+</li>
+<li>
+<p><strong>Local Development Environments:</strong> Local setups (e.g., using <code>vagrant</code>, <code>XAMPP</code>/<code>MAMP</code>, or just directly on your laptop) often have SELinux/AppArmor disabled or in <code>Permissive</code> mode by default, making filesystem permissions the primary concern. Focus on <code>chown</code>, <code>chmod</code>, and ensuring the Nginx user is part of the correct group.</p>
+</li>
+</ul>
+<h2 id="frequently-asked-questions">Frequently Asked Questions</h2>
+<p><strong>Q: What's the difference between "permission denied," "connection refused," and "No such file or directory"?</strong><br />
+<strong>A:</strong> "Permission denied" means the operating system explicitly blocked Nginx from accessing the socket due to insufficient privileges (filesystem, SELinux, AppArmor). "Connection refused" means Nginx could reach the socket (or network port), but the upstream application was not listening or actively refused the connection. "No such file or directory" means Nginx couldn't find the socket file at the specified path, likely because the upstream service isn't running or is configured to use a different path.</p>
+<p><strong>Q: Can I just run Nginx as <code>root</code> to avoid permission issues?</strong><br />
+<strong>A:</strong> Absolutely not. Running Nginx or any public-facing web server as <code>root</code> is a significant security risk. If a vulnerability were exploited, the attacker would gain <code>root</code> access to your entire system. Always run Nginx as a non-privileged user (e.g., <code>nginx</code>, <code>www-data</code>).</p>
+<p><strong>Q: My upstream service (e.g., Gunicorn) creates the socket, but Nginx still can't access it. What then?</strong><br />
+<strong>A:</strong> Double-check the <code>listen.owner</code>, <code>listen.group</code>, and <code>listen.mode</code> settings within your upstream service's configuration. Ensure that the <code>group</code> configured for the socket matches a group that your Nginx user is a member of. If you've corrected these settings, make sure to restart your upstream service so it recreates the socket with the new permissions.</p>
+<p><strong>Q: How do I identify which user Nginx is running as?</strong><br />
+<strong>A:</strong> You can find the user Nginx is configured to run as by checking the <code>user</code> directive in your <code>nginx.conf</code> file (typically <code>/etc/nginx/nginx.conf</code>). If it's commented out, Nginx will use a default user (often <code>nginx</code> or <code>www-data</code>). You can also confirm the active user by running <code>ps aux | grep nginx</code> and looking at the user column for the Nginx worker processes.</p>
+<p><strong>Q: Should I just disable SELinux/AppArmor to fix this?</strong><br />
+<strong>A:</strong> While disabling these security modules will often resolve the error immediately, it's generally not recommended for production environments. They provide crucial security layers. The better approach is to create specific rules (custom SELinux policies, AppArmor profile adjustments) that grant Nginx only the necessary permissions, maintaining your system's security posture.</p>
+<h2 id="related-errors">Related Errors</h2>
+<ul>
+<li><a href="/errors/linux-permission-denied.html">linux-permission-denied</a></li>
+<li><a href="/errors/docker-permission-denied.html">docker-permission-denied</a></li>
+</ul>
+    </div>
+
+    <!-- ── AdSense placement 2 – bottom of article ───────────────────────── -->
+    <div class="ad-slot ad-slot--bottom" aria-label="Advertisement">
+      <!-- ins class="adsbygoogle" ... -->
+    </div>
+
+  </article>
+
+  <!-- ── Sidebar ─────────────────────────────────────────────────────────── -->
+  <aside class="sidebar">
+
+    <!-- Quick info card -->
+    <div class="sidebar-card">
+      <h3>Quick Info</h3>
+      <dl>
+        <dt>Tool</dt>     <dd>Nginx</dd>
+        <dt>Context</dt>  <dd>server / Linux</dd>
+        
+        <dt>Code</dt>     <dd><code>permission-denied</code></dd>
+        
+      </dl>
+    </div>
+
+    <!-- Related errors -->
+    
+    <div class="sidebar-card">
+      <h3>Related Errors</h3>
+      <ul class="related-list">
+        
+        <li>
+          <a href="https://errorfix.dev/errors/linux-permission-denied.html">
+            Linux bash: Permission denied
+          </a>
+          <span class="badge">Linux</span>
+        </li>
+        
+        <li>
+          <a href="https://errorfix.dev/errors/docker-permission-denied.html">
+            Docker permission denied while connecting to daemon socket
+          </a>
+          <span class="badge">Docker</span>
+        </li>
+        
+      </ul>
+    </div>
+    
+
+    <!-- ── AdSense placement 3 – sidebar ─────────────────────────────────── -->
+    <div class="ad-slot ad-slot--sidebar" aria-label="Advertisement">
+      <!-- ins class="adsbygoogle" ... -->
+    </div>
+
+    <!-- Affiliate CTA -->
+    <div class="sidebar-card sidebar-card--cta">
+      <h3>Manage Cloud Costs</h3>
+      <p>Compare pricing and get credits on top cloud platforms.</p>
+      <!-- Replace href with your affiliate URL -->
+      <a href="#" class="btn" rel="nofollow sponsored" target="_blank">
+        Get $200 free credit →
+      </a>
+    </div>
+
+  </aside>
+</div>
+
+  </main>
+
+  <!-- ── Footer ─────────────────────────────────────────────────────────── -->
+  <footer class="site-footer">
+    <div class="container">
+      <p class="footer-logo">⚡ ErrorFix.dev</p>
+      <p>Practical, engineer-written guides for real-world software errors.</p>
+      <p style="margin-top:.5rem">Last updated: <time>April 25, 2026</time>.</p>
+      <p class="footer-links" style="margin-top:.75rem">
+        <!-- ╔══════════════════════════════════════════════════════════════╗ -->
+        <!-- ║  AFFILIATE LINKS – replace the href values below            ║ -->
+        <!-- ╚══════════════════════════════════════════════════════════════╝ -->
+        <a href="#" rel="nofollow sponsored" target="_blank">AWS Free Tier</a> ·
+        <a href="#" rel="nofollow sponsored" target="_blank">Google Cloud</a> ·
+        <a href="#" rel="nofollow sponsored" target="_blank">DigitalOcean $200 credit</a>
+      </p>
+    </div>
+  </footer>
+
+</body>
+</html>
