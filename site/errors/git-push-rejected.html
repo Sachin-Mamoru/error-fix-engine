@@ -124,175 +124,185 @@
     <div class="article-content">
       <h1 id="git-error-failed-to-push-some-refs-remote-contains-work-you-do-not-have">Git error: failed to push some refs – remote contains work you do not have</h1>
 <blockquote>
-<p>Encountering this Git error means your local branch is behind the remote, preventing a direct push; this guide explains how to synchronize your history and push successfully.</p>
+<p>Encountering Git's "failed to push some refs – remote contains work you do not have" means your local branch is out of sync with the remote, preventing direct pushes; this guide explains how to fix it.</p>
 </blockquote>
 <h2 id="what-this-error-means">What This Error Means</h2>
-<p>This error message, "failed to push some refs – remote contains work you do not have", is Git's way of telling you that the branch you're trying to push to on the remote repository has commits that are not present in your local branch. In simpler terms, someone else (or you, from another machine) has pushed changes to the remote branch since the last time you pulled, and your local branch is now "behind" the remote. Git, by default, enforces a linear history for push operations to prevent accidental overwrites and ensure collaboration is managed cleanly. It won't let you push changes that would overwrite or diverge from the remote history without first incorporating the remote changes into your local branch.</p>
+<p>This Git error indicates a fundamental mismatch between your local branch's history and its corresponding remote branch. When you attempt to <code>git push</code>, Git compares your local commit history with the remote. If Git discovers that the remote branch has commits that are <em>not</em> present in your local branch – meaning someone else (or even you, from another machine) has pushed changes to the remote since your last <code>git pull</code> – it will refuse your push.</p>
+<p>The phrase "failed to push some refs" refers to Git's inability to update the reference (the pointer to the latest commit) for your branch on the remote repository. "Remote contains work you do not have" explicitly states the reason: your local branch is behind the remote, and Git prevents a "non-fast-forward" push to avoid overwriting or losing the remote's newer history. It's Git's way of safeguarding the integrity of the shared codebase.</p>
 <h2 id="why-it-happens">Why It Happens</h2>
-<p>Git is a distributed version control system. This means every developer has a complete copy of the repository history. When you <code>git push</code>, you're essentially trying to update the remote repository with your local changes. However, if the remote's history for that specific branch has diverged from your local history (i.e., new commits exist on the remote that aren't in your local branch), Git prevents the push. This safeguard is crucial for collaborative environments. If Git allowed you to push blindly, you'd effectively be deleting the commits that your teammates (or your other self) added, leading to lost work and a fractured history. The system requires you to integrate the remote changes first, creating a new, unified history before you can contribute yours.</p>
+<p>At its core, this error occurs because Git is a distributed version control system. Developers work concurrently, often on the same branches. When you <code>git clone</code> or <code>git pull</code>, you get a snapshot of the remote repository at that moment. However, the remote repository is a living entity, constantly being updated by other team members' pushes.</p>
+<p>When your local copy of a branch falls behind the remote version of that same branch, Git flags this discrepancy. Your local branch's tip commit is no longer a direct ancestor of the remote branch's tip commit. To allow your changes to be pushed, your local history must first incorporate the remote's new commits. This ensures a linear, coherent history or at least a clearly recorded merge, preventing accidental loss of work.</p>
 <h2 id="common-causes">Common Causes</h2>
-<p>In my experience, this error typically stems from one of a few common scenarios:</p>
+<p>In my experience, this error is one of the most frequent Git issues developers encounter, especially in collaborative environments. Here are the common scenarios that lead to it:</p>
 <ul>
-<li><strong>Team Collaboration:</strong> This is by far the most frequent cause. A colleague pushes their work to a shared branch (e.g., <code>main</code>, <code>develop</code>, or a feature branch) while you are still working on your own changes. When you go to push, Git sees their commits on the remote that you don't have locally.</li>
-<li><strong>Multiple Workstations:</strong> I've seen this in production when developers work on the same repository from different machines (e.g., a desktop and a laptop). You make changes on one machine, push them, then switch to another machine, make more changes, and try to push without first pulling the changes you made from the <em>other</em> machine.</li>
-<li><strong>CI/CD Pipeline Updates:</strong> Sometimes, an automated CI/CD pipeline might push changes (e.g., version bumps, release tags, generated documentation) to a branch, and if you haven't pulled those changes, your local branch will be behind.</li>
-<li><strong>Force Push by Others (Less Common, More Problematic):</strong> Rarely, a colleague might have force-pushed to a shared branch, completely rewriting its history. While this is generally discouraged on shared branches, if it happens, your local history will no longer align with the remote, even if you theoretically had the latest commits <em>before</em> the force push. This requires a more careful approach, often involving a rebase or a fresh clone.</li>
-<li><strong>Rebasing Local History:</strong> If you've rebased your local branch and then try to push, but someone else has pushed new commits to the remote branch you're trying to rebase onto (or push your rebased branch to), you'll encounter this error. Your rebased history is different from the remote's.</li>
+<li><strong>Coworker Pushed Changes:</strong> This is the most prevalent cause. While you were working on your local changes, a teammate committed and pushed their own changes to the same remote branch you're trying to push to. Your local branch is now "stale" relative to the remote.</li>
+<li><strong>You Pushed from Another Machine:</strong> I've definitely done this: working on a feature on my desktop, pushing, then trying to push from my laptop later without first pulling the changes I made on my desktop. Git sees the laptop's branch as behind.</li>
+<li><strong>CI/CD Pipeline Updates:</strong> Sometimes, automated processes (like a CI/CD pipeline) might push a version bump, a build artifact, or a deployment tag directly to your branch (or a related branch) on the remote. If your local copy hasn't fetched those changes, you'll hit this error.</li>
+<li><strong>Remote Branch Rewritten (Rare on Protected Branches):</strong> In less common scenarios, someone might have force-pushed (<code>git push --force</code>) to the remote branch, completely rewriting its history. If your local history doesn't match this new, rewritten remote history, you'll encounter this error. This usually only happens on personal or very temporary branches, as most <code>main</code> or <code>develop</code> branches are protected from force pushes.</li>
+<li><strong>Forgetfulness (Been there!):</strong> Simply forgetting to run <code>git pull</code> before starting new work or attempting to push. It's a routine I try to enforce for myself before any major coding session.</li>
 </ul>
 <h2 id="step-by-step-fix">Step-by-Step Fix</h2>
-<p>The fix for this error is straightforward: you need to incorporate the remote changes into your local branch before you can push your own. This typically involves fetching the remote changes and then merging or rebasing them into your current branch.</p>
+<p>The solution involves bringing your local branch up to date with the remote's history. There are two primary strategies for integrating remote changes: <strong>merge</strong> and <strong>rebase</strong>. Both will resolve the "remote contains work you do not have" error, but they handle your branch's history differently.</p>
+<p>First, ensure you are on the correct branch and your working directory is clean.</p>
 <ol>
 <li>
-<p><strong>Check Your Status (Optional but Recommended):</strong><br />
-    Before doing anything, it's good practice to see what local changes you have. This helps you anticipate potential merge conflicts.<br />
-<code>bash
-    git status</code><br />
-    If you have uncommitted changes, you might want to <code>git stash</code> them temporarily or <code>git commit</code> them before proceeding.</p>
+<p><strong>Check Your Branch and Status:</strong><br />
+    Always start by confirming your current branch and whether you have any uncommitted changes. This is a critical step to avoid losing work or making a mess.</p>
+<p><code>bash
+git status
+git branch --show-current</code></p>
+<p>If <code>git status</code> shows uncommitted changes, you have two options:<br />
+*   <strong>Commit them:</strong> If they are ready, commit them to your local branch: <code>git add . &amp;&amp; git commit -m "My pending changes"</code><br />
+*   <strong>Stash them:</strong> If you're not ready to commit, stash them temporarily: <code>git stash save "Work in progress"</code> (You'll need to <code>git stash pop</code> or <code>git stash apply</code> later).</p>
 </li>
 <li>
-<p><strong>Fetch Remote Changes:</strong><br />
-    This command downloads all the latest objects and refs from the remote repository but doesn't merge them into your local branches. It updates your remote-tracking branches (e.g., <code>origin/main</code>).<br />
-<code>bash
-    git fetch origin</code><br />
-    (Replace <code>origin</code> with your remote name if different, and <code>main</code> with your branch name if applicable).</p>
+<p><strong>Fetch the Latest Remote Changes:</strong><br />
+    Before merging or rebasing, always <code>fetch</code> the latest changes from the remote. This updates your local <code>origin/your-branch</code> tracking reference without modifying your local working branch.</p>
+<p><code>bash
+git fetch origin</code></p>
+<p>Now, your local Git repository knows about all the new commits on the remote.</p>
 </li>
 <li>
-<p><strong>Pull Remote Changes (Merge or Rebase):</strong><br />
-    Now that you've fetched the remote's state, you need to integrate those changes into your local branch. You have two primary options: <code>merge</code> or <code>rebase</code>.</p>
+<p><strong>Inspect the Divergence (Optional but Recommended):</strong><br />
+    To understand what you're about to do, you can visualize the differences:</p>
+<p>```bash<br />
+git log --oneline --graph --all</p>
+<h1 id="or-to-see-commits-on-remote-that-arent-local">Or to see commits on remote that aren't local:</h1>
+<p>git log your-branch..origin/your-branch</p>
+<h1 id="and-commits-on-local-that-arent-remote">And commits on local that aren't remote:</h1>
+<p>git log origin/your-branch..your-branch<br />
+```</p>
+<p>This helps clarify if you have unique local commits and what new commits are on the remote.</p>
+</li>
+<li>
+<p><strong>Integrate Remote Changes (Choose One Option):</strong></p>
 <ul>
 <li>
-<p><strong>Option A: <code>git pull --rebase</code> (Recommended for clean history)</strong><br />
-    This command fetches the remote changes and then "replays" your local commits on top of the remote's latest state. This results in a cleaner, linear history without extra merge commits.<br />
-<code>bash
-    git pull --rebase origin main</code><br />
-    (Replace <code>origin</code> and <code>main</code> as needed).<br />
-    If you have local commits, Git will temporarily "stash" them, pull the remote changes, and then "unstash" (apply) your local commits on top. This is generally preferred for feature branches and before pushing to shared branches like <code>main</code> or <code>develop</code>.</p>
+<h3 id="option-a-git-pull-rebase-preferred-for-clean-linear-history">Option A: <code>git pull --rebase</code> (Preferred for clean, linear history)</h3>
+<p>This command fetches changes and then reapplies your local commits <em>on top</em> of the fetched remote changes. It creates a linear history, making it look like you started your work <em>after</em> the remote's latest changes. This is generally preferred for feature branches to keep the history clean before merging into <code>main</code>.</p>
+<p><code>bash
+git pull --rebase origin your-branch</code></p>
+<p><strong>Conflict Resolution with Rebase:</strong><br />
+If there are conflicts, Git will pause the rebase.<br />
+*   Edit the conflicting files to resolve the differences.<br />
+*   Mark them as resolved: <code>git add &lt;conflicted-file&gt;</code><br />
+*   Continue the rebase: <code>git rebase --continue</code><br />
+*   To abort the rebase at any point: <code>git rebase --abort</code></p>
 </li>
 <li>
-<p><strong>Option B: <code>git pull</code> (Default merge behavior)</strong><br />
-    This command fetches the remote changes and then merges them into your current local branch. This creates a new "merge commit" that ties together your local changes and the remote changes.<br />
-<code>bash
-    git pull origin main</code><br />
-    (Replace <code>origin</code> and <code>main</code> as needed).<br />
-    This is simpler if you prefer explicit merge commits or if you're working on a long-lived branch where a merge commit is acceptable.</p>
+<h3 id="option-b-git-pull-merges-remote-changes-preserves-history">Option B: <code>git pull</code> (Merges remote changes, preserves history)</h3>
+<p>This command fetches changes and then creates a new merge commit in your local branch, combining the remote's history with your local history. This preserves the exact history of <em>when</em> you branched and merged, but it can create a more "jagged" history with many merge commits, especially if done frequently.</p>
+<p><code>bash
+git pull origin your-branch</code></p>
+<p><strong>Conflict Resolution with Merge:</strong><br />
+If there are conflicts, Git will pause the merge.<br />
+*   Edit the conflicting files to resolve the differences.<br />
+*   Mark them as resolved: <code>git add &lt;conflicted-file&gt;</code><br />
+*   Continue the merge: <code>git merge --continue</code><br />
+*   To abort the merge at any point: <code>git merge --abort</code></p>
 </li>
-</ul>
-</li>
-<li>
-<p><strong>Resolve Conflicts (If Any):</strong><br />
-    After <code>git pull</code> (whether merge or rebase), Git might pause if there are conflicts between your local changes and the remote changes. You'll see messages indicating which files have conflicts.</p>
-<ul>
-<li>Open the conflicting files in your editor.</li>
-<li>Git marks conflicts with <code>&lt;&lt;&lt;&lt;&lt;&lt;&lt;</code>, <code>=======</code>, and <code>&gt;&gt;&gt;&gt;&gt;&gt;&gt;</code>.</li>
-<li>Manually resolve the conflicts, choosing which changes to keep.</li>
-<li>Once resolved, stage the files:<br />
-<code>bash
-    git add .</code></li>
-<li>If you used <code>git pull --rebase</code>, continue the rebase:<br />
-<code>bash
-    git rebase --continue</code><br />
-    If you used <code>git pull</code> (merge), commit the resolution:<br />
-<code>bash
-    git commit -m "Merge remote-tracking branch 'origin/main' into main with conflict resolution"</code><br />
-    (Git often pre-populates the merge commit message for you.)</li>
 </ul>
 </li>
 <li>
 <p><strong>Push Your Changes:</strong><br />
-    Once your local branch is up-to-date with the remote and any conflicts are resolved, you can now push your changes.<br />
-<code>bash
-    git push origin main</code><br />
-    (Replace <code>origin</code> and <code>main</code> as needed).<br />
-    This push should now succeed because your local history is a superset of the remote history.</p>
+    Once you've successfully integrated the remote changes (either via rebase or merge) and resolved any conflicts, your local branch is now up to date and contains all the remote's history plus your own changes. You can now push.</p>
+<p><code>bash
+git push origin your-branch</code></p>
+<p>If you rebased your branch, you are effectively pushing a <em>new</em> history that replaces your old local history. Since the remote hasn't seen this specific rebased history before, your <code>git push</code> will likely be a fast-forward or a simple update.</p>
 </li>
 </ol>
 <h2 id="code-examples">Code Examples</h2>
-<p>Here are the most common scenarios demonstrated with copy-paste ready commands. Assume you are on the <code>main</code> branch and <code>origin</code> is your remote.</p>
-<p><strong>Scenario 1: Simple Rebase Integration</strong><br />
-You have local commits, and the remote <code>main</code> has new commits. You want a clean, linear history.</p>
-<div class="highlight"><pre><span></span><code><span class="c1"># First, ensure you&#39;re on the correct branch</span>
-git<span class="w"> </span>checkout<span class="w"> </span>main
-
-<span class="c1"># Pull remote changes and rebase your local commits on top</span>
-git<span class="w"> </span>pull<span class="w"> </span>--rebase<span class="w"> </span>origin<span class="w"> </span>main
-
-<span class="c1"># If no conflicts, push your changes</span>
-git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>main
+<p>Here are some concise, copy-paste ready examples of the commands you'll typically use:</p>
+<p><strong>1. Checking status and current branch:</strong></p>
+<div class="highlight"><pre><span></span><code>git<span class="w"> </span>status
+git<span class="w"> </span>branch<span class="w"> </span>--show-current
 </code></pre></div>
 
-<p><strong>Scenario 2: Merge Integration</strong><br />
-You have local commits, and the remote <code>main</code> has new commits. You prefer a merge commit to show the integration point.</p>
-<div class="highlight"><pre><span></span><code><span class="c1"># First, ensure you&#39;re on the correct branch</span>
-git<span class="w"> </span>checkout<span class="w"> </span>main
-
-<span class="c1"># Pull remote changes, creating a merge commit if necessary</span>
-git<span class="w"> </span>pull<span class="w"> </span>origin<span class="w"> </span>main
-
-<span class="c1"># If no conflicts, push your changes</span>
-git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>main
+<p><strong>2. Stashing uncommitted changes:</strong></p>
+<div class="highlight"><pre><span></span><code>git<span class="w"> </span>stash<span class="w"> </span>save<span class="w"> </span><span class="s2">&quot;WIP on current feature before pulling&quot;</span>
 </code></pre></div>
 
-<p><strong>Scenario 3: Resolving Conflicts during Rebase</strong><br />
-During <code>git pull --rebase</code>, a conflict arises.</p>
-<div class="highlight"><pre><span></span><code><span class="c1"># Start the rebase</span>
-git<span class="w"> </span>pull<span class="w"> </span>--rebase<span class="w"> </span>origin<span class="w"> </span>main
-
-<span class="c1"># Git will stop and inform you about conflicts, e.g.:</span>
-<span class="c1"># CONFLICT (content): Merge conflict in file.txt</span>
-<span class="c1"># ...</span>
-<span class="c1"># When you have resolved this problem, run &quot;git rebase --continue&quot;.</span>
-
-<span class="c1"># Manually edit the conflicting files (e.g., file.txt)</span>
-<span class="c1"># After resolving conflicts:</span>
-git<span class="w"> </span>add<span class="w"> </span>file.txt<span class="w"> </span><span class="c1"># Stage the resolved file</span>
-git<span class="w"> </span>rebase<span class="w"> </span>--continue<span class="w"> </span><span class="c1"># Continue the rebase process</span>
-
-<span class="c1"># Repeat add/continue if multiple commits have conflicts.</span>
-<span class="c1"># Once rebase is complete:</span>
-git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>main
+<p><strong>3. Fetching latest remote changes:</strong></p>
+<div class="highlight"><pre><span></span><code>git<span class="w"> </span>fetch<span class="w"> </span>origin
 </code></pre></div>
 
-<p><strong>Scenario 4: Resolving Conflicts during Merge</strong><br />
-During <code>git pull</code> (merge), a conflict arises.</p>
-<div class="highlight"><pre><span></span><code><span class="c1"># Start the merge</span>
-git<span class="w"> </span>pull<span class="w"> </span>origin<span class="w"> </span>main
+<p><strong>4. Resolving the error using <code>pull --rebase</code> (recommended):</strong></p>
+<div class="highlight"><pre><span></span><code>git<span class="w"> </span>pull<span class="w"> </span>--rebase<span class="w"> </span>origin<span class="w"> </span>your-branch-name
+</code></pre></div>
 
-<span class="c1"># Git will stop and inform you about conflicts, e.g.:</span>
-<span class="c1"># CONFLICT (content): Merge conflict in file.txt</span>
-<span class="c1"># ...</span>
-<span class="c1"># Automatic merge failed; fix conflicts and then commit the result.</span>
+<p><em>If conflicts:</em></p>
+<div class="highlight"><pre><span></span><code><span class="c1"># ... resolve conflicts in files ...</span>
+git<span class="w"> </span>add<span class="w"> </span>conflicted-file-1.js<span class="w"> </span>conflicted-file-2.ts
+git<span class="w"> </span>rebase<span class="w"> </span>--continue
+</code></pre></div>
 
-<span class="c1"># Manually edit the conflicting files (e.g., file.txt)</span>
-<span class="c1"># After resolving conflicts:</span>
-git<span class="w"> </span>add<span class="w"> </span>file.txt<span class="w"> </span><span class="c1"># Stage the resolved file</span>
-git<span class="w"> </span>commit<span class="w"> </span><span class="c1"># This will open your editor with a pre-filled merge commit message. Save and close.</span>
+<p><em>If you need to give up on the rebase:</em></p>
+<div class="highlight"><pre><span></span><code>git<span class="w"> </span>rebase<span class="w"> </span>--abort
+</code></pre></div>
 
-<span class="c1"># Once the merge commit is created:</span>
-git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>main
+<p><strong>5. Resolving the error using <code>pull</code> (merge):</strong></p>
+<div class="highlight"><pre><span></span><code>git<span class="w"> </span>pull<span class="w"> </span>origin<span class="w"> </span>your-branch-name
+</code></pre></div>
+
+<p><em>If conflicts:</em></p>
+<div class="highlight"><pre><span></span><code><span class="c1"># ... resolve conflicts in files ...</span>
+git<span class="w"> </span>add<span class="w"> </span>conflicted-file-1.js<span class="w"> </span>conflicted-file-2.ts
+git<span class="w"> </span>merge<span class="w"> </span>--continue
+</code></pre></div>
+
+<p><em>If you need to give up on the merge:</em></p>
+<div class="highlight"><pre><span></span><code>git<span class="w"> </span>merge<span class="w"> </span>--abort
+</code></pre></div>
+
+<p><strong>6. Pushing after successful pull/rebase:</strong></p>
+<div class="highlight"><pre><span></span><code>git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>your-branch-name
+</code></pre></div>
+
+<p><strong>7. Reapplying stashed changes (if you stashed earlier):</strong></p>
+<div class="highlight"><pre><span></span><code>git<span class="w"> </span>stash<span class="w"> </span>pop
+<span class="c1"># Or if you want to keep the stash:</span>
+git<span class="w"> </span>stash<span class="w"> </span>apply
 </code></pre></div>
 
 <h2 id="environment-specific-notes">Environment-Specific Notes</h2>
-<p>The "failed to push" error is fundamentally a local Git client issue, but its manifestation and implications can vary slightly depending on your development environment.</p>
+<p>While the core Git commands remain the same, how you encounter and manage this error can vary slightly depending on your environment and workflow.</p>
 <ul>
-<li><strong>Local Development:</strong> This is where you'll most commonly encounter this error. It's usually a direct result of collaborating with a team or switching contexts (e.g., working on a feature, then needing to push a quick hotfix from the same local repository, forgetting to pull first). The fix is always the same: <code>git pull</code> (merge or rebase) then <code>git push</code>.</li>
-<li><strong>Cloud CI/CD Pipelines (e.g., Jenkins, GitLab CI, GitHub Actions, Azure DevOps):</strong> While CI/CD systems generally <code>git fetch</code> and <code>git checkout</code> the latest code, you might see this error if a pipeline <em>tries to push</em> changes back to the repository. For example, if your CI pipeline automatically bumps version numbers or generates documentation and then attempts to push these changes, it could fail if another push happened concurrently. Most CI/CD pipelines are designed to fetch the very latest state before attempting a push, but in more complex scenarios or poorly configured jobs, this can pop up. In such cases, ensure the CI job always starts with a <code>git pull --rebase</code> or <code>git pull</code> before making its own changes and pushing.</li>
-<li><strong>Docker Environments:</strong> If you're building Docker images, this error isn't typically related to the <code>docker build</code> process itself, as <code>docker build</code> usually pulls a finished artifact or relies on a <em>specific</em> commit hash. However, if your Dockerfile or entrypoint script involves <code>git push</code> operations (which is highly unusual and generally discouraged in a build process), then the same rules apply. More commonly, if you're developing <em>within</em> a Docker container (e.g., using a dev container or mounting your host directory), and you're running Git commands <em>inside</em> that container, the behavior is identical to local development. The container itself doesn't change Git's core mechanics.</li>
-<li><strong>Monorepos vs. Polyrepos:</strong> In large monorepos with many contributors, this error can appear more frequently simply due to the higher velocity of pushes to shared branches. In polyrepos (multiple smaller repositories), the likelihood is the same per repository, but you might manage more individual repositories. The solution remains consistent regardless of the repository structure.</li>
+<li>
+<p><strong>Cloud Hosting (GitHub, GitLab, Bitbucket):</strong> These platforms often enforce branch protection rules, especially for <code>main</code> or <code>develop</code> branches. These rules typically prevent direct pushes to the branch and require changes to come in via approved Pull Requests (PRs) or Merge Requests (MRs). When working on a feature branch destined for a PR/MR, you're expected to keep your feature branch up-to-date with the target branch (e.g., <code>main</code>) frequently. This often involves pulling/rebasing <code>main</code> into your feature branch. The "remote contains work you do not have" error here usually means your feature branch on the remote is behind another copy of itself, or behind the target branch if you're trying to push directly to a target branch without a PR.</p>
+</li>
+<li>
+<p><strong>Docker Development:</strong> If you're developing inside a Docker container, your Git client within the container is typically isolated.</p>
+<ul>
+<li>Ensure your <code>~/.gitconfig</code> and credentials are correctly mounted or configured inside the container if you're performing Git operations from within it.</li>
+<li>The error itself means the same thing, but the <em>cause</em> might sometimes be that your container's Git state is stale, or that a build process within the container modified the repo. My advice: generally, keep Git operations on the host machine where possible, and only perform <code>git clone</code> or <code>git pull</code> from within the container if strictly necessary for a build step. If your <code>git push</code> fails from within a container, it's almost certainly because the container's version of the repo is behind the remote, and the fix is the same: <code>git pull --rebase</code>.</li>
+</ul>
+</li>
+<li>
+<p><strong>Local Development with Multiple Machines:</strong> As mentioned earlier, pushing from one machine, then trying to push from another without syncing first, is a common trap. The key is to treat each machine as a distinct "developer" when it comes to Git syncing. Always <code>git pull --rebase</code> on the machine you're about to work on before making new commits, and <em>definitely</em> before pushing. I've found that consistency across my devices saves a lot of headaches here.</p>
+</li>
 </ul>
 <h2 id="frequently-asked-questions">Frequently Asked Questions</h2>
-<p><strong>Q: Should I use <code>git pull --rebase</code> or <code>git pull --merge</code> (default)?</strong><br />
-<strong>A:</strong> In my experience, for feature branches and before pushing to a shared integration branch (like <code>develop</code> or <code>main</code>), <code>git pull --rebase</code> is generally preferred. It keeps your branch's history clean and linear, avoiding unnecessary merge commits. <code>git pull</code> (merge) is fine for longer-lived branches where merge commits are acceptable as markers of integration. Always discuss with your team for their preferred workflow.</p>
-<p><strong>Q: Can I just force push (<code>git push -f</code>) to get around this error?</strong><br />
-<strong>A:</strong> <strong>NO!</strong> Absolutely avoid <code>git push -f</code> or <code>git push --force-with-lease</code> as a first resort on shared branches. Force pushing <em>rewrites</em> the remote history, which means you could delete other people's work or create significant headaches for anyone who has pulled the "old" history. Only use force push if you explicitly intend to overwrite the remote branch and are certain no one else's work will be lost (e.g., on your own private feature branch you know no one else is using, or after careful coordination with your team). The error message itself is a protective measure – respect it.</p>
-<p><strong>Q: What if I have uncommitted changes when I try to <code>git pull</code>?</strong><br />
-<strong>A:</strong> Git will typically prevent the <code>pull</code> operation if it detects uncommitted changes that would be overwritten by the pull. You have a few options:<br />
-    1.  <code>git stash</code>: Temporarily save your changes, then pull, then <code>git stash pop</code>.<br />
-    2.  <code>git commit -m "WIP: My current work"</code>: Commit your changes locally, then pull. You might face merge conflicts.<br />
-    3.  <code>git reset --hard</code>: Discard your changes (only if you're absolutely sure you don't need them).</p>
-<p><strong>Q: How can I prevent this error from happening often?</strong><br />
-<strong>A:</strong> The best prevention is frequent pulling. Make it a habit to <code>git pull --rebase</code> (or <code>git pull</code>) at the start of your workday, before starting new work, and before attempting to push. The more frequently you synchronize with the remote, the smaller the divergence will be, and the less likely you are to encounter complex merge conflicts.</p>
-<p><strong>Q: Does this error indicate I've lost my work?</strong><br />
-<strong>A:</strong> No, absolutely not. Your local work is safe and sound. This error is Git's way of <em>protecting</em> the remote history and preventing you from inadvertently losing <em>other people's</em> work. It's a prompt for you to integrate changes, not a sign of data loss.</p>
+<p><strong>Q: Can I just force push (<code>git push --force</code>) to fix this?</strong><br />
+<strong>A:</strong> No, not generally. Force pushing (<code>git push --force</code> or <code>git push --force-with-lease</code>) overwrites the remote history with your local history. If other developers have based their work on the "old" remote history, force pushing will cause them significant problems, including potentially losing their work or requiring complex rebases on their end. Only use <code>git push --force-with-lease</code> on branches that <em>only you</em> are working on and where you are absolutely certain no one else has pulled from it since your last push (e.g., after you've performed a rebase on your local branch that rewrites its history). For shared branches, always pull and integrate changes.</p>
+<p><strong>Q: What's the difference between <code>git pull</code> and <code>git pull --rebase</code>?</strong><br />
+<strong>A:</strong> <code>git pull</code> is shorthand for <code>git fetch</code> followed by <code>git merge</code>. It downloads remote changes and then creates a <em>merge commit</em> to combine the remote's history with your local commits. This preserves the exact history of both branches but can result in a "messier" graph with many merge commits. <code>git pull --rebase</code> is shorthand for <code>git fetch</code> followed by <code>git rebase</code>. It downloads remote changes and then "replays" your local commits <em>on top</em> of the new remote history. This creates a clean, linear history, making it look as if you started your work <em>after</em> the latest remote commits. It's generally preferred for feature branches to keep the history tidy.</p>
+<p><strong>Q: What if I have uncommitted changes when I try to <code>git pull</code> or <code>git pull --rebase</code>?</strong><br />
+<strong>A:</strong> Git will typically prevent the operation, warning you about uncommitted changes. The safest approach is to <code>git stash</code> your changes first (<code>git stash save "WIP"</code>). After successfully pulling/rebasing, you can then <code>git stash pop</code> to reapply your changes. This ensures your work-in-progress isn't accidentally overwritten or causes conflicts during the pull/rebase process.</p>
+<p><strong>Q: How can I avoid this error in the future?</strong><br />
+<strong>A:</strong> The best way is proactive syncing.<br />
+1.  <strong>Pull Frequently:</strong> Make it a habit to <code>git pull --rebase</code> before you start any significant work session and periodically throughout the day, especially if you're on a shared branch.<br />
+2.  <strong>Communicate:</strong> Talk to your team. Knowing who's working on what and when they plan to push can help avoid simultaneous pushes to the same branch.<br />
+3.  <strong>Feature Branches:</strong> Work on dedicated feature branches that diverge from <code>main</code>/<code>develop</code> and integrate <code>main</code>/<code>develop</code> frequently into your feature branch (via rebase) to keep it updated.<br />
+4.  <strong>Use <code>git push --force-with-lease</code> cautiously:</strong> If you absolutely need to rewrite history on a branch (e.g., you rebased your own feature branch), use <code>git push --force-with-lease</code> instead of <code>--force</code>. This provides a safeguard, ensuring you only force push if the remote branch hasn't changed since you last fetched.</p>
+<p><strong>Q: My remote tracking branch is out of sync (e.g., <code>origin/my-branch</code> refers to a deleted remote branch). How do I clean that up?</strong><br />
+<strong>A:</strong> Sometimes a remote branch is deleted, but your local Git still has a reference to <code>origin/my-branch</code>. You can prune these stale remote-tracking branches with:</p>
+<div class="highlight"><pre><span></span><code>git<span class="w"> </span>fetch<span class="w"> </span>--prune<span class="w"> </span>origin
+</code></pre></div>
+
+<p>Or simply:</p>
+<div class="highlight"><pre><span></span><code>git<span class="w"> </span>remote<span class="w"> </span>prune<span class="w"> </span>origin
+</code></pre></div>
+
 <h2 id="related-errors">Related Errors</h2>
     </div>
 
@@ -367,7 +377,7 @@ git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </
     <div class="container">
       <p class="footer-logo">⚡ ErrorFix.dev</p>
       <p>Practical, engineer-written guides for real-world software errors.</p>
-      <p style="margin-top:.5rem">Last updated: <time>May 01, 2026</time>.</p>
+      <p style="margin-top:.5rem">Last updated: <time>May 02, 2026</time>.</p>
       <p class="footer-links" style="margin-top:.75rem">
         <!-- ╔══════════════════════════════════════════════════════════════╗ -->
         <!-- ║  AFFILIATE LINKS – replace the href values below            ║ -->
