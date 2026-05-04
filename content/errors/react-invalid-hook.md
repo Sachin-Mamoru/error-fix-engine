@@ -1,294 +1,167 @@
 # React Error: Invalid hook call – Hooks can only be called inside a function component
-> Encountering an 'Invalid hook call' means you're using React Hooks outside of a function component; this guide explains how to identify and fix these common missteps.
+> Encountering "Invalid hook call" means a React Hook is being used outside a functional component or custom hook; this guide explains how to fix it.
 
 ## What This Error Means
-
-This error is React's strict way of telling you that you've violated one of its fundamental "Rules of Hooks." React Hooks like `useState`, `useEffect`, `useContext`, or any custom hook you create (which internally uses other hooks) are special functions designed to add state and lifecycle features to functional components. The core rule is simple: Hooks can *only* be called inside a React function component or from within another custom hook.
-
-When React throws "Invalid hook call," it means its internal mechanisms, which rely on a consistent order and context for hook calls, have detected a violation. It can't properly associate the state or effect you're trying to declare with a specific functional component instance. This isn't just a suggestion; it's a critical constraint for React to manage your component's state and lifecycle correctly and predictably.
+This error indicates a fundamental violation of React's "Rules of Hooks." React Hooks, such as `useState`, `useEffect`, `useContext`, and any custom hooks you define (e.g., `useMyHook`), provide function components with access to React state and lifecycle features. The error message is very precise: you've attempted to call a hook in an invalid context, specifically outside of a React function component or a custom hook. React strictly enforces these rules at runtime to ensure its internal state management mechanisms work correctly and predictably.
 
 ## Why It Happens
-
-React relies on a predictable sequence of hook calls during a component's render cycle. When you call a hook, React internally keeps track of which component is currently rendering and associates the hook's state or effect with that component instance.
-
-If a hook is called outside a functional component (e.g., in a class component, a regular JavaScript function, or even conditionally), React loses this crucial context. It doesn't know which component's state it should manage or which component's lifecycle it should tie an effect to. This leads to an internal error within React's core, prompting the "Invalid hook call" message. It's a safety mechanism to prevent unpredictable behavior and hard-to-debug state inconsistencies.
+React relies on the order and context of hook calls to correctly associate state, effects, and memoized values with specific component instances during rendering. When a hook is called outside a functional component or a custom hook, React loses this vital context. It cannot determine which component owns the state or effect being declared, leading to internal inconsistencies and unpredictable behavior. To prevent silent failures and ensure stability, React throws the "Invalid hook call" error, safeguarding its core reconciliation process.
 
 ## Common Causes
+In my experience, this error typically stems from one of a few common scenarios:
 
-In my experience, this error almost always boils down to one of these scenarios:
-
-1.  **Hook Called in a Class Component:** This is arguably the most common and straightforward cause. Class components use their own state management (`this.state`) and lifecycle methods (`componentDidMount`, etc.). They simply cannot use React Hooks. If you're attempting to call `useState` or `useEffect` within a `class MyComponent extends React.Component` definition, React will immediately flag it.
-2.  **Hook Called in a Regular JavaScript Function:** You might have a utility function, a helper, or a callback that is *not* a React function component and does *not* start with `use` (making it a custom hook). If you try to call `useState` or any other hook inside such a function, React won't have the necessary context. The only non-component functions that can call hooks are custom hooks, and they must be named accordingly (e.g., `useMyCustomHook`).
-3.  **Multiple React Instances:** This is a more subtle and frustrating cause. It happens when your application ends up with more than one copy of the `react` package in its `node_modules` directory, or when a library you're using also bundles its own version of React. Each copy of `react` has its own internal state, and if a component from one instance tries to call a hook from another instance, React detects a mismatch and throws the "Invalid hook call" error. This is particularly common in monorepos or with certain build tools.
-4.  **Incorrect Module Resolution:** Related to the multiple instances problem, misconfigured `webpack` or `rollup` aliases, or even incorrect `tsconfig.json` paths, can lead to your application resolving `react` from a different location than where your hooks are expected to resolve it, effectively creating the same "multiple React instances" issue.
-5.  **Using an Outdated React Version:** While less common for *this specific error* (as the error implies hooks are *available* but misused), if you were on a very old React version (pre-16.8), hooks wouldn't exist. However, if hooks are present and throwing this error, it's usually one of the above.
+*   **Class Components:** The most frequent cause is attempting to use a React hook directly inside a class component. Hooks are exclusively designed for function components; class components manage state using `this.state` and handle side effects with lifecycle methods like `componentDidMount`.
+*   **Regular JavaScript Functions:** Calling a hook within a standard JavaScript function that is not itself a React function component or a custom hook. React cannot track state or effects in arbitrary utility functions.
+*   **Conditional Hook Calls:** Placing hooks inside `if` statements, `for` loops, or nested functions within a component. React requires hooks to be called unconditionally and in the same order on every single render cycle.
+*   **Mismatched React Versions:** Less common but potentially insidious: having multiple, conflicting versions of `react` or `react-dom` in your `node_modules` directory. This can occur if a third-party dependency pulls in its own, older (or sometimes newer) React version, confusing the internal React context. I've seen this in production when managing complex dependency trees and not explicitly consolidating React versions.
+*   **Stale `node_modules` / Bundler Cache:** Occasionally, a corrupted `node_modules` directory or a stale build cache from your bundler (e.g., Webpack, Babel) can lead to unexpected runtime issues where React's internals fail to correctly resolve the component context.
 
 ## Step-by-Step Fix
+To systematically resolve this error, follow these steps:
 
-When tackling this error, a systematic approach is key. Don't just guess; follow these steps:
+1.  **Locate the Error:** Begin by examining the stack trace provided by React in your browser's developer console. It will pinpoint the exact file and line number where the invalid hook call occurred. This is your primary starting point.
+2.  **Verify Component Type:**
+    *   Is the hook being called inside a `class MyComponent extends React.Component`? If so, you must either refactor `MyComponent` to a functional component (which can use hooks) or replace the hook usage with class-based state (`this.state`) and lifecycle methods.
+    *   Is it inside a plain `function doSomething()` that is *not* a React function component or a custom hook (i.e., its name doesn't start with `use`)? If so, move the hook call directly into the React function component or custom hook that genuinely needs its state or effect.
+3.  **Ensure Top-Level, Unconditional Calls:** Confirm that the hook call is at the absolute top level of your function component or custom hook. It must not be nested within any `if` statements, `for` loops, `switch` statements, or any other conditional logic. Hooks must execute in the same predictable order on every render.
+4.  **Check for Duplicate React Instances:** This is a crucial diagnostic step, especially if the above checks yield no obvious culprit.
+    *   In your project's root directory, run `npm ls react` or `yarn why react`.
+    *   Look for multiple `react` entries at different versions or paths. If found, you'll need to consolidate these.
+    *   You might need to use `overrides` (for npm v8+) or `resolutions` (for Yarn) in your `package.json` to explicitly force all dependencies to use a single, consistent React version.
 
-1.  **Locate the Error Source:** The error message in your console will usually point to the exact file and line number where the invalid hook call occurred. This is your starting point. If the error points to React's internal files, that often suggests a "multiple React instances" issue, but always trace back to your code.
-
-2.  **Check for Hook Usage in Class Components:**
-    *   Examine the file identified. Is the component defined using `class MyComponent extends React.Component`?
-    *   If so, any `useState`, `useEffect`, or custom hook call within its `render()` method, constructor, or any other class method is incorrect.
-    *   **Fix:** You have two main options:
-        *   **Refactor to a Function Component:** This is often the cleanest solution. Convert your class component into a functional component, allowing you to use hooks directly.
-        *   **Use Class Component Lifecycle/State:** If refactoring is not feasible, replace the hook logic with class-based alternatives (e.g., `this.state` and `setState` for `useState`, `componentDidMount`, `componentDidUpdate`, `componentWillUnmount` for `useEffect`).
-
-    ```javascript
-    // Problem: Hook in a class component
-    class UserProfile extends React.Component {
-        // const [username, setUsername] = useState(''); // ERROR: Invalid hook call here
-
-        render() {
-            return <div>Profile Page</div>;
+    ```json
+    // package.json example using "overrides" for npm (v8+)
+    {
+      "dependencies": {
+        "react": "^18.2.0",
+        "react-dom": "^18.2.0",
+        "some-legacy-library": "^1.0.0"
+      },
+      "overrides": {
+        "some-legacy-library": {
+          "react": "$react",
+          "react-dom": "$react-dom"
         }
+      }
     }
     ```
+5.  **Clean and Reinstall Dependencies:** If dependency issues are suspected or for a general "reset" of your development environment:
+    *   Delete your `node_modules` directory: `rm -rf node_modules`
+    *   Delete your package lock file: `rm package-lock.json` (for npm) or `rm yarn.lock` (for Yarn)
+    *   Clear your package manager's cache: `npm cache clean --force` or `yarn cache clean`
+    *   Reinstall dependencies: `npm install` or `yarn install`
+    *   Restart your development server.
 
-3.  **Identify Hooks in Regular JavaScript Functions:**
-    *   If your component is already a function component, check if any hooks are being called inside helper functions that are *not* themselves custom hooks.
-    *   A function like `function formatData(data) { const [config, setConfig] = useState({}); ... }` will cause this error if `formatData` isn't a custom hook (i.e., doesn't start with `use`).
-    *   **Fix:**
-        *   If the helper function *should* manage state or effects, rename it to follow the custom hook convention (e.g., `useFormatData`) and ensure it's called only from a function component or another custom hook.
-        *   If it's purely a utility, pass any necessary state or props to it as arguments, rather than attempting to call hooks inside it.
-
-    ```javascript
-    // Problem: Hook in a regular JS function
-    function generateReportData() {
-        // const [data, setData] = useState([]); // ERROR: Invalid hook call here
-        // This function should probably receive data as an argument or be a custom hook
-        return [];
-    }
+    ```bash
+    # For npm users:
+    rm -rf node_modules package-lock.json
+    npm cache clean --force
+    npm install
+    npm start # Or your project's equivalent command
     ```
-
-4.  **Diagnose Multiple React Instances:**
-    *   If the above steps don't resolve the issue, especially if the error points to `react-dom` or React's core files, suspect duplicate React instances.
-    *   Use your package manager to inspect your dependency tree.
-        *   For npm: `npm ls react`
-        *   For Yarn: `yarn why react`
-    *   Look for multiple versions of `react` or `react-dom` in the output.
-    *   **Fix:**
-        *   **Force a single version:** In your `package.json`, use `resolutions` (Yarn) or `overrides` (npm 8+) to explicitly tell your package manager to use only one version of `react` and `react-dom`.
-        ```json
-        // package.json example
-        {
-          "dependencies": {
-            "react": "^18.2.0",
-            "react-dom": "^18.2.0",
-            // other dependencies
-          },
-          "resolutions": {
-            "react": "18.2.0",
-            "react-dom": "18.2.0"
-          },
-          "overrides": {
-            "react": "18.2.0",
-            "react-dom": "18.2.0"
-          }
-        }
-        ```
-        *   **Clear `node_modules` and reinstall:** After modifying `package.json` (or even if you haven't), always delete `node_modules` and your lock file (`package-lock.json` or `yarn.lock`), then run `npm install` or `yarn install` again.
-        ```bash
-        rm -rf node_modules
-        rm package-lock.json # or yarn.lock
-        npm install           # or yarn install
-        ```
-        *   **Configure Webpack/Rollup aliases:** If you're building a library or a complex monorepo, explicitly alias `react` and `react-dom` to a single path in your build configuration.
-        ```javascript
-        // webpack.config.js snippet
-        module.exports = {
-          resolve: {
-            alias: {
-              'react': path.resolve(__dirname, 'node_modules/react'),
-              'react-dom': path.resolve(__dirname, 'node_modules/react-dom'),
-            },
-          },
-        };
-        ```
-
-5.  **Restart Your Development Server:** After making any changes, particularly to `node_modules` or `package.json`, always restart your development server (`npm start`, `yarn start`, or `vite`). Hot Module Replacement (HMR) can sometimes hold onto stale module references.
 
 ## Code Examples
+These examples illustrate common scenarios leading to the "Invalid hook call" error and their correct implementations.
 
-Here are concise, copy-paste-ready examples demonstrating the problem and the correct approach.
+**Incorrect: Hook in a Class Component**
+```jsx
+import React from 'react';
+import { useState } from 'react'; // Importing a hook
 
-### Problem: Hook in a Class Component
+class MyClassComponent extends React.Component {
+  render() {
+    // ❌ ERROR: Hooks cannot be called inside class components.
+    const [value, setValue] = useState(0); 
+    return (
+      <button onClick={() => setValue(value + 1)}>
+        Count: {value}
+      </button>
+    );
+  }
+}
+export default MyClassComponent;
+```
 
-```javascript
+**Correct: Hook in a Functional Component**
+```jsx
+import React, { useState } from 'react'; // Importing a hook
+
+function MyFunctionalComponent() {
+  // ✅ Correct: Hook called at the top level of a function component.
+  const [value, setValue] = useState(0);
+
+  return (
+    <button onClick={() => setValue(value + 1)}>
+      Count: {value}
+    </button>
+  );
+}
+export default MyFunctionalComponent;
+```
+
+**Incorrect: Hook in a Regular JavaScript Function**
+```jsx
+import React, { useState } from 'react';
+
+// ❌ ERROR: This is a plain JavaScript function, not a React component or custom hook.
+function calculateInitialValue() {
+  const [initialValue, setInitialValue] = useState(100); // Invalid hook call
+  return initialValue;
+}
+
+function DisplayValueComponent() {
+  // Calling calculateInitialValue will lead to an invalid hook call during render
+  const display = calculateInitialValue(); 
+  return <p>Value: {display}</p>;
+}
+export default DisplayValueComponent;
+```
+
+**Correct: Hook in a Custom Hook (or directly in a Function Component)**
+```jsx
 import React, { useState, useEffect } from 'react';
 
-// This is a class component. Hooks are not allowed here.
-class DataFetcher extends React.Component {
-    // Attempting to call useState or useEffect directly in a class component
-    // will result in "Invalid hook call".
-    // const [data, setData] = useState(null);
-    // useEffect(() => { /* ... */ }, []);
+// ✅ Correct: This is a custom hook (its name starts with 'use')
+function useValueCalculator(initial = 0) {
+  const [value, setValue] = useState(initial); // Valid call inside a custom hook
 
-    componentDidMount() {
-        // Class components use lifecycle methods, not hooks.
-        console.log('Component mounted via class method.');
-        // fetch('/api/data').then(res => res.json()).then(data => this.setState({ data }));
-    }
+  useEffect(() => {
+    console.log('Value updated:', value);
+  }, [value]);
 
-    render() {
-        return <div>Displaying Class Component Data</div>;
-    }
-}
-```
-
-### Fix: Refactor to Function Component
-
-```javascript
-import React, { useState, useEffect } from 'react';
-
-// This is now a functional component, where hooks can be used correctly.
-function DataFetcherFunction() {
-    const [data, setData] = useState(null); // Correct: useState inside a function component
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState(null);
-
-    useEffect(() => { // Correct: useEffect inside a function component
-        async function fetchData() {
-            try {
-                const response = await fetch('/api/data');
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-                const result = await response.json();
-                setData(result);
-            } catch (err) {
-                setError(err);
-            } finally {
-                setLoading(false);
-            }
-        }
-        fetchData();
-    }, []); // Empty dependency array means run once on mount
-
-    if (loading) return <div>Loading data...</div>;
-    if (error) return <div>Error: {error.message}</div>;
-
-    return (
-        <div>
-            <h2>Data Fetched:</h2>
-            <pre>{JSON.stringify(data, null, 2)}</pre>
-        </div>
-    );
-}
-```
-
-### Problem: Hook in a Regular JavaScript Function
-
-```javascript
-import { useState } from 'react';
-
-// This is a plain JavaScript function. It is NOT a component or a custom hook.
-function calculateMetrics(value) {
-    // ERROR: Calling useState here will cause an "Invalid hook call".
-    // const [metricName, setMetricName] = useState('Default Metric');
-    // console.log(`Calculating for ${metricName}: ${value}`);
-    return value * 1.2;
+  return { value, setValue };
 }
 
-function DisplayComponent() {
-    const total = calculateMetrics(100); // The error happens inside calculateMetrics
-    return <div>Total Calculated: {total}</div>;
+function DisplayValueComponent() {
+  // ✅ Correct: Custom hook called at the top level of a function component.
+  const { value, setValue } = useValueCalculator(50);
+
+  return (
+    <div>
+      <p>Current Value: {value}</p>
+      <button onClick={() => setValue(prev => prev + 1)}>Increment</button>
+    </div>
+  );
 }
-```
-
-### Fix: Create a Custom Hook
-
-```javascript
-import { useState, useEffect } from 'react';
-
-// This is a custom hook because its name starts with 'use'
-// and it calls other React Hooks internally.
-function useMetricsCalculator(initialValue) {
-    const [currentValue, setCurrentValue] = useState(initialValue);
-    const [metricName, setMetricName] = useState('Custom Metric');
-
-    useEffect(() => {
-        console.log(`Metric ${metricName} is being calculated for value: ${currentValue}`);
-    }, [currentValue, metricName]);
-
-    const calculateResult = () => currentValue * 1.2;
-
-    return {
-        calculatedValue: calculateResult(),
-        currentValue,
-        setCurrentValue,
-        metricName,
-        setMetricName
-    };
-}
-
-function DisplayComponent() {
-    // Correct: Calling the custom hook from a function component.
-    const { calculatedValue, currentValue, setCurrentValue, metricName, setMetricName } = useMetricsCalculator(50);
-
-    return (
-        <div>
-            <p>Metric Name: {metricName}</p>
-            <p>Input Value: {currentValue}</p>
-            <p>Calculated Result: {calculatedValue}</p>
-            <button onClick={() => setCurrentValue(prev => prev + 10)}>Increase Input</button>
-            <input
-                type="text"
-                value={metricName}
-                onChange={(e) => setMetricName(e.target.value)}
-                placeholder="Change metric name"
-            />
-        </div>
-    );
-}
+export default DisplayValueComponent;
 ```
 
 ## Environment-Specific Notes
+While the "Invalid hook call" error primarily manifests as a runtime issue during local development, its root causes can sometimes be influenced by deployment environments.
 
-The "Invalid hook call" error can manifest slightly differently or be harder to diagnose depending on your development and deployment environment.
-
-*   **Local Development (Create React App, Vite, Webpack dev server):** This is where you'll most frequently encounter this error. Hot Module Replacement (HMR) can sometimes get confused, especially after changing dependencies. My first troubleshooting step in local dev is always to perform a clean reinstall of dependencies (`rm -rf node_modules && rm yarn.lock && yarn install`) followed by a full server restart (`yarn start`). Using `npm ls react` or `yarn why react` is invaluable here for pinpointing duplicate `react` packages that your build system might be inadvertently including.
-    ```bash
-    # Example for local debugging multiple React instances
-    npm ls react
-    # Or for yarn
-    yarn why react
-    ```
-    Look for output showing different versions or paths for `react` or `react-dom`.
-
-*   **Docker Containers:** If you're building your React application inside a Docker container, ensure that your `node_modules` are properly installed *within* the container. A common mistake is to volume-mount `node_modules` from the host system, which can lead to architecture or dependency mismatches. Build your `node_modules` inside the container reliably using `npm ci` or `yarn install --frozen-lockfile` to ensure exact dependency resolution. I've seen issues arise when a cached Docker layer contains an older `node_modules` and then a new `COPY` command overwrites `package.json` without triggering a fresh install.
-
-    ```dockerfile
-    # Recommended Dockerfile approach
-    FROM node:18-alpine
-
-    WORKDIR /app
-
-    COPY package.json yarn.lock ./ # Copy only package files first
-    RUN yarn install --frozen-lockfile # Install dependencies reliably
-
-    COPY . . # Copy the rest of your app
-
-    RUN yarn build # Build your app
-    EXPOSE 3000
-    CMD ["yarn", "start"]
-    ```
-
-*   **Cloud Deployments (Netlify, Vercel, AWS Amplify):** These platforms typically perform a fresh `npm install` or `yarn install` during their build process. If you encounter the "Invalid hook call" error here but not locally, it often points to a dependency resolution issue that's only triggered in a clean environment. This is where `resolutions` (Yarn) or `overrides` (npm) in your `package.json` become critical for enforcing a single `react` version across all transitive dependencies. Carefully review the build logs for any warnings or errors related to dependency conflicts. In my experience, if it works locally but breaks on cloud, it's frequently a package-lock discrepancy or a subtle difference in Node.js runtime that changes dependency tree resolution.
+*   **Local Development:** This is where you'll most frequently encounter and debug this error. Rapid iteration, refactoring components between class and functional, and occasional `node_modules` corruption are common culprits. The step-by-step fix (especially dependency reinstallation and cache clearing) is highly effective here. Linting tools like `eslint-plugin-react-hooks` are invaluable in catching these issues proactively during local development, often before they even become runtime errors.
+*   **Docker Containers:** When deploying React applications with Docker, consistency is paramount. Ensure your `package-lock.json` or `yarn.lock` is committed and used within your Dockerfile (e.g., `COPY package*.json ./`, then `RUN npm ci`). This guarantees that your build environment resolves dependencies consistently, preventing scenarios where differing dependency versions could lead to duplicate React instances and runtime errors. If issues persist, a `docker build --no-cache` might help isolate problems stemming from Docker's own build cache.
+*   **Cloud Deployments (e.g., Vercel, Netlify, AWS Amplify):** This error is less likely to appear *for the first time* in a cloud environment unless the core issue (e.g., a class component attempting to use hooks) already exists and was overlooked in your codebase. Cloud build pipelines typically operate in clean environments, which minimizes `node_modules` corruption issues. However, if your `package.json` has an incorrect `overrides` or `resolutions` configuration for `react`, it could cause the cloud build process to fail or deploy a broken application. Always scrutinize your build logs for any dependency warnings or errors.
 
 ## Frequently Asked Questions
-
-*   **Q: Can I use `useState` in a helper function if that helper function is called by a function component?**
-    *   **A:** No, not directly. Hooks *must* be called directly by a React function component or another custom hook. A regular helper function (one not prefixed with `use`) cannot call `useState`. If your helper function needs state, you should either pass the state and its setter from the parent component, or refactor the helper into a custom hook (e.g., `useMyHelperFunction`).
-*   **Q: What if I see this error but I'm absolutely sure I'm only using function components and custom hooks?**
-    *   **A:** This is a strong indicator of the "Multiple React Instances" problem. Your application or one of its dependencies is likely bundling React more than once, leading to a situation where your components are using one version of `React` while hooks are being resolved from another. Use `npm ls react` or `yarn why react` to diagnose and enforce a single React version using `resolutions` or `overrides` in your `package.json`.
-*   **Q: Does ESLint help prevent this error?**
-    *   **A:** Yes, significantly! The `eslint-plugin-react-hooks` package is crucial. Specifically, the `react-hooks/rules-of-hooks` rule is designed to catch violations like calling hooks outside of function components or conditionally. Ensure this plugin is configured and active in your project's ESLint setup. It's an invaluable tool for catching these issues during development, often before you even run your code.
-*   **Q: Is it okay to call a hook inside an `if` statement, a `for` loop, or a nested function?**
-    *   **A:** No, that violates another fundamental rule of hooks: "Hooks must be called at the top level of your React function component or custom hook." They cannot be called conditionally, inside loops, or within nested functions. React relies on a consistent order of hook calls between renders to correctly associate state and effects. If you need conditional logic, place it *inside* the hook, not around the hook call itself.
+*   **Q: Can I use `useState` inside a `useEffect` callback?**
+    **A:** No, you cannot call `useState` (or any other hook) directly within the callback function passed to `useEffect`. The `useEffect` callback is treated as a plain JavaScript function. Instead, you should declare your state using `useState` at the top level of your component, and then use its setter function (e.g., `setMyState`) inside the `useEffect` callback if you need to update state based on an effect.
+*   **Q: How do I conditionally use a hook? For example, only if a prop is true?**
+    **A:** You cannot conditionally *call* a hook in an `if` statement, `for` loop, or any other conditional block. Hooks must always be called in the exact same order on every render of a component. If you need conditional behavior, place the `if` statement *inside* the hook's body or encapsulate the hook and its conditional logic within a custom hook that *always* runs but handles the conditional execution internally.
+*   **Q: I've checked everything, and I'm still getting the error. What's next?**
+    **A:** After verifying component types and hook rule adherence, the most common underlying cause for persistent "Invalid hook call" errors is a duplicate React installation within your project's `node_modules`. Run `npm ls react` or `yarn why react` to diagnose this. If multiple `react` packages are found, explicitly force a single, consistent version across your project using `overrides` (npm) or `resolutions` (Yarn) in your `package.json`. A complete `node_modules` cleanup and reinstall, followed by restarting your development server, is also crucial.
+*   **Q: Is there a way to prevent this error during development?**
+    **A:** Absolutely. I highly recommend integrating `eslint-plugin-react-hooks` into your project's ESLint configuration. This plugin provides specific rules like `react-hooks/rules-of-hooks` and `react-hooks/exhaustive-deps` that proactively catch invalid hook calls and dependency array issues during development, providing immediate feedback in your editor or during your build process.
 
 ## Related Errors
-- [react-hydration-error](/errors/react-hydration-error.html)
-- [typescript-ts2345](/errors/typescript-ts2345.html)
+*(none)*
