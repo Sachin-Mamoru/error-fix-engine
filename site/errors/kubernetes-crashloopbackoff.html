@@ -124,267 +124,266 @@
     <div class="article-content">
       <h1 id="kubernetes-crashloopbackoff">Kubernetes CrashLoopBackOff</h1>
 <blockquote>
-<p>Encountering CrashLoopBackOff means your Kubernetes pod is repeatedly crashing and backing off restart attempts; this guide explains how to diagnose and fix it.</p>
+<p>Encountering CrashLoopBackOff means your Pod keeps crashing and Kubernetes is backing off restart attempts; this guide explains how to fix it.</p>
 </blockquote>
 <h2 id="what-this-error-means">What This Error Means</h2>
-<p>The <code>CrashLoopBackOff</code> status in Kubernetes indicates that a pod's container has started, crashed, and Kubernetes is attempting to restart it, but with increasing delays between retries. It's a clear signal that your application within the pod isn't healthy enough to run continuously. Kubernetes applies an exponential back-off strategy, meaning it waits longer and longer between restart attempts to prevent a rapid, resource-intensive crash-restart loop. This status is a symptom, not the root cause, pointing to a fundamental problem with your containerized application or its configuration. When you see a pod stuck in <code>CrashLoopBackOff</code>, it means your service is likely unavailable or severely degraded.</p>
+<p>The <code>CrashLoopBackOff</code> status in Kubernetes indicates that a Pod's container is repeatedly starting, crashing, and then restarting. Kubernetes, in an effort to be resilient and prevent resource exhaustion, implements a back-off delay strategy between these restart attempts. This delay increases exponentially with each subsequent crash, giving you time to diagnose and fix the underlying issue.</p>
+<p>When you see a Pod in <code>CrashLoopBackOff</code>, it means:<br />
+1.  The container successfully started its execution.<br />
+2.  The main process within the container exited with a non-zero status code, indicating a failure.<br />
+3.  Kubernetes detected the exit and attempted to restart the container.<br />
+4.  This cycle repeated, leading Kubernetes to apply its back-off policy.</p>
+<p>It's crucial to understand that <code>CrashLoopBackOff</code> is a symptom, not a root cause. Something <em>inside</em> your container is fundamentally broken or misconfigured, causing it to terminate unexpectedly.</p>
 <h2 id="why-it-happens">Why It Happens</h2>
-<p>At its core, <code>CrashLoopBackOff</code> happens because the primary process inside your container exits unexpectedly. Kubernetes, designed for self-healing, detects this exit and attempts to restart the container. If the container continues to crash shortly after starting, it enters the back-off cycle. This continuous crashing can stem from a multitude of issues, ranging from application bugs and misconfigurations to environmental problems or resource constraints. It's Kubernetes telling you, "I'm trying my best to keep your application running, but something inside it keeps failing immediately after launch."</p>
+<p>At its core, <code>CrashLoopBackOff</code> happens because Kubernetes expects the primary process running inside your container to stay alive and healthy. When that process exits, Kubernetes assumes something went wrong and tries to restart it. If it fails repeatedly, the <code>CrashLoopBackOff</code> status appears.</p>
+<p>I've seen this in production when, for example, a critical database connection failed on startup, or an application tried to read a non-existent configuration file. The application simply can't function and exits, signalling failure to Kubernetes.</p>
+<p>The back-off mechanism is a safety feature. Imagine if Kubernetes immediately tried to restart a crashing Pod without any delay. This could lead to:<br />
+*   <strong>Resource exhaustion:</strong> Constantly spinning up and tearing down containers consumes CPU, memory, and network resources.<br />
+*   <strong>Log spam:</strong> Flooding your logging system with repetitive error messages.<br />
+*   <strong>"Thundering herd" problem:</strong> If the crash is due to an external dependency (like a database), immediate restarts from many Pods could overwhelm that dependency.</p>
+<p>By backing off, Kubernetes gives the system a breather and provides a window for operators like us to jump in and debug.</p>
 <h2 id="common-causes">Common Causes</h2>
-<p>Understanding the common culprits behind <code>CrashLoopBackOff</code> is the first step towards effective troubleshooting. In my experience, these are the most frequent reasons:</p>
+<p>In my experience, <code>CrashLoopBackOff</code> usually boils down to a few common culprits. Pinpointing the exact reason often requires a systematic investigation.</p>
 <ol>
 <li>
-<p><strong>Application Bugs or Errors:</strong></p>
+<p><strong>Application Errors:</strong> This is the most frequent cause.</p>
 <ul>
-<li><strong>Unhandled Exceptions:</strong> The application encounters an error it can't recover from during startup and exits. This is often an unhandled exception in the main process.</li>
-<li><strong>Incorrect Startup Logic:</strong> The application's entry point or initialisation code has a bug that prevents it from starting correctly.</li>
-<li><strong>Missing Dependencies:</strong> The application executable or a required library is missing inside the container image, causing startup failure.</li>
+<li><strong>Uncaught exceptions:</strong> The application code encounters an error it doesn't handle, causing it to crash.</li>
+<li><strong>Incorrect startup logic:</strong> The application might fail to initialize correctly (e.g., unable to connect to a required service like a database or message queue).</li>
+<li><strong>Missing dependencies:</strong> The application expects certain libraries or files that aren't present in the container image.</li>
+<li><strong>Misconfiguration:</strong> The application reads incorrect or missing environment variables, configuration files (ConfigMaps), or secrets.</li>
 </ul>
 </li>
 <li>
-<p><strong>Configuration Issues:</strong></p>
+<p><strong>Incorrect Container Entrypoint/Command:</strong></p>
 <ul>
-<li><strong>Incorrect Command/Arguments:</strong> The <code>command</code> or <code>args</code> specified in the pod definition (<code>containers.command</code>, <code>containers.args</code>) are wrong, causing the container to fail to execute the intended process.</li>
-<li><strong>Missing Environment Variables:</strong> The application relies on certain environment variables that are not set, leading to a configuration error during startup.</li>
-<li><strong>Missing/Incorrect Mounted Volumes:</strong> The application expects a configuration file or data at a specific path, but the corresponding <code>ConfigMap</code>, <code>Secret</code>, or <code>PersistentVolume</code> isn't mounted correctly or contains incorrect data.</li>
-<li><strong>Wrong Image Tag:</strong> An old or incorrect Docker image tag is used, pulling an image that doesn't contain the expected application version or dependencies.</li>
+<li>The <code>command</code> or <code>args</code> specified in your Pod's YAML might be wrong. For instance, trying to execute a script that doesn't exist or using an incorrect syntax.</li>
+<li>The designated entrypoint script itself might have an error causing it to exit immediately.</li>
 </ul>
 </li>
 <li>
-<p><strong>Resource Constraints:</strong></p>
+<p><strong>Resource Limits:</strong></p>
 <ul>
-<li><strong>CPU/Memory Limits:</strong> The container is configured with resource <code>limits</code> that are too low. If the application attempts to use more CPU or memory than allocated during its startup phase, the operating system (or Kubernetes itself) can terminate the process, leading to a crash. I've seen this in production when a new feature dramatically increased startup memory usage.</li>
+<li><strong>Out Of Memory (OOM) Kill:</strong> The container attempts to use more memory than specified in its <code>limits.memory</code>. Kubernetes then terminates the container to protect the node. You'll often see <code>OOMKilled</code> in the <code>kubectl describe pod</code> output.</li>
+<li>Insufficient CPU could also lead to application timeouts and crashes, though OOM is more direct in causing a <code>CrashLoopBackOff</code>.</li>
 </ul>
 </li>
 <li>
-<p><strong>Liveness/Readiness Probe Failures (especially Liveness):</strong></p>
+<p><strong>Liveness/Readiness Probe Failures:</strong></p>
 <ul>
-<li>While Liveness probes are designed to restart unhealthy containers <em>after</em> they start, a probe that fails immediately and continuously can also contribute to a <code>CrashLoopBackOff</code> cycle. If the probe is misconfigured or the application is genuinely unhealthy from the get-go, it will trigger restarts.</li>
+<li>A <strong>Liveness probe</strong> is designed to check if your application is healthy and running. If it consistently fails, Kubernetes will restart the container. If the application never becomes healthy enough to pass the probe, it enters a <code>CrashLoopBackOff</code>.</li>
+<li><strong>Readiness probes</strong> failing don't directly cause <code>CrashLoopBackOff</code>, but they prevent traffic from reaching the Pod. If the underlying cause of the readiness failure is also causing the application to crash, then Liveness will eventually trigger the restart.</li>
 </ul>
 </li>
 <li>
-<p><strong>Permission Issues:</strong></p>
+<p><strong>File System Issues:</strong></p>
 <ul>
-<li>The application tries to write to a directory where it lacks permissions, or tries to access a resource (like a database or another service) without proper authentication/authorization, causing it to crash.</li>
+<li><strong>Permissions:</strong> The application might not have the necessary permissions to read/write files or directories it needs.</li>
+<li><strong>Missing mounts:</strong> A required Persistent Volume Claim (PVC) or ConfigMap/Secret volume isn't mounted correctly, causing the application to fail when it tries to access its contents.</li>
+</ul>
+</li>
+<li>
+<p><strong>Networking Issues:</strong></p>
+<ul>
+<li>The container needs to connect to an external service (e.g., a database, an external API, another service in the cluster) during its startup phase, and that connection fails due to network policies, DNS resolution issues, or the service simply being unavailable.</li>
+</ul>
+</li>
+<li>
+<p><strong>Image Issues:</strong></p>
+<ul>
+<li>A corrupted or malformed container image.</li>
+<li>The image specified doesn't exist or is inaccessible (though this often results in <code>ImagePullBackOff</code> first).</li>
 </ul>
 </li>
 </ol>
 <h2 id="step-by-step-fix">Step-by-Step Fix</h2>
-<p>Troubleshooting a <code>CrashLoopBackOff</code> typically involves systematically checking the application's health, configuration, and environment.</p>
+<p>When I encounter <code>CrashLoopBackOff</code>, I follow a systematic approach to diagnose and resolve it.</p>
 <ol>
 <li>
-<p><strong>Get Initial Pod Status:</strong><br />
-    Start by identifying the affected pod and its current status.</p>
+<p><strong>Identify the Affected Pods:</strong><br />
+    Start by listing the Pods in your namespace to confirm the <code>CrashLoopBackOff</code> status.</p>
 <p><code>bash
-kubectl get pods -n &lt;your-namespace&gt;</code></p>
-<p>Look for pods in <code>CrashLoopBackOff</code>. Note the pod name.</p>
+kubectl get pods -n &lt;your-namespace&gt;</code><br />
+Look for Pods with <code>STATUS</code> showing <code>CrashLoopBackOff</code> and a <code>RESTARTS</code> count that's increasing.</p>
 </li>
 <li>
-<p><strong>Describe the Pod for Events:</strong><br />
-    The <code>kubectl describe</code> command is invaluable. It shows you the pod's complete configuration, including volumes, environment variables, and crucially, a list of recent events at the bottom.</p>
+<p><strong>Inspect Pod Status and Events:</strong><br />
+    The <code>describe</code> command provides a wealth of information about the Pod, including recent events that can hint at the cause. Look for <code>Events</code> at the bottom. These often include <code>OOMKilled</code>, <code>FailedMount</code>, <code>Probe failed</code>, or other critical messages.</p>
 <p><code>bash
-kubectl describe pod &lt;pod-name&gt; -n &lt;your-namespace&gt;</code></p>
-<p>Pay close attention to the "Events" section. Look for messages like <code>Failed to start container</code>, <code>Error: exit status 1</code>, or any specific error messages from Kubernetes. This can often point to resource issues or problems with the image.</p>
+kubectl describe pod &lt;pod-name&gt; -n &lt;your-namespace&gt;</code><br />
+<em>Pay close attention to the "Last State" and "Reason" within the container status section.</em></p>
 </li>
 <li>
-<p><strong>Check Container Logs (Crucial Step):</strong><br />
-    The most direct way to understand why your application is crashing is to look at its logs. Even if the pod is in <code>CrashLoopBackOff</code>, Kubernetes often retains logs from the last unsuccessful attempt.</p>
+<p><strong>Check Pod Logs:</strong><br />
+    This is often the most critical step. The application's own error messages are typically the clearest indicator of why it's crashing. If the Pod has restarted, use the <code>--previous</code> flag to get logs from the last crashed instance.</p>
 <p><code>bash
-kubectl logs &lt;pod-name&gt; -n &lt;your-namespace&gt;</code></p>
-<p>If the pod has restarted multiple times, the current logs might be empty or misleading because the application never gets far enough to log anything. In this case, check the logs from the <em>previous</em> failed instance:</p>
-<p><code>bash
-kubectl logs --previous &lt;pod-name&gt; -n &lt;your-namespace&gt;</code></p>
-<p>Analyze these logs for stack traces, error messages, and any output that indicates why the application exited. This is where you'll find application-specific errors like "FileNotFoundException", "database connection failed", or "port already in use."</p>
+kubectl logs &lt;pod-name&gt; -n &lt;your-namespace&gt;
+kubectl logs &lt;pod-name&gt; -n &lt;your-namespace&gt; --previous</code><br />
+If the logs are empty or not helpful, it might mean the application is crashing before it can even write to <code>stdout</code>/<code>stderr</code>, or the logging configuration is off.</p>
 </li>
 <li>
-<p><strong>Inspect the Pod's YAML Configuration:</strong><br />
-    Review the pod's definition for any misconfigurations.</p>
+<p><strong>Examine the Pod Definition (YAML):</strong><br />
+    Review the Pod's configuration to ensure it's correct. Pay attention to:</p>
+<ul>
+<li><strong><code>image</code></strong>: Is it the correct image and tag?</li>
+<li><strong><code>command</code> and <code>args</code></strong>: Are these correctly defined for your application's entrypoint? A common mistake is overriding the image's <code>ENTRYPOINT</code> with an incorrect <code>command</code>.</li>
+<li><strong><code>resources</code> (limits and requests)</strong>: Are they sufficient? If <code>kubectl describe</code> showed <code>OOMKilled</code>, increase the <code>memory</code> limits.</li>
+<li><strong><code>volumeMounts</code> and <code>volumes</code></strong>: Are all required volumes (ConfigMaps, Secrets, PVCs) correctly mounted and accessible?</li>
+<li><strong><code>env</code> (environment variables)</strong>: Are all necessary environment variables present and correct?</li>
+<li><strong><code>livenessProbe</code></strong>: Is it configured correctly? Is <code>initialDelaySeconds</code> long enough for the application to start?</li>
+</ul>
 <p><code>bash
 kubectl get pod &lt;pod-name&gt; -o yaml -n &lt;your-namespace&gt;</code></p>
-<p>Look at:<br />
-*   <code>image</code>: Is the correct image and tag specified? Is it pullable?<br />
-*   <code>command</code> and <code>args</code>: Are they correct for your container's entrypoint?<br />
-*   <code>env</code>: Are all necessary environment variables present and correct?<br />
-*   <code>volumeMounts</code> and <code>volumes</code>: Are <code>ConfigMaps</code> or <code>Secrets</code> correctly mounted? Do they contain the expected data?<br />
-*   <code>resources</code>: Are <code>limits</code> and <code>requests</code> set appropriately? Could memory or CPU limits be too restrictive for startup?<br />
-*   <code>livenessProbe</code> and <code>readinessProbe</code>: Are they configured correctly? If a liveness probe fails immediately, it can cause <code>CrashLoopBackOff</code>.</p>
 </li>
 <li>
-<p><strong>Test the Container Image Locally:</strong><br />
-    If the logs aren't conclusive, try running the container image directly on your local machine using Docker. This helps isolate whether the problem is with your application code/image or Kubernetes environment.</p>
+<p><strong>Test Locally (if applicable):</strong><br />
+    If possible, pull the exact container image and try running it locally using Docker (or <code>podman</code>). This can help isolate whether the issue is Kubernetes-specific or inherent to the container image/application itself.</p>
 <p><code>bash
-docker run --rm -it --name test-app &lt;your-image-name&gt;:&lt;tag&gt;</code></p>
-<p>Pass any necessary environment variables or volume mounts that your Kubernetes deployment uses to mimic the environment as closely as possible.</p>
-<p><code>bash
-docker run --rm -it -e MY_ENV_VAR=value -v /local/path:/container/path &lt;your-image-name&gt;:&lt;tag&gt;</code></p>
-<p>Observe the output and confirm it starts correctly or provides clearer error messages.</p>
+docker run -it --rm &lt;your-image-name&gt;:&lt;tag&gt;</code><br />
+Pass any necessary environment variables or volume mounts that your Kubernetes Pod would use.</p>
 </li>
 <li>
-<p><strong>Review Dependencies and External Services:</strong><br />
-    Is your application trying to connect to a database, message queue, or another service that isn't available or configured correctly?</p>
-<ul>
-<li>Check network policies.</li>
-<li>Verify DNS resolution within the cluster.</li>
-<li>Ensure credentials for external services are correct (e.g., in Secrets).</li>
-</ul>
+<p><strong>Verify Application Configuration:</strong><br />
+    Ensure any <code>ConfigMaps</code> or <code>Secrets</code> mounted into the Pod contain the correct and complete configuration your application expects. I've often seen issues where a database connection string was subtly wrong in a secret, causing immediate application failure.</p>
 </li>
 <li>
-<p><strong>Rebuild and Redeploy:</strong><br />
-    If you've identified a fix in your application code, <code>Dockerfile</code>, or Kubernetes manifest, rebuild your image and redeploy. Sometimes, a simple <code>kubectl rollout restart deployment &lt;deployment-name&gt;</code> can resolve transient issues if the underlying problem was temporary (though this is rare for persistent <code>CrashLoopBackOff</code>).</p>
+<p><strong>Resource Adjustments:</strong><br />
+    If <code>OOMKilled</code> was the reason in <code>kubectl describe</code>, edit your Deployment, StatefulSet, or Pod definition to increase the memory <code>limits</code> (and <code>requests</code> to ensure scheduling).</p>
+<p>```bash<br />
+kubectl edit deployment <deployment-name> -n <your-namespace></p>
+<h1 id="find-the-container-definition-and-adjust-resources">Find the container definition and adjust resources:</h1>
+<h1 id="resources">resources:</h1>
+<h1 id="limits">limits:</h1>
+<h1 id="memory-512mi-increase-this">memory: "512Mi" # Increase this</h1>
+<h1 id="requests">requests:</h1>
+<h1 id="memory-256mi-increase-this">memory: "256Mi" # Increase this</h1>
+<p>```<br />
+Remember to be mindful of your cluster's available resources.</p>
+</li>
+<li>
+<p><strong>Probe Configuration Review:</strong><br />
+    If Liveness probes are configured, ensure their <code>initialDelaySeconds</code> and <code>periodSeconds</code> are appropriate. A probe might fail simply because the application takes a long time to start up, leading to unnecessary restarts.</p>
 </li>
 </ol>
 <h2 id="code-examples">Code Examples</h2>
-<p>Here are some concise examples demonstrating common configurations that can lead to <code>CrashLoopBackOff</code> and how to fix them.</p>
-<p><strong>1. Deployment with an Incorrect Command:</strong><br />
-Imagine a <code>Dockerfile</code> where the entrypoint is <code>java -jar app.jar</code>, but your K8s manifest overrides it incorrectly.</p>
-<div class="highlight"><pre><span></span><code><span class="c1"># deployment.yaml (causing CrashLoopBackOff)</span>
-<span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">apps/v1</span>
-<span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Deployment</span>
-<span class="nt">metadata</span><span class="p">:</span>
-<span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">my-java-app</span>
-<span class="nt">spec</span><span class="p">:</span>
-<span class="w">  </span><span class="nt">replicas</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
-<span class="w">  </span><span class="nt">selector</span><span class="p">:</span>
-<span class="w">    </span><span class="nt">matchLabels</span><span class="p">:</span>
-<span class="w">      </span><span class="nt">app</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">my-java-app</span>
-<span class="w">  </span><span class="nt">template</span><span class="p">:</span>
-<span class="w">    </span><span class="nt">metadata</span><span class="p">:</span>
-<span class="w">      </span><span class="nt">labels</span><span class="p">:</span>
-<span class="w">        </span><span class="nt">app</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">my-java-app</span>
-<span class="w">    </span><span class="nt">spec</span><span class="p">:</span>
-<span class="w">      </span><span class="nt">containers</span><span class="p">:</span>
-<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">app-container</span>
-<span class="w">        </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">myrepo/my-java-app:1.0.0</span>
-<span class="w">        </span><span class="c1"># Incorrect command - maybe &#39;start.sh&#39; doesn&#39;t exist or is not executable</span>
-<span class="w">        </span><span class="nt">command</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">&quot;/bin/bash&quot;</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="s">&quot;-c&quot;</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="s">&quot;start.sh&quot;</span><span class="p p-Indicator">]</span>
-<span class="w">        </span><span class="c1"># If the container expects &#39;java -jar app.jar&#39;</span>
-<span class="w">        </span><span class="c1"># ... other config ...</span>
+<p>Here are some common <code>kubectl</code> commands and YAML snippets you'll use to troubleshoot <code>CrashLoopBackOff</code>.</p>
+<h3 id="listing-pods">Listing Pods</h3>
+<div class="highlight"><pre><span></span><code>kubectl<span class="w"> </span>get<span class="w"> </span>pods<span class="w"> </span>-n<span class="w"> </span>my-app-namespace
 </code></pre></div>
 
-<p><strong>Fix:</strong> Ensure the <code>command</code> and <code>args</code> match what your Docker image expects, or omit them if your <code>Dockerfile</code> already defines a correct <code>ENTRYPOINT</code>/<code>CMD</code>.</p>
-<div class="highlight"><pre><span></span><code><span class="c1"># deployment.yaml (fixed)</span>
-<span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">apps/v1</span>
-<span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Deployment</span>
-<span class="nt">metadata</span><span class="p">:</span>
-<span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">my-java-app</span>
-<span class="nt">spec</span><span class="p">:</span>
-<span class="w">  </span><span class="nt">replicas</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
-<span class="w">  </span><span class="nt">selector</span><span class="p">:</span>
-<span class="w">    </span><span class="nt">matchLabels</span><span class="p">:</span>
-<span class="w">      </span><span class="nt">app</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">my-java-app</span>
-<span class="w">  </span><span class="nt">template</span><span class="p">:</span>
-<span class="w">    </span><span class="nt">metadata</span><span class="p">:</span>
-<span class="w">      </span><span class="nt">labels</span><span class="p">:</span>
-<span class="w">        </span><span class="nt">app</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">my-java-app</span>
-<span class="w">    </span><span class="nt">spec</span><span class="p">:</span>
-<span class="w">      </span><span class="nt">containers</span><span class="p">:</span>
-<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">app-container</span>
-<span class="w">        </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">myrepo/my-java-app:1.0.0</span>
-<span class="w">        </span><span class="c1"># Correct command, assuming `java -jar app.jar` is the entrypoint</span>
-<span class="w">        </span><span class="c1"># Or remove command/args entirely if ENTRYPOINT/CMD in Dockerfile is sufficient</span>
-<span class="w">        </span><span class="nt">command</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">&quot;java&quot;</span><span class="p p-Indicator">]</span>
-<span class="w">        </span><span class="nt">args</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">&quot;-jar&quot;</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="s">&quot;app.jar&quot;</span><span class="p p-Indicator">]</span>
-<span class="w">        </span><span class="c1"># ... other config ...</span>
+<p><strong>Example Output:</strong></p>
+<div class="highlight"><pre><span></span><code>NAME                           READY   STATUS             RESTARTS   AGE
+my-app-pod-5477d9c6f8-abcde   0/1     CrashLoopBackOff   5          2m
+another-pod-xyz-12345          1/1     Running            0          10m
 </code></pre></div>
 
-<p><strong>2. Application with Missing Environment Variable:</strong><br />
-An application might crash if a critical environment variable isn't passed.</p>
-<div class="highlight"><pre><span></span><code><span class="c1"># deployment.yaml (causing CrashLoopBackOff due to missing ENV)</span>
-<span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">apps/v1</span>
-<span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Deployment</span>
-<span class="nt">metadata</span><span class="p">:</span>
-<span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">my-config-app</span>
-<span class="nt">spec</span><span class="p">:</span>
-<span class="w">  </span><span class="nt">replicas</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
-<span class="w">  </span><span class="nt">selector</span><span class="p">:</span>
-<span class="w">    </span><span class="nt">matchLabels</span><span class="p">:</span>
-<span class="w">      </span><span class="nt">app</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">my-config-app</span>
-<span class="w">  </span><span class="nt">template</span><span class="p">:</span>
-<span class="w">    </span><span class="nt">metadata</span><span class="p">:</span>
-<span class="w">      </span><span class="nt">labels</span><span class="p">:</span>
-<span class="w">        </span><span class="nt">app</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">my-config-app</span>
-<span class="w">    </span><span class="nt">spec</span><span class="p">:</span>
-<span class="w">      </span><span class="nt">containers</span><span class="p">:</span>
-<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">app-container</span>
-<span class="w">        </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">myrepo/my-config-app:1.0.0</span>
-<span class="w">        </span><span class="c1"># Missing MY_CRITICAL_ENV_VAR which the app requires at startup</span>
-<span class="w">        </span><span class="nt">env</span><span class="p">:</span>
-<span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">DATABASE_URL</span>
-<span class="w">          </span><span class="nt">value</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;jdbc:postgresql://...&quot;</span>
-<span class="w">        </span><span class="c1"># ... other config ...</span>
+<h3 id="describing-a-crashing-pod">Describing a Crashing Pod</h3>
+<div class="highlight"><pre><span></span><code>kubectl<span class="w"> </span>describe<span class="w"> </span>pod<span class="w"> </span>my-app-pod-5477d9c6f8-abcde<span class="w"> </span>-n<span class="w"> </span>my-app-namespace
 </code></pre></div>
 
-<p><strong>Fix:</strong> Add the required environment variable.</p>
-<div class="highlight"><pre><span></span><code><span class="c1"># deployment.yaml (fixed)</span>
-<span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">apps/v1</span>
-<span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Deployment</span>
+<p><strong>Key sections to look for in the output:</strong><br />
+*   <code>Containers &gt; State &gt; Last State</code>: Details of the last termination, including <code>Reason</code> (e.g., <code>OOMKilled</code>, <code>Error</code>) and <code>Exit Code</code>.<br />
+*   <code>Events</code>: A chronological list of what happened to the Pod.</p>
+<h3 id="checking-pod-logs-current-and-previous">Checking Pod Logs (current and previous)</h3>
+<div class="highlight"><pre><span></span><code><span class="c1"># Get logs from the current, crashing instance</span>
+kubectl<span class="w"> </span>logs<span class="w"> </span>my-app-pod-5477d9c6f8-abcde<span class="w"> </span>-n<span class="w"> </span>my-app-namespace
+
+<span class="c1"># Get logs from the immediately preceding, crashed instance</span>
+kubectl<span class="w"> </span>logs<span class="w"> </span>my-app-pod-5477d9c6f8-abcde<span class="w"> </span>-n<span class="w"> </span>my-app-namespace<span class="w"> </span>--previous
+</code></pre></div>
+
+<h3 id="getting-pod-yaml-for-inspection">Getting Pod YAML for inspection</h3>
+<div class="highlight"><pre><span></span><code>kubectl<span class="w"> </span>get<span class="w"> </span>pod<span class="w"> </span>my-app-pod-5477d9c6f8-abcde<span class="w"> </span>-o<span class="w"> </span>yaml<span class="w"> </span>-n<span class="w"> </span>my-app-namespace
+</code></pre></div>
+
+<p><strong>Example problematic Pod definition (snippet):</strong><br />
+Here, the <code>command</code> is trying to run <code>/app/start.sh</code> but it should be <code>/app/run.sh</code>. Or perhaps <code>memory</code> limits are too low.</p>
+<div class="highlight"><pre><span></span><code><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">v1</span>
+<span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Pod</span>
 <span class="nt">metadata</span><span class="p">:</span>
-<span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">my-config-app</span>
+<span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">my-app-pod</span>
 <span class="nt">spec</span><span class="p">:</span>
-<span class="w">  </span><span class="nt">replicas</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
-<span class="w">  </span><span class="nt">selector</span><span class="p">:</span>
-<span class="w">    </span><span class="nt">matchLabels</span><span class="p">:</span>
-<span class="w">      </span><span class="nt">app</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">my-config-app</span>
-<span class="w">  </span><span class="nt">template</span><span class="p">:</span>
-<span class="w">    </span><span class="nt">metadata</span><span class="p">:</span>
-<span class="w">      </span><span class="nt">labels</span><span class="p">:</span>
-<span class="w">        </span><span class="nt">app</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">my-config-app</span>
-<span class="w">    </span><span class="nt">spec</span><span class="p">:</span>
-<span class="w">      </span><span class="nt">containers</span><span class="p">:</span>
-<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">app-container</span>
-<span class="w">        </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">myrepo/my-config-app:1.0.0</span>
-<span class="w">        </span><span class="nt">env</span><span class="p">:</span>
-<span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">DATABASE_URL</span>
-<span class="w">          </span><span class="nt">value</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;jdbc:postgresql://...&quot;</span>
-<span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">MY_CRITICAL_ENV_VAR</span><span class="w"> </span><span class="c1"># Added!</span>
-<span class="w">          </span><span class="nt">value</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;some_value&quot;</span>
-<span class="w">        </span><span class="c1"># ... other config ...</span>
+<span class="w">  </span><span class="nt">containers</span><span class="p">:</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">my-app-container</span>
+<span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">myrepo/my-app:1.0.0</span>
+<span class="w">    </span><span class="nt">command</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">&quot;/app/start.sh&quot;</span><span class="p p-Indicator">]</span><span class="w"> </span><span class="c1"># &lt;--- Potential issue here</span>
+<span class="w">    </span><span class="nt">args</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">&quot;--config&quot;</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="s">&quot;/etc/app/config.json&quot;</span><span class="p p-Indicator">]</span>
+<span class="w">    </span><span class="nt">resources</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">limits</span><span class="p">:</span>
+<span class="w">        </span><span class="nt">memory</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;64Mi&quot;</span><span class="w"> </span><span class="c1"># &lt;--- Potentially too low, causing OOMKill</span>
+<span class="w">      </span><span class="nt">requests</span><span class="p">:</span>
+<span class="w">        </span><span class="nt">memory</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;32Mi&quot;</span>
+<span class="w">    </span><span class="nt">volumeMounts</span><span class="p">:</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">app-config-volume</span>
+<span class="w">      </span><span class="nt">mountPath</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;/etc/app&quot;</span>
+<span class="w">  </span><span class="nt">volumes</span><span class="p">:</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">app-config-volume</span>
+<span class="w">    </span><span class="nt">configMap</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">my-app-config</span>
+</code></pre></div>
+
+<h3 id="example-of-a-deployment-fix-increasing-memory-limits">Example of a Deployment fix (increasing memory limits)</h3>
+<div class="highlight"><pre><span></span><code>kubectl<span class="w"> </span>edit<span class="w"> </span>deployment<span class="w"> </span>my-app-deployment<span class="w"> </span>-n<span class="w"> </span>my-app-namespace
+</code></pre></div>
+
+<p>Change the <code>resources</code> section under <code>spec.template.spec.containers</code> like so:</p>
+<div class="highlight"><pre><span></span><code><span class="w">    </span><span class="nt">resources</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">limits</span><span class="p">:</span>
+<span class="w">        </span><span class="nt">memory</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;256Mi&quot;</span><span class="w"> </span><span class="c1"># Increased from 64Mi</span>
+<span class="w">        </span><span class="nt">cpu</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;500m&quot;</span>
+<span class="w">      </span><span class="nt">requests</span><span class="p">:</span>
+<span class="w">        </span><span class="nt">memory</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;128Mi&quot;</span><span class="w"> </span><span class="c1"># Increased from 32Mi</span>
+<span class="w">        </span><span class="nt">cpu</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;250m&quot;</span>
 </code></pre></div>
 
 <h2 id="environment-specific-notes">Environment-Specific Notes</h2>
-<p>The context of your Kubernetes cluster can influence specific troubleshooting steps or common pitfalls.</p>
+<p>The general troubleshooting steps apply across all Kubernetes environments, but some nuances exist depending on where your cluster is running.</p>
 <ul>
 <li>
-<p><strong>Cloud Providers (EKS, GKE, AKS):</strong></p>
+<p><strong>Cloud (GKE, EKS, AKS):</strong></p>
 <ul>
-<li><strong>IAM Roles/Service Accounts:</strong> Ensure the pod's Service Account has the necessary IAM roles/permissions to access cloud resources (e.g., S3 buckets, databases, secret managers). A lack of permissions during startup (e.g., fetching a secret) can cause a crash.</li>
-<li><strong>Network Policies/Security Groups:</strong> Verify that outbound network traffic from your pod isn't blocked by Kubernetes Network Policies or cloud-level Security Groups/Firewall Rules if your application tries to reach external services at startup.</li>
-<li><strong>Image Registry Access:</strong> Ensure your cluster can pull images from the specified registry (e.g., ECR, GCR, ACR). Private registries often require <code>imagePullSecrets</code> or proper IAM configuration.</li>
+<li><strong>Enhanced Logging:</strong> Cloud providers often integrate deeply with their own logging services (e.g., Google Cloud Logging, AWS CloudWatch Logs, Azure Monitor). Always check these centralized logs, as they might provide more context or persist logs longer than <code>kubectl logs --previous</code> can retrieve, especially if the Pod is frequently rescheduled.</li>
+<li><strong>Managed Services:</strong> If your application relies on managed database services or message queues, ensure your Kubernetes Pod has the correct IAM roles or service accounts attached for authentication and network access. I've seen <code>CrashLoopBackOff</code> when a newly deployed service account lacked permissions for an external resource.</li>
+<li><strong>Network Policies:</strong> Cloud environments often have sophisticated network policies. Double-check that your Pod has the necessary egress rules to reach any external dependencies it needs during startup.</li>
 </ul>
 </li>
 <li>
 <p><strong>Docker Desktop/Minikube (Local Development):</strong></p>
 <ul>
-<li><strong>Resource Availability:</strong> Local environments often have limited CPU and memory. Aggressive resource <code>limits</code> on pods might cause them to <code>CrashLoopBackOff</code> more frequently than in a production cluster with ample resources. Adjust your pod's <code>resources</code> or increase Docker Desktop/Minikube's allocated resources.</li>
-<li><strong>Local Image Registry:</strong> If you're building images locally and referencing them without pushing to a remote registry, ensure your local Kubernetes cluster is configured to pull from the Docker daemon's images. For Minikube, using <code>eval $(minikube docker-env)</code> before building is a common pattern.</li>
-<li><strong>Incompatible Docker Versions:</strong> Occasionally, an image built with a newer Docker version might have subtle incompatibilities when run in an older Kubernetes engine on Minikube.</li>
+<li><strong>Resource Constraints:</strong> Local environments are typically resource-constrained. <code>CrashLoopBackOff</code> due to <code>OOMKilled</code> is very common here, especially if you have multiple services running. Adjusting Docker Desktop's or Minikube's allocated resources might be necessary.</li>
+<li><strong>Image Pull Issues:</strong> Ensure your local Docker daemon can pull images, especially if you're using a private registry. Misconfigured credentials (<code>imagePullSecrets</code>) can prevent image pulls, though this usually leads to <code>ImagePullBackOff</code>.</li>
+<li><strong>DNS Resolution:</strong> Sometimes local DNS resolution within Minikube can be flaky. If your app is crashing trying to connect to a service by hostname, verify DNS within the Pod.</li>
 </ul>
 </li>
 <li>
-<p><strong>On-Premise/Bare-Metal Clusters:</strong></p>
+<p><strong>Bare-metal/On-premise:</strong></p>
 <ul>
-<li><strong>Storage Access:</strong> If your pod requires <code>PersistentVolumes</code>, verify that the underlying storage provisioner (e.g., Ceph, NFS) is healthy and the pod has correct access permissions.</li>
-<li><strong>Custom CNI:</strong> Review your Container Network Interface (CNI) plugin logs and configuration if network connectivity issues are suspected.</li>
-<li><strong>Node Resources:</strong> Ensure the nodes themselves are not resource-constrained, which can indirectly lead to pod instability or issues with scheduling critical components.</li>
+<li><strong>Infrastructure Variability:</strong> These environments can be highly customized. The underlying storage, networking (CNI), and host operating system configurations can introduce unique challenges.</li>
+<li><strong>Visibility:</strong> You might have less integrated logging and monitoring compared to cloud providers. Ensure your cluster is set up with robust logging (e.g., Fluentd/Fluent Bit to an ELK stack) to capture container logs effectively.</li>
+<li><strong>Network Diagnostics:</strong> Tools like <code>tcpdump</code> or <code>traceroute</code> directly on the host or in a debug container might be needed to diagnose complex network connectivity issues that prevent your application from starting.</li>
 </ul>
 </li>
 </ul>
 <h2 id="frequently-asked-questions">Frequently Asked Questions</h2>
-<p><strong>Q: How is <code>CrashLoopBackOff</code> different from <code>Error</code> or <code>ImagePullBackOff</code>?</strong><br />
-A: <code>ImagePullBackOff</code> means Kubernetes can't pull your container image (e.g., wrong name, tag, or registry credentials). <code>Error</code> usually means the container started and then exited with a non-zero status, but Kubernetes hasn't yet entered the <code>BackOff</code> loop. <code>CrashLoopBackOff</code> is the specific state where the container starts, crashes, and Kubernetes is repeatedly attempting to restart it with increasing delays.</p>
-<p><strong>Q: Can resource limits cause <code>CrashLoopBackOff</code>?</strong><br />
-A: Yes, absolutely. If your pod's container attempts to use more memory than its <code>memory.limit</code> during startup, it will be terminated by the kernel (OOMKilled), leading to a <code>CrashLoopBackOff</code>. Similarly, if CPU limits are extremely tight and the application is CPU-intensive at startup, it can become unresponsive and fail health checks.</p>
-<p><strong>Q: What if the <code>kubectl logs</code> command shows empty output?</strong><br />
-A: If <code>kubectl logs &lt;pod-name&gt;</code> or <code>kubectl logs --previous &lt;pod-name&gt;</code> yields no output, it means your application isn't even getting to the point of writing anything to <code>stdout</code>/<code>stderr</code> before it crashes. This often points to problems with the container image's <code>ENTRYPOINT</code>/<code>CMD</code> (e.g., the specified executable doesn't exist, has incorrect permissions, or cannot be found in the PATH). Verify the <code>command</code> and <code>args</code> in your pod definition and test the <code>Dockerfile</code> locally using <code>docker run</code>.</p>
-<p><strong>Q: Do liveness and readiness probes contribute to <code>CrashLoopBackOff</code>?</strong><br />
-A: A liveness probe can certainly contribute. If a liveness probe fails, Kubernetes will restart the container. If it fails immediately upon startup, it creates a <code>CrashLoopBackOff</code> scenario. Readiness probes, on the other hand, only mark a pod as "unready" (not receiving traffic), but do not trigger restarts directly, so they typically won't cause <code>CrashLoopBackOff</code> on their own.</p>
-<p><strong>Q: My pod works fine locally with Docker, but <code>CrashLoopBackOff</code> in Kubernetes. Why?</strong><br />
-A: This is a common scenario. It usually indicates an environment difference. Potential causes include:<br />
-1.  <strong>Missing <code>ConfigMap</code> or <code>Secret</code>:</strong> Your local run might implicitly use local files or environment variables that are provided via Kubernetes <code>ConfigMaps</code> or <code>Secrets</code> in the cluster.<br />
-2.  <strong>Resource Constraints:</strong> Local Docker might have more resources (CPU/RAM) than your pod's <code>limits</code> in Kubernetes.<br />
-3.  <strong>Network/DNS Issues:</strong> Your application might be failing to connect to other services (databases, APIs) due to network policy, DNS resolution, or incorrect service endpoints in the cluster.<br />
-4.  <strong>Permissions:</strong> The container might be running with different user/group IDs locally vs. in Kubernetes (especially if <code>securityContext</code> is used).</p>
+<p><strong>Q: How do I stop Kubernetes from restarting a <code>CrashLoopBackOff</code> Pod?</strong><br />
+A: You don't directly stop Kubernetes from restarting it; instead, you fix the underlying issue causing the container to crash. Kubernetes will automatically stop attempting restarts once the container runs successfully and remains healthy. If you need to temporarily stop it from continually restarting, you can delete the misbehaving Pod or, more commonly, delete or update its parent Deployment, StatefulSet, or DaemonSet resource.</p>
+<p><strong>Q: What is the difference between <code>CrashLoopBackOff</code> and <code>Error</code>?</strong><br />
+A: <code>CrashLoopBackOff</code> implies the container started, crashed, and Kubernetes is now repeatedly trying to restart it with increasing delays. An <code>Error</code> status (e.g., <code>ExitCode: 1</code>) often means the container failed to even successfully launch its main process, or it terminated immediately after starting due to a very basic configuration or script error. <code>CrashLoopBackOff</code> is essentially a specific type of repeated <code>Error</code> state.</p>
+<p><strong>Q: How can I debug a Pod that restarts too quickly for <code>kubectl exec</code>?</strong><br />
+A: This is a common challenge!<br />
+1.  <strong>Use <code>kubectl logs --previous</code></strong>: As mentioned, this is your primary tool.<br />
+2.  <strong>Temporarily modify the <code>command</code></strong>: You can edit the Pod's Deployment/StatefulSet to temporarily replace your application's <code>command</code> with a <code>sleep</code> command (e.g., <code>command: ["sleep", "3600"]</code>). This keeps the container running for an hour, allowing you to <code>kubectl exec</code> into it and manually run your application's startup script or debug commands. Remember to revert this change once debugging is complete.<br />
+3.  <strong>Run locally</strong>: Use <code>docker run</code> or a similar command to replicate the environment outside Kubernetes.</p>
+<p><strong>Q: Can Liveness probes cause <code>CrashLoopBackOff</code>?</strong><br />
+A: Yes, absolutely. If your application starts but its Liveness probe continuously fails (e.g., it never becomes healthy enough to respond to the HTTP endpoint, or a command check fails), Kubernetes will consider the container unhealthy and restart it. If this cycle repeats, it leads to <code>CrashLoopBackOff</code>. Ensure your <code>initialDelaySeconds</code> is sufficient and your probe logic accurately reflects application health.</p>
+<p><strong>Q: What if the application takes a long time to start up?</strong><br />
+A: If your application has a lengthy initialization phase, its Liveness probe might fail before it's ready, leading to restarts. You should increase the <code>initialDelaySeconds</code> on your Liveness probe to give the application ample time to fully initialize before Kubernetes starts checking its health. Similarly, adjust <code>startupProbe</code> if you are using Kubernetes 1.18+ to handle slow startups more gracefully.</p>
 <h2 id="related-errors">Related Errors</h2>
+<ul>
+<li><code>ImagePullBackOff</code></li>
+<li><code>OOMKilled</code> (often seen within <code>CrashLoopBackOff</code> events)</li>
+<li><code>Pending</code> (if resources are unavailable, preventing a pod from even starting)</li>
+</ul>
     </div>
 
     <!-- ── AdSense placement 2 – bottom of article ───────────────────────── -->
@@ -458,7 +457,7 @@ A: This is a common scenario. It usually indicates an environment difference. Po
     <div class="container">
       <p class="footer-logo">⚡ ErrorFix.dev</p>
       <p>Practical, engineer-written guides for real-world software errors.</p>
-      <p style="margin-top:.5rem">Last updated: <time>May 11, 2026</time>.</p>
+      <p style="margin-top:.5rem">Last updated: <time>May 12, 2026</time>.</p>
       <p class="footer-links" style="margin-top:.75rem">
         <!-- ╔══════════════════════════════════════════════════════════════╗ -->
         <!-- ║  AFFILIATE LINKS – replace the href values below            ║ -->
