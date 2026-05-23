@@ -124,167 +124,251 @@
     <div class="article-content">
       <h1 id="react-error-invalid-hook-call-hooks-can-only-be-called-inside-a-function-component">React Error: Invalid hook call – Hooks can only be called inside a function component</h1>
 <blockquote>
-<p>Encountering "Invalid hook call" means a React Hook is being used outside a functional component or custom hook; this guide explains how to fix it.</p>
+<p>Encountering "Invalid hook call" means React Hooks are being used outside their intended functional component context; this guide explains how to fix it by understanding and adhering to the Rules of Hooks.</p>
 </blockquote>
 <h2 id="what-this-error-means">What This Error Means</h2>
-<p>This error indicates a fundamental violation of React's "Rules of Hooks." React Hooks, such as <code>useState</code>, <code>useEffect</code>, <code>useContext</code>, and any custom hooks you define (e.g., <code>useMyHook</code>), provide function components with access to React state and lifecycle features. The error message is very precise: you've attempted to call a hook in an invalid context, specifically outside of a React function component or a custom hook. React strictly enforces these rules at runtime to ensure its internal state management mechanisms work correctly and predictably.</p>
-<h2 id="why-it-happens">Why It Happens</h2>
-<p>React relies on the order and context of hook calls to correctly associate state, effects, and memoized values with specific component instances during rendering. When a hook is called outside a functional component or a custom hook, React loses this vital context. It cannot determine which component owns the state or effect being declared, leading to internal inconsistencies and unpredictable behavior. To prevent silent failures and ensure stability, React throws the "Invalid hook call" error, safeguarding its core reconciliation process.</p>
-<h2 id="common-causes">Common Causes</h2>
-<p>In my experience, this error typically stems from one of a few common scenarios:</p>
-<ul>
-<li><strong>Class Components:</strong> The most frequent cause is attempting to use a React hook directly inside a class component. Hooks are exclusively designed for function components; class components manage state using <code>this.state</code> and handle side effects with lifecycle methods like <code>componentDidMount</code>.</li>
-<li><strong>Regular JavaScript Functions:</strong> Calling a hook within a standard JavaScript function that is not itself a React function component or a custom hook. React cannot track state or effects in arbitrary utility functions.</li>
-<li><strong>Conditional Hook Calls:</strong> Placing hooks inside <code>if</code> statements, <code>for</code> loops, or nested functions within a component. React requires hooks to be called unconditionally and in the same order on every single render cycle.</li>
-<li><strong>Mismatched React Versions:</strong> Less common but potentially insidious: having multiple, conflicting versions of <code>react</code> or <code>react-dom</code> in your <code>node_modules</code> directory. This can occur if a third-party dependency pulls in its own, older (or sometimes newer) React version, confusing the internal React context. I've seen this in production when managing complex dependency trees and not explicitly consolidating React versions.</li>
-<li><strong>Stale <code>node_modules</code> / Bundler Cache:</strong> Occasionally, a corrupted <code>node_modules</code> directory or a stale build cache from your bundler (e.g., Webpack, Babel) can lead to unexpected runtime issues where React's internals fail to correctly resolve the component context.</li>
-</ul>
-<h2 id="step-by-step-fix">Step-by-Step Fix</h2>
-<p>To systematically resolve this error, follow these steps:</p>
+<p>When you see the error message "React Error: Invalid hook call – Hooks can only be called inside a function component," React is telling you that you're attempting to use a feature designed exclusively for functional components (a "Hook" like <code>useState</code>, <code>useEffect</code>, <code>useContext</code>, etc.) in a place where it doesn't belong. Specifically, this error typically means a hook is being invoked:</p>
 <ol>
-<li><strong>Locate the Error:</strong> Begin by examining the stack trace provided by React in your browser's developer console. It will pinpoint the exact file and line number where the invalid hook call occurred. This is your primary starting point.</li>
-<li><strong>Verify Component Type:</strong><ul>
-<li>Is the hook being called inside a <code>class MyComponent extends React.Component</code>? If so, you must either refactor <code>MyComponent</code> to a functional component (which can use hooks) or replace the hook usage with class-based state (<code>this.state</code>) and lifecycle methods.</li>
-<li>Is it inside a plain <code>function doSomething()</code> that is <em>not</em> a React function component or a custom hook (i.e., its name doesn't start with <code>use</code>)? If so, move the hook call directly into the React function component or custom hook that genuinely needs its state or effect.</li>
+<li>Outside of a functional React component.</li>
+<li>Inside a class component.</li>
+<li>Inside a regular JavaScript function that isn't itself a custom hook or a functional component.</li>
+</ol>
+<p>React Hooks are a fundamental shift in how stateful logic and side effects are managed in functional components, replacing the need for class components in many scenarios. For React to properly manage the state and lifecycle of these hooks, it needs a predictable context — that context is the top level of a functional component or a custom hook called within a functional component. When this context is absent, React cannot reliably associate the hook's state with the component instance, leading to this critical runtime error.</p>
+<h2 id="why-it-happens">Why It Happens</h2>
+<p>The "Invalid hook call" error stems from the very design principles of React Hooks. React relies on a consistent internal mechanism to track which hook belongs to which component and in what order. When a functional component renders, React expects hooks to be called in the exact same order during every render cycle. This predictability allows React to correctly manage the internal state queue associated with each hook.</p>
+<p>If a hook is called outside a functional component's render function (or a custom hook that's called within one), React loses this crucial context. It can't link the hook's state to a specific component instance, nor can it guarantee the order of execution. This uncertainty breaks React's core reconciliation algorithm, preventing it from tracking state changes or correctly scheduling updates.</p>
+<p>Think of it like trying to ask for your name and address while standing in a crowd, hoping the first person you point to magically knows your identity and where you live, when you haven't even introduced yourself or established a relationship. React needs to know <em>who</em> (which component) is calling <em>what</em> (which hook) to manage its internal state effectively. Without a component context, React cannot create or retrieve the necessary internal data structures for the hook, thus throwing the "Invalid hook call" error.</p>
+<p>This isn't just about syntax; it's about the runtime architecture of React's state management. I've seen this error halt entire applications in production when a seemingly innocuous refactor moved a <code>useState</code> call into a helper function that wasn't a custom hook. The fix always came down to understanding where React expects its hooks to live.</p>
+<h2 id="common-causes">Common Causes</h2>
+<p>In my experience, the "Invalid hook call" error often arises from a few recurring scenarios:</p>
+<ol>
+<li>
+<p><strong>Hooks in Regular JavaScript Functions:</strong> This is perhaps the most common cause. Developers often extract logic into separate functions for reusability. If that extracted logic includes a hook and the function isn't a custom hook (i.e., its name doesn't start with <code>use</code>), React will throw this error when it's called from within a component or elsewhere.<br />
+    ```javascript<br />
+    // BAD: Not a custom hook, called outside a component's top level.<br />
+    function myHelperFunction() {<br />
+      const [value, setValue] = React.useState(0); // Invalid hook call here<br />
+      // ...<br />
+    }</p>
+<p>function MyComponent() {<br />
+  myHelperFunction(); // This will trigger the error<br />
+  return <div>Hello</div>;<br />
+}<br />
+```</p>
+</li>
+<li>
+<p><strong>Hooks in Class Components:</strong> Before React Hooks, class components were the primary way to manage state and lifecycle. While you can use hooks alongside class components (e.g., a functional child component using hooks within a class parent), you cannot call hooks directly inside a class component's methods (like <code>render</code>, <code>componentDidMount</code>, etc.). Class components use <code>this.state</code> and lifecycle methods for their stateful logic.</p>
+</li>
+<li>
+<p><strong>Conditional Hook Calls or Hooks in Loops/Nested Functions:</strong> While this often results in a different, more specific "Rules of Hooks" error (e.g., "React Hook 'useState' is called conditionally"), it's fundamentally related to the same principle of consistent call order. React expects hooks to be called at the top level of your functional component, unconditionally, and in the same order every time it renders.</p>
+</li>
+<li>
+<p><strong>Multiple React Copies:</strong> This is a tricky one. If your project, or a dependency within your project, ends up with multiple installations of the <code>react</code> package (and potentially <code>react-dom</code>), each installation might have its own internal state management for hooks. When your component tries to use a hook from one <code>react</code> instance, but the rendering environment (like <code>react-dom</code>) is using another, React gets confused and throws the invalid hook call. This can happen with monorepos or poorly configured module bundlers.</p>
+</li>
+<li>
+<p><strong>Stale <code>react</code> or <code>react-dom</code> Imports/Versions:</strong> Sometimes, especially after dependency updates or when setting up a new project, the <code>react</code> and <code>react-dom</code> packages might not be correctly imported, or their versions might be mismatched, leading to internal inconsistencies that manifest as this error.</p>
+</li>
+</ol>
+<h2 id="step-by-step-fix">Step-by-Step Fix</h2>
+<p>Troubleshooting this error requires a systematic approach, often starting with the stack trace and verifying your environment.</p>
+<ol>
+<li>
+<p><strong>Inspect the Stack Trace:</strong><br />
+    Your browser's developer console will show a stack trace. This is your most valuable clue. Look for the line that mentions <code>useState</code> or <code>useEffect</code> (or any other hook) and trace it back. It will usually point directly to the function or component where the invalid call originated.</p>
+</li>
+<li>
+<p><strong>Verify Functional Component Context:</strong></p>
+<ul>
+<li><strong>Is it a functional component?</strong> Ensure the function where the hook is called is indeed a React functional component. It should typically start with an uppercase letter and return JSX.</li>
+<li><strong>Is it a class component?</strong> If you're inside a class, you cannot use hooks. You'll need to refactor it to a functional component or use class-based state (<code>this.state</code>, <code>setState</code>) and lifecycle methods.</li>
+<li><strong>Is it a regular JavaScript function?</strong> If so, and it needs stateful logic, you must convert it into a <strong>custom hook</strong>. A custom hook is simply a JavaScript function whose name starts with <code>use</code> (e.g., <code>useMyCustomHook</code>). This naming convention tells React that it adheres to the Rules of Hooks and can contain other hooks.</li>
+</ul>
+<p>```javascript<br />
+// Original (BAD):<br />
+function doSomethingWithState() {<br />
+  const [count, setCount] = useState(0); // ERROR!<br />
+  // ...<br />
+}</p>
+<p>// FIX (GOOD - if called from a functional component):<br />
+function useSomethingWithState() { // This is a custom hook<br />
+  const [count, setCount] = useState(0);<br />
+  return [count, setCount];<br />
+}</p>
+<p>function MyComponent() {<br />
+  const [count, setCount] = useSomethingWithState(); // Valid call<br />
+  return <button onClick={() => setCount(count + 1)}&gt;Count: {count}</button>;<br />
+}<br />
+```</p>
+</li>
+<li>
+<p><strong>Check for Conditional Hook Calls and Loops:</strong><br />
+    While this often triggers a different error message, it's worth reviewing. Hooks must always be called at the top level of your component or custom hook, and never inside <code>if</code> statements, loops, or nested functions (unless those nested functions <em>are</em> the custom hook themselves, and the top-level custom hook is called unconditionally).</p>
+</li>
+<li>
+<p><strong>Examine <code>node_modules</code> for Duplicate React Installations:</strong><br />
+    This is a common culprit, especially in larger projects, monorepos, or when using third-party component libraries that might bundle their own React.</p>
+<ul>
+<li>Use <code>npm list react</code> or <code>yarn why react</code> in your project's root directory.</li>
+<li>Look for multiple <code>react</code> installations at different levels of your dependency tree. You ideally want only one at the top level.</li>
+<li>If you find duplicates, you may need to:<ul>
+<li>Adjust your <code>package.json</code> resolutions (for Yarn) or overrides (for npm &gt;= 8.3) to force a single React version.</li>
+<li>Remove the problematic dependency or update it to a version that doesn't ship its own React.</li>
+<li>Clear your <code>node_modules</code> and <code>package-lock.json</code>/<code>yarn.lock</code> and reinstall:<br />
+<code>bash
+    rm -rf node_modules
+    rm package-lock.json # or yarn.lock
+    npm install           # or yarn install</code></li>
 </ul>
 </li>
-<li><strong>Ensure Top-Level, Unconditional Calls:</strong> Confirm that the hook call is at the absolute top level of your function component or custom hook. It must not be nested within any <code>if</code> statements, <code>for</code> loops, <code>switch</code> statements, or any other conditional logic. Hooks must execute in the same predictable order on every render.</li>
-<li>
-<p><strong>Check for Duplicate React Instances:</strong> This is a crucial diagnostic step, especially if the above checks yield no obvious culprit.</p>
-<ul>
-<li>In your project's root directory, run <code>npm ls react</code> or <code>yarn why react</code>.</li>
-<li>Look for multiple <code>react</code> entries at different versions or paths. If found, you'll need to consolidate these.</li>
-<li>You might need to use <code>overrides</code> (for npm v8+) or <code>resolutions</code> (for Yarn) in your <code>package.json</code> to explicitly force all dependencies to use a single, consistent React version.</li>
 </ul>
-<p><code>json
-// package.json example using "overrides" for npm (v8+)
-{
-  "dependencies": {
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "some-legacy-library": "^1.0.0"
-  },
-  "overrides": {
-    "some-legacy-library": {
-      "react": "$react",
-      "react-dom": "$react-dom"
-    }
-  }
-}</code><br />
-5.  <strong>Clean and Reinstall Dependencies:</strong> If dependency issues are suspected or for a general "reset" of your development environment:<br />
-*   Delete your <code>node_modules</code> directory: <code>rm -rf node_modules</code><br />
-*   Delete your package lock file: <code>rm package-lock.json</code> (for npm) or <code>rm yarn.lock</code> (for Yarn)<br />
-*   Clear your package manager's cache: <code>npm cache clean --force</code> or <code>yarn cache clean</code><br />
-*   Reinstall dependencies: <code>npm install</code> or <code>yarn install</code><br />
-*   Restart your development server.</p>
-<p>```bash</p>
-<h1 id="for-npm-users">For npm users:</h1>
-<p>rm -rf node_modules package-lock.json<br />
-npm cache clean --force<br />
-npm install<br />
-npm start # Or your project's equivalent command<br />
-```</p>
+</li>
+<li>
+<p><strong>Verify <code>react</code> and <code>react-dom</code> Consistency:</strong><br />
+    Ensure that <code>react</code> and <code>react-dom</code> are both present in your <code>package.json</code> and are compatible versions. Mismatched versions can lead to subtle issues. It's usually best to keep them aligned (e.g., both <code>^18.0.0</code>).</p>
+</li>
+<li>
+<p><strong>Restart Your Development Server:</strong><br />
+    Sometimes, especially with Hot Module Replacement (HMR) or fast refresh, the development server's state can become inconsistent. A quick restart often resolves transient issues without needing code changes.<br />
+<code>bash
+    # For Create React App or similar:
+    npm start
+    # Then Ctrl+C to stop, and run again:
+    npm start</code></p>
+</li>
+<li>
+<p><strong>Check Transpilation and Build Configuration:</strong><br />
+    Ensure your project's Babel or TypeScript configuration is correctly transpiling your React code. If JSX or modern JavaScript features are not being processed correctly, it can sometimes interfere with React's ability to interpret your components and hooks. This is less common but can occur in highly customized build setups.</p>
 </li>
 </ol>
 <h2 id="code-examples">Code Examples</h2>
-<p>These examples illustrate common scenarios leading to the "Invalid hook call" error and their correct implementations.</p>
-<p><strong>Incorrect: Hook in a Class Component</strong></p>
-<div class="highlight"><pre><span></span><code><span class="k">import</span><span class="w"> </span><span class="nx">React</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s1">&#39;react&#39;</span><span class="p">;</span>
-<span class="k">import</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">useState</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s1">&#39;react&#39;</span><span class="p">;</span><span class="w"> </span><span class="c1">// Importing a hook</span>
+<p>Here are some concise, copy-paste-ready examples illustrating correct and incorrect hook usage.</p>
+<p><strong>Scenario 1: Hook in a Regular JavaScript Function (BAD)</strong></p>
+<div class="highlight"><pre><span></span><code><span class="k">import</span><span class="w"> </span><span class="nx">React</span><span class="p">,</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">useState</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s1">&#39;react&#39;</span><span class="p">;</span>
+
+<span class="c1">// This is just a regular JavaScript function, not a component or custom hook.</span>
+<span class="kd">function</span><span class="w"> </span><span class="nx">calculateAndStore</span><span class="p">(</span><span class="nx">initialValue</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="c1">// ERROR: Invalid hook call! React.useState cannot be called here.</span>
+<span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="p">[</span><span class="nx">data</span><span class="p">,</span><span class="w"> </span><span class="nx">setData</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">useState</span><span class="p">(</span><span class="nx">initialValue</span><span class="p">);</span>
+<span class="w">  </span><span class="c1">// ... other logic that might eventually update `data`</span>
+<span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">data</span><span class="p">,</span><span class="w"> </span><span class="nx">setData</span><span class="w"> </span><span class="p">};</span>
+<span class="p">}</span>
+
+<span class="kd">function</span><span class="w"> </span><span class="nx">MyComponent</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="c1">// Calling a function that calls a hook invalidly</span>
+<span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">data</span><span class="p">,</span><span class="w"> </span><span class="nx">setData</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">calculateAndStore</span><span class="p">(</span><span class="mf">0</span><span class="p">);</span>
+<span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="p">(</span>
+<span class="w">    </span><span class="o">&lt;</span><span class="nx">div</span><span class="o">&gt;</span>
+<span class="w">      </span><span class="o">&lt;</span><span class="nx">p</span><span class="o">&gt;</span><span class="nx">Data</span><span class="o">:</span><span class="w"> </span><span class="p">{</span><span class="nx">data</span><span class="p">}</span><span class="o">&lt;</span><span class="err">/p&gt;</span>
+<span class="w">      </span><span class="o">&lt;</span><span class="nx">button</span><span class="w"> </span><span class="nx">onClick</span><span class="o">=</span><span class="p">{()</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nx">setData</span><span class="p">(</span><span class="nx">data</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mf">1</span><span class="p">)}</span><span class="o">&gt;</span><span class="nx">Increment</span><span class="o">&lt;</span><span class="err">/button&gt;</span>
+<span class="w">    </span><span class="o">&lt;</span><span class="err">/div&gt;</span>
+<span class="w">  </span><span class="p">);</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p><strong>Scenario 1: FIX - Convert to a Custom Hook (GOOD)</strong></p>
+<div class="highlight"><pre><span></span><code><span class="k">import</span><span class="w"> </span><span class="nx">React</span><span class="p">,</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">useState</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s1">&#39;react&#39;</span><span class="p">;</span>
+
+<span class="c1">// This is now a custom hook because its name starts with &#39;use&#39;.</span>
+<span class="c1">// It can be called from within functional components.</span>
+<span class="kd">function</span><span class="w"> </span><span class="nx">useCalculateAndStore</span><span class="p">(</span><span class="nx">initialValue</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="p">[</span><span class="nx">data</span><span class="p">,</span><span class="w"> </span><span class="nx">setData</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">useState</span><span class="p">(</span><span class="nx">initialValue</span><span class="p">);</span><span class="w"> </span><span class="c1">// Valid hook call</span>
+<span class="w">  </span><span class="c1">// ... other logic</span>
+<span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">data</span><span class="p">,</span><span class="w"> </span><span class="nx">setData</span><span class="w"> </span><span class="p">};</span>
+<span class="p">}</span>
+
+<span class="kd">function</span><span class="w"> </span><span class="nx">MyComponent</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="c1">// Now valid because useCalculateAndStore is a custom hook.</span>
+<span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">data</span><span class="p">,</span><span class="w"> </span><span class="nx">setData</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">useCalculateAndStore</span><span class="p">(</span><span class="mf">0</span><span class="p">);</span>
+<span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="p">(</span>
+<span class="w">    </span><span class="o">&lt;</span><span class="nx">div</span><span class="o">&gt;</span>
+<span class="w">      </span><span class="o">&lt;</span><span class="nx">p</span><span class="o">&gt;</span><span class="nx">Data</span><span class="o">:</span><span class="w"> </span><span class="p">{</span><span class="nx">data</span><span class="p">}</span><span class="o">&lt;</span><span class="err">/p&gt;</span>
+<span class="w">      </span><span class="o">&lt;</span><span class="nx">button</span><span class="w"> </span><span class="nx">onClick</span><span class="o">=</span><span class="p">{()</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nx">setData</span><span class="p">(</span><span class="nx">data</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mf">1</span><span class="p">)}</span><span class="o">&gt;</span><span class="nx">Increment</span><span class="o">&lt;</span><span class="err">/button&gt;</span>
+<span class="w">    </span><span class="o">&lt;</span><span class="err">/div&gt;</span>
+<span class="w">  </span><span class="p">);</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p><strong>Scenario 2: Hook in a Class Component (BAD)</strong></p>
+<div class="highlight"><pre><span></span><code><span class="k">import</span><span class="w"> </span><span class="nx">React</span><span class="p">,</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">useState</span><span class="p">,</span><span class="w"> </span><span class="nx">useEffect</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s1">&#39;react&#39;</span><span class="p">;</span>
 
 <span class="kd">class</span><span class="w"> </span><span class="nx">MyClassComponent</span><span class="w"> </span><span class="k">extends</span><span class="w"> </span><span class="nx">React</span><span class="p">.</span><span class="nx">Component</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="nx">componentDidMount</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="c1">// ERROR: Invalid hook call! Hooks cannot be used in class components.</span>
+<span class="w">    </span><span class="c1">// You would use this.state and setState for state in a class component.</span>
+<span class="w">    </span><span class="c1">// const [count, setCount] = useState(0);</span>
+<span class="w">    </span><span class="nx">console</span><span class="p">.</span><span class="nx">log</span><span class="p">(</span><span class="s1">&#39;Class component mounted&#39;</span><span class="p">);</span>
+<span class="w">  </span><span class="p">}</span>
+
 <span class="w">  </span><span class="nx">render</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="c1">// ❌ ERROR: Hooks cannot be called inside class components.</span>
-<span class="w">    </span><span class="kd">const</span><span class="w"> </span><span class="p">[</span><span class="nx">value</span><span class="p">,</span><span class="w"> </span><span class="nx">setValue</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">useState</span><span class="p">(</span><span class="mf">0</span><span class="p">);</span><span class="w"> </span>
+<span class="w">    </span><span class="c1">// ERROR (if uncommented): Invalid hook call!</span>
+<span class="w">    </span><span class="c1">// const [status, setStatus] = useState(&#39;active&#39;);</span>
 <span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="p">(</span>
-<span class="w">      </span><span class="p">&lt;</span><span class="nt">button</span><span class="w"> </span><span class="na">onClick</span><span class="o">=</span><span class="p">{()</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nx">setValue</span><span class="p">(</span><span class="nx">value</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mf">1</span><span class="p">)}&gt;</span>
-<span class="w">        </span><span class="nx">Count</span><span class="o">:</span><span class="w"> </span><span class="p">{</span><span class="nx">value</span><span class="p">}</span>
-<span class="w">      </span><span class="p">&lt;/</span><span class="nt">button</span><span class="p">&gt;</span>
+<span class="w">      </span><span class="o">&lt;</span><span class="nx">div</span><span class="o">&gt;</span>
+<span class="w">        </span><span class="o">&lt;</span><span class="nx">h1</span><span class="o">&gt;</span><span class="nx">This</span><span class="w"> </span><span class="nx">is</span><span class="w"> </span><span class="nx">a</span><span class="w"> </span><span class="nx">Class</span><span class="w"> </span><span class="nx">Component</span><span class="o">&lt;</span><span class="err">/h1&gt;</span>
+<span class="w">        </span><span class="p">{</span><span class="cm">/* Class components manage state using &#39;this.state&#39; */</span><span class="p">}</span>
+<span class="w">      </span><span class="o">&lt;</span><span class="err">/div&gt;</span>
 <span class="w">    </span><span class="p">);</span>
 <span class="w">  </span><span class="p">}</span>
 <span class="p">}</span>
-<span class="k">export</span><span class="w"> </span><span class="k">default</span><span class="w"> </span><span class="nx">MyClassComponent</span><span class="p">;</span>
 </code></pre></div>
 
-<p><strong>Correct: Hook in a Functional Component</strong></p>
-<div class="highlight"><pre><span></span><code><span class="k">import</span><span class="w"> </span><span class="nx">React</span><span class="p">,</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">useState</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s1">&#39;react&#39;</span><span class="p">;</span><span class="w"> </span><span class="c1">// Importing a hook</span>
-
-<span class="kd">function</span><span class="w"> </span><span class="nx">MyFunctionalComponent</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
-<span class="w">  </span><span class="c1">// ✅ Correct: Hook called at the top level of a function component.</span>
-<span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="p">[</span><span class="nx">value</span><span class="p">,</span><span class="w"> </span><span class="nx">setValue</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">useState</span><span class="p">(</span><span class="mf">0</span><span class="p">);</span>
-
-<span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="p">(</span>
-<span class="w">    </span><span class="p">&lt;</span><span class="nt">button</span><span class="w"> </span><span class="na">onClick</span><span class="o">=</span><span class="p">{()</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nx">setValue</span><span class="p">(</span><span class="nx">value</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mf">1</span><span class="p">)}&gt;</span>
-<span class="w">      </span><span class="nx">Count</span><span class="o">:</span><span class="w"> </span><span class="p">{</span><span class="nx">value</span><span class="p">}</span>
-<span class="w">    </span><span class="p">&lt;/</span><span class="nt">button</span><span class="p">&gt;</span>
-<span class="w">  </span><span class="p">);</span>
-<span class="p">}</span>
-<span class="k">export</span><span class="w"> </span><span class="k">default</span><span class="w"> </span><span class="nx">MyFunctionalComponent</span><span class="p">;</span>
-</code></pre></div>
-
-<p><strong>Incorrect: Hook in a Regular JavaScript Function</strong></p>
-<div class="highlight"><pre><span></span><code><span class="k">import</span><span class="w"> </span><span class="nx">React</span><span class="p">,</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">useState</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s1">&#39;react&#39;</span><span class="p">;</span>
-
-<span class="c1">// ❌ ERROR: This is a plain JavaScript function, not a React component or custom hook.</span>
-<span class="kd">function</span><span class="w"> </span><span class="nx">calculateInitialValue</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
-<span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="p">[</span><span class="nx">initialValue</span><span class="p">,</span><span class="w"> </span><span class="nx">setInitialValue</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">useState</span><span class="p">(</span><span class="mf">100</span><span class="p">);</span><span class="w"> </span><span class="c1">// Invalid hook call</span>
-<span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="nx">initialValue</span><span class="p">;</span>
-<span class="p">}</span>
-
-<span class="kd">function</span><span class="w"> </span><span class="nx">DisplayValueComponent</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
-<span class="w">  </span><span class="c1">// Calling calculateInitialValue will lead to an invalid hook call during render</span>
-<span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="nx">display</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">calculateInitialValue</span><span class="p">();</span><span class="w"> </span>
-<span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="p">&lt;</span><span class="nt">p</span><span class="p">&gt;</span><span class="nx">Value</span><span class="o">:</span><span class="w"> </span><span class="p">{</span><span class="nx">display</span><span class="p">}&lt;/</span><span class="nt">p</span><span class="p">&gt;;</span>
-<span class="p">}</span>
-<span class="k">export</span><span class="w"> </span><span class="k">default</span><span class="w"> </span><span class="nx">DisplayValueComponent</span><span class="p">;</span>
-</code></pre></div>
-
-<p><strong>Correct: Hook in a Custom Hook (or directly in a Function Component)</strong></p>
+<p><strong>Scenario 2: FIX - Refactor to Functional Component (GOOD)</strong></p>
 <div class="highlight"><pre><span></span><code><span class="k">import</span><span class="w"> </span><span class="nx">React</span><span class="p">,</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">useState</span><span class="p">,</span><span class="w"> </span><span class="nx">useEffect</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s1">&#39;react&#39;</span><span class="p">;</span>
 
-<span class="c1">// ✅ Correct: This is a custom hook (its name starts with &#39;use&#39;)</span>
-<span class="kd">function</span><span class="w"> </span><span class="nx">useValueCalculator</span><span class="p">(</span><span class="nx">initial</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">0</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
-<span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="p">[</span><span class="nx">value</span><span class="p">,</span><span class="w"> </span><span class="nx">setValue</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">useState</span><span class="p">(</span><span class="nx">initial</span><span class="p">);</span><span class="w"> </span><span class="c1">// Valid call inside a custom hook</span>
+<span class="kd">function</span><span class="w"> </span><span class="nx">MyFunctionalComponent</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="c1">// Valid hook calls inside a functional component</span>
+<span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="p">[</span><span class="nx">count</span><span class="p">,</span><span class="w"> </span><span class="nx">setCount</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">useState</span><span class="p">(</span><span class="mf">0</span><span class="p">);</span>
+<span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="p">[</span><span class="nx">status</span><span class="p">,</span><span class="w"> </span><span class="nx">setStatus</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">useState</span><span class="p">(</span><span class="s1">&#39;active&#39;</span><span class="p">);</span>
 
 <span class="w">  </span><span class="nx">useEffect</span><span class="p">(()</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="nx">console</span><span class="p">.</span><span class="nx">log</span><span class="p">(</span><span class="s1">&#39;Value updated:&#39;</span><span class="p">,</span><span class="w"> </span><span class="nx">value</span><span class="p">);</span>
-<span class="w">  </span><span class="p">},</span><span class="w"> </span><span class="p">[</span><span class="nx">value</span><span class="p">]);</span>
-
-<span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">value</span><span class="p">,</span><span class="w"> </span><span class="nx">setValue</span><span class="w"> </span><span class="p">};</span>
-<span class="p">}</span>
-
-<span class="kd">function</span><span class="w"> </span><span class="nx">DisplayValueComponent</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
-<span class="w">  </span><span class="c1">// ✅ Correct: Custom hook called at the top level of a function component.</span>
-<span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">value</span><span class="p">,</span><span class="w"> </span><span class="nx">setValue</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">useValueCalculator</span><span class="p">(</span><span class="mf">50</span><span class="p">);</span>
+<span class="w">    </span><span class="nx">console</span><span class="p">.</span><span class="nx">log</span><span class="p">(</span><span class="s1">&#39;Functional component mounted or updated&#39;</span><span class="p">);</span>
+<span class="w">    </span><span class="c1">// For cleanup, return a function</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="p">()</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nx">console</span><span class="p">.</span><span class="nx">log</span><span class="p">(</span><span class="s1">&#39;Functional component unmounted&#39;</span><span class="p">);</span>
+<span class="w">  </span><span class="p">},</span><span class="w"> </span><span class="p">[</span><span class="nx">count</span><span class="p">]);</span><span class="w"> </span><span class="c1">// Dependency array: runs when count changes</span>
 
 <span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="p">(</span>
-<span class="w">    </span><span class="p">&lt;</span><span class="nt">div</span><span class="p">&gt;</span>
-<span class="w">      </span><span class="p">&lt;</span><span class="nt">p</span><span class="p">&gt;</span><span class="nx">Current</span><span class="w"> </span><span class="nx">Value</span><span class="o">:</span><span class="w"> </span><span class="p">{</span><span class="nx">value</span><span class="p">}&lt;/</span><span class="nt">p</span><span class="p">&gt;</span>
-<span class="w">      </span><span class="p">&lt;</span><span class="nt">button</span><span class="w"> </span><span class="na">onClick</span><span class="o">=</span><span class="p">{()</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nx">setValue</span><span class="p">(</span><span class="nx">prev</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nx">prev</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mf">1</span><span class="p">)}&gt;</span><span class="nx">Increment</span><span class="p">&lt;/</span><span class="nt">button</span><span class="p">&gt;</span>
-<span class="w">    </span><span class="p">&lt;/</span><span class="nt">div</span><span class="p">&gt;</span>
+<span class="w">    </span><span class="o">&lt;</span><span class="nx">div</span><span class="o">&gt;</span>
+<span class="w">      </span><span class="o">&lt;</span><span class="nx">h1</span><span class="o">&gt;</span><span class="nx">This</span><span class="w"> </span><span class="nx">is</span><span class="w"> </span><span class="nx">a</span><span class="w"> </span><span class="nx">Functional</span><span class="w"> </span><span class="nx">Component</span><span class="o">&lt;</span><span class="err">/h1&gt;</span>
+<span class="w">      </span><span class="o">&lt;</span><span class="nx">p</span><span class="o">&gt;</span><span class="nx">Count</span><span class="o">:</span><span class="w"> </span><span class="p">{</span><span class="nx">count</span><span class="p">}</span><span class="o">&lt;</span><span class="err">/p&gt;</span>
+<span class="w">      </span><span class="o">&lt;</span><span class="nx">p</span><span class="o">&gt;</span><span class="nx">Status</span><span class="o">:</span><span class="w"> </span><span class="p">{</span><span class="nx">status</span><span class="p">}</span><span class="o">&lt;</span><span class="err">/p&gt;</span>
+<span class="w">      </span><span class="o">&lt;</span><span class="nx">button</span><span class="w"> </span><span class="nx">onClick</span><span class="o">=</span><span class="p">{()</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nx">setCount</span><span class="p">(</span><span class="nx">count</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mf">1</span><span class="p">)}</span><span class="o">&gt;</span><span class="nx">Increment</span><span class="w"> </span><span class="nx">Count</span><span class="o">&lt;</span><span class="err">/button&gt;</span>
+<span class="w">      </span><span class="o">&lt;</span><span class="nx">button</span><span class="w"> </span><span class="nx">onClick</span><span class="o">=</span><span class="p">{()</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nx">setStatus</span><span class="p">(</span><span class="s1">&#39;inactive&#39;</span><span class="p">)}</span><span class="o">&gt;</span><span class="nb">Set</span><span class="w"> </span><span class="nx">Inactive</span><span class="o">&lt;</span><span class="err">/button&gt;</span>
+<span class="w">    </span><span class="o">&lt;</span><span class="err">/div&gt;</span>
 <span class="w">  </span><span class="p">);</span>
 <span class="p">}</span>
-<span class="k">export</span><span class="w"> </span><span class="k">default</span><span class="w"> </span><span class="nx">DisplayValueComponent</span><span class="p">;</span>
 </code></pre></div>
 
 <h2 id="environment-specific-notes">Environment-Specific Notes</h2>
-<p>While the "Invalid hook call" error primarily manifests as a runtime issue during local development, its root causes can sometimes be influenced by deployment environments.</p>
+<p>The "Invalid hook call" error can behave slightly differently or have specific root causes depending on your development and deployment environment.</p>
+<h3 id="local-development">Local Development</h3>
 <ul>
-<li><strong>Local Development:</strong> This is where you'll most frequently encounter and debug this error. Rapid iteration, refactoring components between class and functional, and occasional <code>node_modules</code> corruption are common culprits. The step-by-step fix (especially dependency reinstallation and cache clearing) is highly effective here. Linting tools like <code>eslint-plugin-react-hooks</code> are invaluable in catching these issues proactively during local development, often before they even become runtime errors.</li>
-<li><strong>Docker Containers:</strong> When deploying React applications with Docker, consistency is paramount. Ensure your <code>package-lock.json</code> or <code>yarn.lock</code> is committed and used within your Dockerfile (e.g., <code>COPY package*.json ./</code>, then <code>RUN npm ci</code>). This guarantees that your build environment resolves dependencies consistently, preventing scenarios where differing dependency versions could lead to duplicate React instances and runtime errors. If issues persist, a <code>docker build --no-cache</code> might help isolate problems stemming from Docker's own build cache.</li>
-<li><strong>Cloud Deployments (e.g., Vercel, Netlify, AWS Amplify):</strong> This error is less likely to appear <em>for the first time</em> in a cloud environment unless the core issue (e.g., a class component attempting to use hooks) already exists and was overlooked in your codebase. Cloud build pipelines typically operate in clean environments, which minimizes <code>node_modules</code> corruption issues. However, if your <code>package.json</code> has an incorrect <code>overrides</code> or <code>resolutions</code> configuration for <code>react</code>, it could cause the cloud build process to fail or deploy a broken application. Always scrutinize your build logs for any dependency warnings or errors.</li>
+<li><strong>Hot Module Replacement (HMR) / Fast Refresh:</strong> In local development environments, tools like Webpack's HMR or React's Fast Refresh can sometimes get into an inconsistent state. They try to swap modules without a full page reload, but if the module graph becomes corrupted or a critical module (like <code>react</code> itself) is improperly updated, you might encounter this error. <strong>The immediate fix is often a simple restart of your development server (<code>npm start</code> or <code>yarn start</code>).</strong> I've spent hours debugging a ghost "invalid hook call" only for a server restart to make it disappear.</li>
+<li><strong>Duplicate <code>node_modules</code>:</strong> This is more prevalent in local development where developers might <code>npm install</code> within subdirectories or link packages locally, inadvertently creating multiple <code>node_modules</code> trees, each with its own <code>react</code> dependency. Use <code>npm list react</code> to diagnose this.</li>
+<li><strong><code>npm link</code> / <code>yarn link</code> issues:</strong> If you're developing a library locally and linking it into a consuming application, ensure that the <code>react</code> dependency is correctly <code>peerDependencied</code> and handled, so the library uses the host application's React instance rather than its own linked version.</li>
+</ul>
+<h3 id="docker-containerized-environments">Docker / Containerized Environments</h3>
+<ul>
+<li><strong>Build-time vs. Runtime Dependencies:</strong> In Docker, it's crucial that your <code>node_modules</code> are correctly installed <em>inside</em> the container during the image build process. If you're accidentally mounting a host <code>node_modules</code> directory into the container, or if <code>npm install</code> failed silently during the build, you might end up with missing or inconsistent <code>react</code> versions.</li>
+<li><strong>Layer Caching:</strong> Docker's build cache can sometimes be too aggressive. If you've changed <code>package.json</code> but Docker uses a cached layer for <code>npm install</code>, you might be running with outdated dependencies. A <code>docker build --no-cache</code> can help diagnose this.</li>
+<li><strong>Volume Mounts:</strong> If you're mounting your source code into a running container, ensure that the <code>node_modules</code> directory is handled correctly. Often, it's better to let <code>node_modules</code> live <em>inside</em> the container, separate from your host's development environment.</li>
+</ul>
+<h3 id="cloud-deployments-eg-vercel-netlify-aws-amplify">Cloud Deployments (e.g., Vercel, Netlify, AWS Amplify)</h3>
+<ul>
+<li><strong>Build Environment Consistency:</strong> Cloud platforms typically provide clean build environments. This often <em>reduces</em> the chances of duplicate <code>node_modules</code> issues unless your <code>package.json</code> explicitly allows multiple versions or a dependency is misconfigured.</li>
+<li><strong>Dependency Resolution:</strong> The cloud build process will execute <code>npm install</code> or <code>yarn install</code> from scratch. If your <code>package.json</code> or <code>package-lock.json</code>/<code>yarn.lock</code> has issues, or if a dependency itself has a problem, it will manifest here. Pay close attention to the build logs for any warnings or errors during dependency installation.</li>
+<li><strong>Bundler Configuration:</strong> Ensure that your <code>webpack.config.js</code> or <code>rollup.config.js</code> (if you're not using a framework like Create React App) is correctly configured for production builds, especially concerning tree-shaking and alias resolution for <code>react</code> and <code>react-dom</code>. I've seen misconfigured aliasing lead to this error when the bundler incorrectly resolved <code>react</code> to two different paths.</li>
 </ul>
 <h2 id="frequently-asked-questions">Frequently Asked Questions</h2>
-<ul>
-<li><strong>Q: Can I use <code>useState</code> inside a <code>useEffect</code> callback?</strong><br />
-<strong>A:</strong> No, you cannot call <code>useState</code> (or any other hook) directly within the callback function passed to <code>useEffect</code>. The <code>useEffect</code> callback is treated as a plain JavaScript function. Instead, you should declare your state using <code>useState</code> at the top level of your component, and then use its setter function (e.g., <code>setMyState</code>) inside the <code>useEffect</code> callback if you need to update state based on an effect.</li>
-<li><strong>Q: How do I conditionally use a hook? For example, only if a prop is true?</strong><br />
-<strong>A:</strong> You cannot conditionally <em>call</em> a hook in an <code>if</code> statement, <code>for</code> loop, or any other conditional block. Hooks must always be called in the exact same order on every render of a component. If you need conditional behavior, place the <code>if</code> statement <em>inside</em> the hook's body or encapsulate the hook and its conditional logic within a custom hook that <em>always</em> runs but handles the conditional execution internally.</li>
-<li><strong>Q: I've checked everything, and I'm still getting the error. What's next?</strong><br />
-<strong>A:</strong> After verifying component types and hook rule adherence, the most common underlying cause for persistent "Invalid hook call" errors is a duplicate React installation within your project's <code>node_modules</code>. Run <code>npm ls react</code> or <code>yarn why react</code> to diagnose this. If multiple <code>react</code> packages are found, explicitly force a single, consistent version across your project using <code>overrides</code> (npm) or <code>resolutions</code> (Yarn) in your <code>package.json</code>. A complete <code>node_modules</code> cleanup and reinstall, followed by restarting your development server, is also crucial.</li>
-<li><strong>Q: Is there a way to prevent this error during development?</strong><br />
-<strong>A:</strong> Absolutely. I highly recommend integrating <code>eslint-plugin-react-hooks</code> into your project's ESLint configuration. This plugin provides specific rules like <code>react-hooks/rules-of-hooks</code> and <code>react-hooks/exhaustive-deps</code> that proactively catch invalid hook calls and dependency array issues during development, providing immediate feedback in your editor or during your build process.</li>
-</ul>
+<p><strong>Q: Can I use hooks in a JavaScript class or a class component?</strong><br />
+<strong>A:</strong> No, React Hooks are strictly designed for functional components. If you're working with a class component, you should use <code>this.state</code> for state and lifecycle methods (like <code>componentDidMount</code>, <code>componentDidUpdate</code>, <code>componentWillUnmount</code>) for side effects. To use hooks, you'd need to refactor your class component into a functional component.</p>
+<p><strong>Q: What if I need to share logic that uses hooks between multiple functional components?</strong><br />
+<strong>A:</strong> This is exactly what <strong>Custom Hooks</strong> are for. A custom hook is a JavaScript function whose name starts with <code>use</code> (e.g., <code>useMyData</code>, <code>useAuthStatus</code>). Inside a custom hook, you can call other hooks (<code>useState</code>, <code>useEffect</code>, etc.). You then call your custom hook from within your functional components, just like any other hook. This allows you to encapsulate and reuse stateful logic.</p>
+<p><strong>Q: Why doesn't React just ignore the invalid hook call or provide a default?</strong><br />
+<strong>A:</strong> React cannot simply ignore an invalid hook call because its internal mechanism for managing hooks relies heavily on a consistent, predictable order of execution tied to a component's lifecycle. Without the proper component context, React cannot reliably associate state with a specific component instance, which would lead to unpredictable behavior, memory leaks, and render inconsistencies, making the application unstable. The error forces you to correct the structural issue.</p>
+<p><strong>Q: Is this error related to <code>react-dom</code>?</strong><br />
+<strong>A:</strong> Yes, it often is. <code>react</code> contains the core Hook logic, while <code>react-dom</code> (or <code>react-native</code>) provides the rendering environment. They work in tandem. If there's a version mismatch or multiple installations of either <code>react</code> or <code>react-dom</code>, their internal state management can become desynchronized, leading to the "Invalid hook call" error because the rendering environment can't correctly interact with the core React library's hook implementation.</p>
+<p><strong>Q: Does calling a hook conditionally cause this error?</strong><br />
+<strong>A:</strong> Not directly this specific error, but it violates the Rules of Hooks and will often result in a related error like "React Hook <code>useState</code> is called conditionally." The underlying reason is similar: React relies on the consistent order of hook calls across renders, and conditional calls break this predictability.</p>
 <h2 id="related-errors">Related Errors</h2>
 <p><em>(none)</em></p>
     </div>
@@ -360,7 +444,7 @@ npm start # Or your project's equivalent command<br />
     <div class="container">
       <p class="footer-logo">⚡ ErrorFix.dev</p>
       <p>Practical, engineer-written guides for real-world software errors.</p>
-      <p style="margin-top:.5rem">Last updated: <time>May 22, 2026</time>.</p>
+      <p style="margin-top:.5rem">Last updated: <time>May 23, 2026</time>.</p>
       <p class="footer-links" style="margin-top:.75rem">
         <!-- ╔══════════════════════════════════════════════════════════════╗ -->
         <!-- ║  AFFILIATE LINKS – replace the href values below            ║ -->
