@@ -124,202 +124,233 @@
     <div class="article-content">
       <h1 id="http-401-unauthorized">HTTP 401 Unauthorized</h1>
 <blockquote>
-<p>Encountering an HTTP 401 Unauthorized error means your request lacks valid authentication credentials; this guide explains how to fix it.</p>
+<p>Encountering HTTP 401 Unauthorized means your request lacks valid authentication credentials; this guide explains how to fix it.</p>
 </blockquote>
 <h2 id="what-this-error-means">What This Error Means</h2>
-<p>When you send a request to an API or web service and receive an <code>HTTP 401 Unauthorized</code> status code, it signifies that the server received your request but could not authenticate you. Think of it as the server saying, "Who are you? Prove your identity." It's an authentication challenge. The server requires valid credentials, such as an API key, a token, or a username and password, but these were either missing from your request, malformed, or invalid according to the server's authentication mechanisms.</p>
-<p>It's crucial to distinguish <code>401 Unauthorized</code> from <code>HTTP 403 Forbidden</code>. While both indicate a denial of access, their reasons differ. A <code>401</code> means "you are not authenticated," whereas a <code>403</code> means "I know who you are, but you don't have permission to access this resource (even if you are authenticated)." In my experience, misunderstanding this distinction can lead to wasted debugging time.</p>
+<p>The HTTP 401 Unauthorized status code is a client error that indicates the request has not been applied because it lacks valid authentication credentials for the target resource. Essentially, the server understands your request but refuses to fulfill it until you successfully authenticate yourself. It's a signal from the server saying, "Show me your ID."</p>
+<p>It's important to differentiate 401 from other status codes. A 401 typically means "authentication required" or "authentication failed," while a 403 Forbidden means "I know who you are, but you don't have permission to access this resource." With a 401, the server is suggesting that if you provide the right credentials, you might get access. The server often includes a <code>WWW-Authenticate</code> header in the response, indicating which authentication scheme(s) it supports (e.g., <code>Bearer</code>, <code>Basic</code>).</p>
 <h2 id="why-it-happens">Why It Happens</h2>
-<p>The core reason for an HTTP 401 error is a failure in the authentication process. The server-side application is configured to expect specific credentials to verify the identity of the client making the request. When these expectations are not met, the server responds with a 401.</p>
-<p>This isn't necessarily a client-side bug; it could be a misconfiguration on the server or an expired credential that was once valid. The server isn't rejecting the request due to an invalid request format (that would be a 400 Bad Request) or server-side error (5xx errors); it's specifically rejecting it because it cannot confirm the identity of the requester.</p>
-<p>I've seen this in production when a service's authentication token refresh mechanism failed, leading to clients attempting to use stale tokens. It's a fundamental security measure, ensuring that only trusted entities can interact with protected resources.</p>
+<p>This error occurs when an API endpoint or a web resource is protected, and the client application attempts to access it without providing the necessary authentication credentials, or provides credentials that the server deems invalid. The authentication mechanism could be anything from a simple API key, a username and password (Basic Auth), to a more complex system involving Bearer tokens (like JWTs or OAuth access tokens).</p>
+<p>The core reason is a mismatch between what the server expects for authentication and what the client provides. This could be due to entirely missing credentials, incorrectly formatted credentials, or credentials that are valid but expired or revoked. In my experience, it's almost always a problem on the client side regarding how authentication is handled, but server-side misconfigurations can also play a role.</p>
 <h2 id="common-causes">Common Causes</h2>
-<p>Identifying the exact cause of a 401 can sometimes be tricky due to the various authentication schemes and configurations available. However, some causes are far more prevalent than others:</p>
-<ul>
-<li><strong>Missing <code>Authorization</code> Header:</strong> The most straightforward cause. Your request simply doesn't include the necessary <code>Authorization</code> header, or any other header where an API key might be expected. The server has no credentials to evaluate.</li>
-<li><strong>Incorrect <code>Authorization</code> Header Format:</strong> Even if the header is present, its format might be wrong. For instance, using <code>Token &lt;your_token&gt;</code> instead of <code>Bearer &lt;your_token&gt;</code> for JWTs, or failing to Base64-encode credentials for Basic Authentication.</li>
-<li><strong>Expired Authentication Tokens:</strong> Many authentication systems, especially those using JWTs or OAuth, issue tokens with a limited lifespan. If your application attempts to use an expired token, the server will correctly reject it with a 401. This is a very common issue I've encountered in long-running applications or background jobs.</li>
-<li><strong>Invalid API Keys or Tokens:</strong> The provided API key or token might be malformed, revoked, or simply incorrect. This often happens during development when copying keys or when switching between development and production environments.</li>
-<li><strong>Wrong Authentication Scheme:</strong> The API might expect Basic Authentication, but you're sending a Bearer token, or vice-versa. Always check the API documentation for the expected scheme.</li>
-<li><strong>Case Sensitivity Issues:</strong> While HTTP headers are generally case-insensitive, the <em>values</em> within them (like token prefixes or API keys themselves) are almost always case-sensitive. A slight mismatch can lead to a 401.</li>
-<li><strong>CORS Preflight (OPTIONS request):</strong> Less common for direct 401, but sometimes if an API expects authentication for even an <code>OPTIONS</code> preflight request (which is unusual but can happen with very strict configurations), the subsequent actual request might never even be sent, or the initial handshake might fail. Typically, 401 would be on the actual GET/POST request.</li>
-</ul>
+<p>Based on my time developing and troubleshooting APIs, these are the most frequent reasons for hitting a 401 error:</p>
+<ol>
+<li><strong>Missing <code>Authorization</code> Header:</strong> The most straightforward cause. The client application simply didn't include the required <code>Authorization</code> header in the HTTP request.</li>
+<li><strong>Invalid or Expired Token/API Key:</strong> The provided token or API key is either malformed, has expired, or has been revoked on the server. For JWTs, this often relates to an expired <code>exp</code> claim.</li>
+<li><strong>Incorrect Authentication Scheme:</strong> The server expects <code>Bearer</code> token but receives <code>Basic</code> authentication, or vice-versa.</li>
+<li><strong>Incorrect Token Format:</strong> Even if the scheme is correct (e.g., <code>Bearer</code>), the token itself might be syntactically incorrect (e.g., missing prefix, wrong encoding).</li>
+<li><strong>Wrong Credentials for Environment:</strong> Using a development API key or token in a production environment, or credentials for a different user/application.</li>
+<li><strong>Clock Skew:</strong> For JWTs, if the server's clock is significantly out of sync with the client's clock (or the clock of the service that issued the token), it might prematurely invalidate a token.</li>
+<li><strong>Proxy or Load Balancer Stripping Headers:</strong> Sometimes, intermediary network devices (reverse proxies, load balancers, CDNs) are misconfigured and strip the <code>Authorization</code> header before it reaches the API server. I've seen this in production when new infrastructure was rolled out without proper header forwarding rules.</li>
+<li><strong>CORS Preflight Failure (Indirectly):</strong> While a CORS preflight (<code>OPTIONS</code> request) won't return a 401, if it fails, the actual authenticated request might never be sent, leading to client-side errors that can obscure the underlying authentication problem.</li>
+</ol>
 <h2 id="step-by-step-fix">Step-by-Step Fix</h2>
-<p>Troubleshooting a 401 error requires a systematic approach. I usually start by inspecting the outgoing request thoroughly.</p>
+<p>When you encounter an HTTP 401, remain calm. Here's my systematic approach to debugging and resolving it:</p>
 <ol>
 <li>
-<p><strong>Verify Request Headers:</strong></p>
+<p><strong>Verify the <code>Authorization</code> Header:</strong></p>
 <ul>
-<li><strong>Are you sending an <code>Authorization</code> header?</strong> Use <code>curl -v</code> or your browser's developer tools (Network tab) to inspect the outgoing request headers.</li>
-<li><strong>Is the <code>Authorization</code> header correctly formatted?</strong> For Basic Auth, it should be <code>Basic &lt;base64_encoded_username:password&gt;</code>. For Bearer tokens (like JWTs), it's <code>Bearer &lt;your_token&gt;</code>. Ensure the scheme prefix (e.g., <code>Bearer</code>) is present and followed by a space.</li>
-<li><strong>Example (using <code>curl</code>):</strong><br />
+<li><strong>Action:</strong> Use your browser's developer tools (Network tab), <code>curl -v</code>, or your HTTP client's logging to inspect the outgoing request headers.</li>
+<li><strong>Check For:</strong> Is an <code>Authorization</code> header present? If not, that's your first problem. Is the value complete and correctly formatted (e.g., <code>Bearer &lt;token&gt;</code>, <code>Basic &lt;base64_encoded_credentials&gt;</code>)?</li>
+<li><strong>Example (using <code>curl -v</code>):</strong><br />
 <code>bash
-    curl -v -H "Authorization: Bearer YOUR_INVALID_OR_MISSING_TOKEN" https://api.example.com/protected-resource</code><br />
-    Look for <code>&gt; Authorization: Bearer ...</code> in the verbose output.</li>
+    curl -v -X GET https://api.example.com/data -H "Authorization: Bearer my_token_value"</code><br />
+    Look for the <code>&gt; Authorization: Bearer my_token_value</code> line in the output.</li>
 </ul>
 </li>
 <li>
-<p><strong>Check Your Credentials:</strong></p>
+<p><strong>Inspect Credential Validity:</strong></p>
 <ul>
-<li><strong>API Key:</strong> Is the API key you're using active and correct? Double-check for typos. Generate a new one if you're unsure or suspect it's been revoked.</li>
-<li><strong>Token:</strong> If using a token (JWT, OAuth Access Token), ensure it's not expired. You can often decode JWTs using online tools (like <code>jwt.io</code>) to inspect their expiration (<code>exp</code>) claim. If expired, your application needs to refresh it.</li>
-<li><strong>Username/Password:</strong> For Basic Auth, confirm the username and password are correct.</li>
-<li><strong>Test with known-good credentials:</strong> If possible, try making the same request with credentials that are known to work, perhaps from another application or a postman setup.</li>
+<li><strong>Action:</strong> If you're using API keys, double-check the key itself for typos or incorrect copying. If using tokens (especially JWTs), use an online decoder (like <code>jwt.io</code>) to inspect its claims, particularly the <code>exp</code> (expiration) claim.</li>
+<li><strong>Check For:</strong> Is the token expired? Is the issuer (<code>iss</code>) or audience (<code>aud</code>) correct for your API?</li>
+<li><strong>Tip:</strong> I often paste the token into a decoder to quickly verify its internal structure and validity period.</li>
 </ul>
 </li>
 <li>
-<p><strong>Consult API Documentation:</strong></p>
+<p><strong>Confirm Authentication Scheme:</strong></p>
 <ul>
-<li>This is often the fastest path to a solution. The API documentation will explicitly state the required authentication method (e.g., "OAuth 2.0 Bearer Token," "API Key in <code>X-API-KEY</code> header," "Basic Authentication"). It will also specify the exact header name and format. I always start here when dealing with third-party APIs.</li>
+<li><strong>Action:</strong> Look at the server's response headers. If a <code>WWW-Authenticate</code> header is present, it will tell you what scheme the server expects (e.g., <code>WWW-Authenticate: Bearer realm="API"</code>).</li>
+<li><strong>Check For:</strong> Does the scheme you're sending match the scheme the server expects?</li>
 </ul>
 </li>
 <li>
-<p><strong>Inspect Server Logs (If You Control the Server):</strong></p>
+<p><strong>Re-generate or Refresh Credentials:</strong></p>
 <ul>
-<li>If you manage the API, check the server-side logs. Authentication failures often leave detailed messages indicating <em>why</em> the credentials were rejected (e.g., "token expired," "invalid signature," "API key not found"). This provides invaluable debugging information.</li>
+<li><strong>Action:</strong> If your token is expired or suspected to be invalid, try to obtain a new one. For API keys, check your service's dashboard to generate a fresh key.</li>
+<li><strong>Consider:</strong> Does your application have a token refresh mechanism? Is it working correctly?</li>
 </ul>
 </li>
 <li>
-<p><strong>Environment Variable/Configuration Check:</strong></p>
+<p><strong>Check Server-Side Logs:</strong></p>
 <ul>
-<li>Ensure your application is loading the credentials correctly from environment variables, configuration files, or a secrets manager. A common mistake is using a development key in a production environment, or vice-versa.</li>
+<li><strong>Action:</strong> This is crucial. Access the logs of your API server or the authentication service. Most authentication systems log why a credential was rejected (e.g., "invalid signature," "token expired," "client ID mismatch").</li>
+<li><strong>Look For:</strong> Specific error messages related to authentication failure. This often gives the most direct hint. I've found this step to be the quickest way to pinpoint subtle issues like a wrong signing key or a subtle claim mismatch.</li>
 </ul>
 </li>
 <li>
-<p><strong>Review Network Proxies/Middlewares:</strong></p>
+<p><strong>Environment Mismatch:</strong></p>
 <ul>
-<li>While rare, a misconfigured proxy, firewall, or API Gateway could potentially strip or modify <code>Authorization</code> headers before they reach the backend service. If all else fails and you suspect network interference, test directly against the backend if possible.</li>
+<li><strong>Action:</strong> Ensure you're using the correct API keys/tokens for your current environment (development, staging, production). It's a common mistake to use a dev key against a prod endpoint.</li>
+<li><strong>Check For:</strong> Are environment variables or configuration files correctly loaded with the right credentials for the target API?</li>
 </ul>
 </li>
 </ol>
 <h2 id="code-examples">Code Examples</h2>
-<p>Here are common ways to send authenticated requests using popular tools and languages.</p>
-<h3 id="curl-command-line">cURL (Command Line)</h3>
-<p><strong>Basic Authentication:</strong><br />
-Requires Base64 encoding <code>username:password</code>.</p>
-<div class="highlight"><pre><span></span><code><span class="c1"># Example: Using &#39;user:password&#39; which base64-encodes to &#39;dXNlcjpwYXNzd29yZA==&#39;</span>
-curl<span class="w"> </span>-H<span class="w"> </span><span class="s2">&quot;Authorization: Basic dXNlcjpwYXNzd29yZA==&quot;</span><span class="w"> </span>https://api.example.com/protected-resource
-</code></pre></div>
+<p>Here are some concise, copy-paste ready examples for making authenticated requests:</p>
+<h3 id="curl-shell">cURL (Shell)</h3>
+<div class="highlight"><pre><span></span><code><span class="c1"># Example with cURL for a Bearer token</span>
+<span class="c1"># Replace YOUR_VALID_ACCESS_TOKEN with your actual token</span>
+curl<span class="w"> </span>-X<span class="w"> </span>GET<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span><span class="s1">&#39;https://api.example.com/data&#39;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-H<span class="w"> </span><span class="s1">&#39;Authorization: Bearer YOUR_VALID_ACCESS_TOKEN&#39;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-H<span class="w"> </span><span class="s1">&#39;Content-Type: application/json&#39;</span>
 
-<p><strong>Bearer Token Authentication (e.g., JWT, OAuth):</strong></p>
-<div class="highlight"><pre><span></span><code><span class="c1"># Replace YOUR_ACCESS_TOKEN with your actual token</span>
-curl<span class="w"> </span>-H<span class="w"> </span><span class="s2">&quot;Authorization: Bearer YOUR_ACCESS_TOKEN&quot;</span><span class="w"> </span>https://api.example.com/protected-resource
-</code></pre></div>
-
-<p><strong>API Key in Custom Header:</strong><br />
-Some APIs use a custom header name for API keys, like <code>X-API-KEY</code>.</p>
-<div class="highlight"><pre><span></span><code><span class="c1"># Replace YOUR_API_KEY with your actual API key</span>
-curl<span class="w"> </span>-H<span class="w"> </span><span class="s2">&quot;X-API-KEY: YOUR_API_KEY&quot;</span><span class="w"> </span>https://api.example.com/protected-resource
+<span class="c1"># Example with cURL for Basic Auth</span>
+<span class="c1"># Replace username and password with your actual credentials</span>
+<span class="c1"># $(echo -n &quot;username:password&quot; | base64) encodes the credentials</span>
+curl<span class="w"> </span>-X<span class="w"> </span>GET<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span><span class="s1">&#39;https://api.example.com/secure-resource&#39;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-H<span class="w"> </span><span class="s1">&#39;Authorization: Basic $(echo -n &quot;username:password&quot; | base64)&#39;</span>
 </code></pre></div>
 
 <h3 id="python-using-requests-library">Python (using <code>requests</code> library)</h3>
-<p><strong>Basic Authentication:</strong></p>
 <div class="highlight"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">requests</span>
 
-<span class="n">username</span> <span class="o">=</span> <span class="s2">&quot;user&quot;</span>
-<span class="n">password</span> <span class="o">=</span> <span class="s2">&quot;password&quot;</span>
-<span class="n">api_url</span> <span class="o">=</span> <span class="s2">&quot;https://api.example.com/protected-resource&quot;</span>
-
-<span class="n">response</span> <span class="o">=</span> <span class="n">requests</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">api_url</span><span class="p">,</span> <span class="n">auth</span><span class="o">=</span><span class="p">(</span><span class="n">username</span><span class="p">,</span> <span class="n">password</span><span class="p">))</span>
-
-<span class="k">if</span> <span class="n">response</span><span class="o">.</span><span class="n">status_code</span> <span class="o">==</span> <span class="mi">200</span><span class="p">:</span>
-    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Success:&quot;</span><span class="p">,</span> <span class="n">response</span><span class="o">.</span><span class="n">json</span><span class="p">())</span>
-<span class="k">else</span><span class="p">:</span>
-    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Error:&quot;</span><span class="p">,</span> <span class="n">response</span><span class="o">.</span><span class="n">status_code</span><span class="p">,</span> <span class="n">response</span><span class="o">.</span><span class="n">text</span><span class="p">)</span>
-</code></pre></div>
-
-<p><strong>Bearer Token Authentication:</strong></p>
-<div class="highlight"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">requests</span>
-
-<span class="n">access_token</span> <span class="o">=</span> <span class="s2">&quot;YOUR_ACCESS_TOKEN&quot;</span> <span class="c1"># Replace with your actual token</span>
-<span class="n">api_url</span> <span class="o">=</span> <span class="s2">&quot;https://api.example.com/protected-resource&quot;</span>
-
+<span class="c1"># --- Bearer Token Authentication ---</span>
+<span class="n">token</span> <span class="o">=</span> <span class="s2">&quot;YOUR_VALID_ACCESS_TOKEN&quot;</span> <span class="c1"># Replace with your actual token</span>
 <span class="n">headers</span> <span class="o">=</span> <span class="p">{</span>
-    <span class="s2">&quot;Authorization&quot;</span><span class="p">:</span> <span class="sa">f</span><span class="s2">&quot;Bearer </span><span class="si">{</span><span class="n">access_token</span><span class="si">}</span><span class="s2">&quot;</span>
+    <span class="s2">&quot;Authorization&quot;</span><span class="p">:</span> <span class="sa">f</span><span class="s2">&quot;Bearer </span><span class="si">{</span><span class="n">token</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;Content-Type&quot;</span><span class="p">:</span> <span class="s2">&quot;application/json&quot;</span>
 <span class="p">}</span>
+<span class="k">try</span><span class="p">:</span>
+    <span class="n">response</span> <span class="o">=</span> <span class="n">requests</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;https://api.example.com/data&quot;</span><span class="p">,</span> <span class="n">headers</span><span class="o">=</span><span class="n">headers</span><span class="p">)</span>
+    <span class="n">response</span><span class="o">.</span><span class="n">raise_for_status</span><span class="p">()</span> <span class="c1"># Raise HTTPError for bad responses (4xx or 5xx)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Status Code (Bearer): </span><span class="si">{</span><span class="n">response</span><span class="o">.</span><span class="n">status_code</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Response Body (Bearer): </span><span class="si">{</span><span class="n">response</span><span class="o">.</span><span class="n">json</span><span class="p">()</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="k">except</span> <span class="n">requests</span><span class="o">.</span><span class="n">exceptions</span><span class="o">.</span><span class="n">HTTPError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Bearer Auth Error: </span><span class="si">{</span><span class="n">e</span><span class="o">.</span><span class="n">response</span><span class="o">.</span><span class="n">status_code</span><span class="si">}</span><span class="s2"> - </span><span class="si">{</span><span class="n">e</span><span class="o">.</span><span class="n">response</span><span class="o">.</span><span class="n">text</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="k">except</span> <span class="n">requests</span><span class="o">.</span><span class="n">exceptions</span><span class="o">.</span><span class="n">RequestException</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Request failed (Bearer): </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
 
-<span class="n">response</span> <span class="o">=</span> <span class="n">requests</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">api_url</span><span class="p">,</span> <span class="n">headers</span><span class="o">=</span><span class="n">headers</span><span class="p">)</span>
-
-<span class="k">if</span> <span class="n">response</span><span class="o">.</span><span class="n">status_code</span> <span class="o">==</span> <span class="mi">200</span><span class="p">:</span>
-    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Success:&quot;</span><span class="p">,</span> <span class="n">response</span><span class="o">.</span><span class="n">json</span><span class="p">())</span>
-<span class="k">else</span><span class="p">:</span>
-    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Error:&quot;</span><span class="p">,</span> <span class="n">response</span><span class="o">.</span><span class="n">status_code</span><span class="p">,</span> <span class="n">response</span><span class="o">.</span><span class="n">text</span><span class="p">)</span>
+<span class="c1"># --- Basic Authentication ---</span>
+<span class="n">username</span> <span class="o">=</span> <span class="s2">&quot;myuser&quot;</span> <span class="c1"># Replace with your username</span>
+<span class="n">password</span> <span class="o">=</span> <span class="s2">&quot;mypassword&quot;</span> <span class="c1"># Replace with your password</span>
+<span class="k">try</span><span class="p">:</span>
+    <span class="n">response</span> <span class="o">=</span> <span class="n">requests</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;https://api.example.com/secure-resource&quot;</span><span class="p">,</span> <span class="n">auth</span><span class="o">=</span><span class="p">(</span><span class="n">username</span><span class="p">,</span> <span class="n">password</span><span class="p">))</span>
+    <span class="n">response</span><span class="o">.</span><span class="n">raise_for_status</span><span class="p">()</span> <span class="c1"># Raise HTTPError for bad responses (4xx or 5xx)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">Status Code (Basic): </span><span class="si">{</span><span class="n">response</span><span class="o">.</span><span class="n">status_code</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Response Body (Basic): </span><span class="si">{</span><span class="n">response</span><span class="o">.</span><span class="n">json</span><span class="p">()</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="k">except</span> <span class="n">requests</span><span class="o">.</span><span class="n">exceptions</span><span class="o">.</span><span class="n">HTTPError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Basic Auth Error: </span><span class="si">{</span><span class="n">e</span><span class="o">.</span><span class="n">response</span><span class="o">.</span><span class="n">status_code</span><span class="si">}</span><span class="s2"> - </span><span class="si">{</span><span class="n">e</span><span class="o">.</span><span class="n">response</span><span class="o">.</span><span class="n">text</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="k">except</span> <span class="n">requests</span><span class="o">.</span><span class="n">exceptions</span><span class="o">.</span><span class="n">RequestException</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Request failed (Basic): </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
 </code></pre></div>
 
 <h3 id="javascript-using-fetch-api">JavaScript (using <code>fetch</code> API)</h3>
-<p><strong>Bearer Token Authentication:</strong></p>
-<div class="highlight"><pre><span></span><code><span class="kd">const</span><span class="w"> </span><span class="nx">accessToken</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;YOUR_ACCESS_TOKEN&quot;</span><span class="p">;</span><span class="w"> </span><span class="c1">// Replace with your actual token</span>
-<span class="kd">const</span><span class="w"> </span><span class="nx">apiUrl</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;https://api.example.com/protected-resource&quot;</span><span class="p">;</span>
+<div class="highlight"><pre><span></span><code><span class="c1">// --- Bearer Token Authentication ---</span>
+<span class="k">async</span><span class="w"> </span><span class="kd">function</span><span class="w"> </span><span class="nx">fetchDataWithBearer</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="kd">const</span><span class="w"> </span><span class="nx">token</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;YOUR_VALID_ACCESS_TOKEN&quot;</span><span class="p">;</span><span class="w"> </span><span class="c1">// Replace with your actual token</span>
+<span class="w">    </span><span class="k">try</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="kd">const</span><span class="w"> </span><span class="nx">response</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">await</span><span class="w"> </span><span class="nx">fetch</span><span class="p">(</span><span class="s1">&#39;https://api.example.com/data&#39;</span><span class="p">,</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="nx">method</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;GET&#39;</span><span class="p">,</span>
+<span class="w">            </span><span class="nx">headers</span><span class="o">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">                </span><span class="s1">&#39;Authorization&#39;</span><span class="o">:</span><span class="w"> </span><span class="sb">`Bearer </span><span class="si">${</span><span class="nx">token</span><span class="si">}</span><span class="sb">`</span><span class="p">,</span>
+<span class="w">                </span><span class="s1">&#39;Content-Type&#39;</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;application/json&#39;</span>
+<span class="w">            </span><span class="p">}</span>
+<span class="w">        </span><span class="p">});</span>
 
-<span class="nx">fetch</span><span class="p">(</span><span class="nx">apiUrl</span><span class="p">,</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="nx">method</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;GET&#39;</span><span class="p">,</span>
-<span class="w">    </span><span class="nx">headers</span><span class="o">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">        </span><span class="s1">&#39;Authorization&#39;</span><span class="o">:</span><span class="w"> </span><span class="sb">`Bearer </span><span class="si">${</span><span class="nx">accessToken</span><span class="si">}</span><span class="sb">`</span>
+<span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="nx">response</span><span class="p">.</span><span class="nx">ok</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="kd">const</span><span class="w"> </span><span class="nx">errorText</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">await</span><span class="w"> </span><span class="nx">response</span><span class="p">.</span><span class="nx">text</span><span class="p">();</span>
+<span class="w">            </span><span class="k">throw</span><span class="w"> </span><span class="ow">new</span><span class="w"> </span><span class="ne">Error</span><span class="p">(</span><span class="sb">`HTTP error! status: </span><span class="si">${</span><span class="nx">response</span><span class="p">.</span><span class="nx">status</span><span class="si">}</span><span class="sb">, body: </span><span class="si">${</span><span class="nx">errorText</span><span class="si">}</span><span class="sb">`</span><span class="p">);</span>
+<span class="w">        </span><span class="p">}</span>
+
+<span class="w">        </span><span class="kd">const</span><span class="w"> </span><span class="nx">data</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">await</span><span class="w"> </span><span class="nx">response</span><span class="p">.</span><span class="nx">json</span><span class="p">();</span>
+<span class="w">        </span><span class="nx">console</span><span class="p">.</span><span class="nx">log</span><span class="p">(</span><span class="sb">`Status Code (Bearer): </span><span class="si">${</span><span class="nx">response</span><span class="p">.</span><span class="nx">status</span><span class="si">}</span><span class="sb">`</span><span class="p">);</span>
+<span class="w">        </span><span class="nx">console</span><span class="p">.</span><span class="nx">log</span><span class="p">(</span><span class="sb">`Response Body (Bearer):`</span><span class="p">,</span><span class="w"> </span><span class="nx">data</span><span class="p">);</span>
+<span class="w">    </span><span class="p">}</span><span class="w"> </span><span class="k">catch</span><span class="w"> </span><span class="p">(</span><span class="nx">error</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nx">console</span><span class="p">.</span><span class="nx">error</span><span class="p">(</span><span class="s2">&quot;Bearer Auth Error:&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">error</span><span class="p">);</span>
 <span class="w">    </span><span class="p">}</span>
-<span class="p">})</span>
-<span class="p">.</span><span class="nx">then</span><span class="p">(</span><span class="nx">response</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="nx">response</span><span class="p">.</span><span class="nx">ok</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
-<span class="w">        </span><span class="c1">// Handle HTTP errors, including 401</span>
-<span class="w">        </span><span class="k">throw</span><span class="w"> </span><span class="ow">new</span><span class="w"> </span><span class="ne">Error</span><span class="p">(</span><span class="sb">`HTTP error! Status: </span><span class="si">${</span><span class="nx">response</span><span class="p">.</span><span class="nx">status</span><span class="si">}</span><span class="sb">`</span><span class="p">);</span>
+<span class="p">}</span>
+<span class="nx">fetchDataWithBearer</span><span class="p">();</span>
+
+<span class="c1">// --- Basic Authentication ---</span>
+<span class="k">async</span><span class="w"> </span><span class="kd">function</span><span class="w"> </span><span class="nx">fetchDataWithBasicAuth</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="kd">const</span><span class="w"> </span><span class="nx">username</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;myuser&quot;</span><span class="p">;</span><span class="w"> </span><span class="c1">// Replace with your username</span>
+<span class="w">    </span><span class="kd">const</span><span class="w"> </span><span class="nx">password</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;mypassword&quot;</span><span class="p">;</span><span class="w"> </span><span class="c1">// Replace with your password</span>
+<span class="w">    </span><span class="kd">const</span><span class="w"> </span><span class="nx">encodedCredentials</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">btoa</span><span class="p">(</span><span class="sb">`</span><span class="si">${</span><span class="nx">username</span><span class="si">}</span><span class="sb">:</span><span class="si">${</span><span class="nx">password</span><span class="si">}</span><span class="sb">`</span><span class="p">);</span><span class="w"> </span><span class="c1">// Base64 encode &quot;username:password&quot;</span>
+
+<span class="w">    </span><span class="k">try</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="kd">const</span><span class="w"> </span><span class="nx">response</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">await</span><span class="w"> </span><span class="nx">fetch</span><span class="p">(</span><span class="s1">&#39;https://api.example.com/secure-resource&#39;</span><span class="p">,</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="nx">method</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;GET&#39;</span><span class="p">,</span>
+<span class="w">            </span><span class="nx">headers</span><span class="o">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">                </span><span class="s1">&#39;Authorization&#39;</span><span class="o">:</span><span class="w"> </span><span class="sb">`Basic </span><span class="si">${</span><span class="nx">encodedCredentials</span><span class="si">}</span><span class="sb">`</span>
+<span class="w">            </span><span class="p">}</span>
+<span class="w">        </span><span class="p">});</span>
+
+<span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="nx">response</span><span class="p">.</span><span class="nx">ok</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="kd">const</span><span class="w"> </span><span class="nx">errorText</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">await</span><span class="w"> </span><span class="nx">response</span><span class="p">.</span><span class="nx">text</span><span class="p">();</span>
+<span class="w">            </span><span class="k">throw</span><span class="w"> </span><span class="ow">new</span><span class="w"> </span><span class="ne">Error</span><span class="p">(</span><span class="sb">`HTTP error! status: </span><span class="si">${</span><span class="nx">response</span><span class="p">.</span><span class="nx">status</span><span class="si">}</span><span class="sb">, body: </span><span class="si">${</span><span class="nx">errorText</span><span class="si">}</span><span class="sb">`</span><span class="p">);</span>
+<span class="w">        </span><span class="p">}</span>
+
+<span class="w">        </span><span class="kd">const</span><span class="w"> </span><span class="nx">data</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">await</span><span class="w"> </span><span class="nx">response</span><span class="p">.</span><span class="nx">json</span><span class="p">();</span>
+<span class="w">        </span><span class="nx">console</span><span class="p">.</span><span class="nx">log</span><span class="p">(</span><span class="sb">`\nStatus Code (Basic): </span><span class="si">${</span><span class="nx">response</span><span class="p">.</span><span class="nx">status</span><span class="si">}</span><span class="sb">`</span><span class="p">);</span>
+<span class="w">        </span><span class="nx">console</span><span class="p">.</span><span class="nx">log</span><span class="p">(</span><span class="sb">`Response Body (Basic):`</span><span class="p">,</span><span class="w"> </span><span class="nx">data</span><span class="p">);</span>
+<span class="w">    </span><span class="p">}</span><span class="w"> </span><span class="k">catch</span><span class="w"> </span><span class="p">(</span><span class="nx">error</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nx">console</span><span class="p">.</span><span class="nx">error</span><span class="p">(</span><span class="s2">&quot;Basic Auth Error:&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">error</span><span class="p">);</span>
 <span class="w">    </span><span class="p">}</span>
-<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="nx">response</span><span class="p">.</span><span class="nx">json</span><span class="p">();</span>
-<span class="p">})</span>
-<span class="p">.</span><span class="nx">then</span><span class="p">(</span><span class="nx">data</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="nx">console</span><span class="p">.</span><span class="nx">log</span><span class="p">(</span><span class="s2">&quot;Success:&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">data</span><span class="p">);</span>
-<span class="p">})</span>
-<span class="p">.</span><span class="k">catch</span><span class="p">(</span><span class="nx">error</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="nx">console</span><span class="p">.</span><span class="nx">error</span><span class="p">(</span><span class="s2">&quot;Error fetching data:&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">error</span><span class="p">);</span>
-<span class="p">});</span>
+<span class="p">}</span>
+<span class="nx">fetchDataWithBasicAuth</span><span class="p">();</span>
 </code></pre></div>
 
 <h2 id="environment-specific-notes">Environment-Specific Notes</h2>
-<p>The context in which your application runs can influence how you encounter and resolve 401 errors.</p>
+<p>The HTTP 401 error can manifest differently or have unique causes depending on your deployment environment.</p>
 <ul>
-<li>
-<p><strong>Cloud Environments (AWS API Gateway, Azure API Management, GCP Apigee):</strong></p>
-<ul>
-<li><strong>API Gateways</strong> often handle authentication and authorization before requests even reach your backend services. A 401 here means the gateway itself rejected the request.</li>
-<li><strong>AWS API Gateway:</strong> Check your custom authorizers (Lambda Authorizers, Cognito User Pools) or IAM authentication settings. Ensure the API key usage plans are correctly associated and the API keys themselves are active. I've often seen 401s when a new API key isn't associated with a usage plan or staged correctly.</li>
-<li><strong>Azure API Management:</strong> Verify your subscription keys, JWT validation policies, or client certificate settings.</li>
-<li><strong>GCP Apigee:</strong> Review API key policies, OAuth policies, or custom authentication policies applied to your proxies.</li>
-</ul>
-</li>
-<li>
-<p><strong>Docker Containers:</strong></p>
-<ul>
-<li>When running applications in Docker, ensure that sensitive credentials (API keys, tokens, passwords) are correctly passed into the container as environment variables or mounted secrets.</li>
-<li>I've had issues where an <code>.env</code> file was correctly parsed locally, but the Docker build/run process didn't include those variables, leading to missing <code>Authorization</code> headers and subsequent 401s.</li>
-<li>Use Docker Compose's <code>environment</code> section or <code>docker run -e</code> flags, or Docker Secrets for more secure handling in production.</li>
-</ul>
-</li>
 <li>
 <p><strong>Local Development:</strong></p>
 <ul>
-<li><strong><code>.env</code> Files:</strong> A common cause for 401s during local development is an incorrect or missing <code>.env</code> file, which your application uses to load API keys or tokens.</li>
-<li><strong>CORS Issues:</strong> While typically a <code>401</code> is not directly a CORS error, if your local frontend makes requests to a remote API, and that API has strict CORS policies that <em>also</em> require authentication for preflight <code>OPTIONS</code> requests (which is unusual but possible), you might see unexpected behavior. However, the direct <code>401</code> would usually come from the actual request.</li>
-<li><strong>Expired Local Tokens:</strong> If you're using temporary tokens for testing, they often expire quickly. Remember to refresh or re-authenticate frequently during development.</li>
+<li><strong><code>.env</code> Files:</strong> If you're storing API keys or tokens in <code>.env</code> files, double-check that they are loaded correctly by your framework and that the values are up-to-date. Ensure they aren't accidentally committed to version control.</li>
+<li><strong>CORS:</strong> When developing a frontend and backend locally on different ports, CORS preflight requests (<code>OPTIONS</code>) might fail if your backend isn't configured to allow requests from your frontend's origin, potentially preventing the actual authenticated request from being sent.</li>
+<li><strong>Mock Servers:</strong> If you're using a mock server, ensure it's configured to expect and validate the same authentication headers as your real API.</li>
+</ul>
+</li>
+<li>
+<p><strong>Cloud Environments (e.g., AWS API Gateway, Azure API Management, GCP Cloud Endpoints):</strong></p>
+<ul>
+<li><strong>Authorizer Configuration:</strong> Services like AWS API Gateway rely heavily on authorizers (Lambda authorizers, Cognito User Pools, IAM roles) to validate incoming credentials. A 401 often points to a misconfiguration in these authorizers—for instance, an incorrect Lambda function, an invalid IAM policy, or a misconfigured Cognito User Pool. I've spent hours debugging incorrect regular expressions in Lambda authorizer configurations.</li>
+<li><strong>Secrets Management:</strong> Ensure that your application instances correctly retrieve credentials from secrets management services (e.g., AWS Secrets Manager, Azure Key Vault) and are using the correct versions/aliases.</li>
+<li><strong>Caching:</strong> API Gateways can cache authorization results. If you recently updated an API key or token, it might take a moment for the cache to invalidate, causing temporary 401s with valid credentials.</li>
+</ul>
+</li>
+<li>
+<p><strong>Docker/Containerized Applications:</strong></p>
+<ul>
+<li><strong>Environment Variables:</strong> When deploying containers, environment variables (which often hold sensitive credentials) must be passed correctly into the container. Verify your <code>Dockerfile</code> or <code>docker-compose.yml</code> (<code>env_file</code>, <code>environment</code> sections) for correct variable passing.</li>
+<li><strong>Service Mesh/Internal Auth:</strong> For microservice architectures, service-to-service authentication relies on internal tokens or certificates. A 401 between services can indicate issues with token propagation, certificate validity, or misconfigured mTLS.</li>
+<li><strong>Network Configuration:</strong> Ensure containers can reach external authentication providers or identity servers. Network policies in Kubernetes, for example, could block outbound traffic to an auth service.</li>
+</ul>
+</li>
+<li>
+<p><strong>Proxies/Load Balancers (Nginx, HAProxy, Kubernetes Ingress):</strong></p>
+<ul>
+<li><strong>Header Forwarding:</strong> If you have a reverse proxy or load balancer in front of your API, ensure it's configured to forward the <code>Authorization</code> header to the upstream service. Many proxies will strip unknown headers by default, which can be a silent killer for authentication.</li>
+<li><strong>SSL/TLS Termination:</strong> While not directly causing a 401, issues with SSL termination at the proxy could interfere with secure communication, leading to errors before authentication can even be attempted.</li>
 </ul>
 </li>
 </ul>
 <h2 id="frequently-asked-questions">Frequently Asked Questions</h2>
-<p><strong>Q: Is 401 an authorization error or authentication error?</strong><br />
-<strong>A:</strong> It is strictly an <strong>authentication</strong> error. It means the server doesn't know <em>who you are</em>. An authorization error would be <code>403 Forbidden</code>, meaning the server knows who you are but you don't have permission to access that specific resource.</p>
-<p><strong>Q: My API key is definitely correct, but I'm still getting a 401. What else could it be?</strong><br />
-<strong>A:</strong> Even if the key itself is correct, check:<br />
-1.  <strong>Header format:</strong> Is the API key sent in the exact header name and format the API expects (e.g., <code>X-API-KEY</code>, <code>Authorization: Bearer &lt;key&gt;</code>)?<br />
-2.  <strong>Key status:</strong> Is the API key active, not revoked, and associated with the correct access rights?<br />
-3.  <strong>Rate limits:</strong> Some APIs might return a 401 if you hit a rate limit without proper authentication, though a 429 Too Many Requests is more common.<br />
-4.  <strong>IP Restrictions:</strong> Is the API key restricted to certain IP addresses, and your current IP is not whitelisted?</p>
-<p><strong>Q: How do I debug a 401 error in a browser?</strong><br />
-<strong>A:</strong> Use your browser's developer tools (usually F12 or right-click -&gt; Inspect). Go to the "Network" tab, reproduce the request, and click on the specific request that returned 401. Inspect the "Headers" tab to see both the "Request Headers" (what your browser sent) and "Response Headers" (what the server sent back), and the "Response" tab for any error body the server might have provided.</p>
-<p><strong>Q: Can a firewall or proxy cause a 401?</strong><br />
-<strong>A:</strong> Indirectly. A firewall or proxy might interfere with HTTP headers, potentially stripping or modifying the <code>Authorization</code> header before it reaches the backend server. If you suspect this, try bypassing the proxy if possible, or inspect network traffic between the proxy and the server if you have access. However, typically, a firewall would block the request entirely or return a timeout, rather than explicitly a 401, which is a specific HTTP protocol response from an application layer.</p>
-<p><strong>Q: What is the <code>WWW-Authenticate</code> header and how does it relate to 401?</strong><br />
-<strong>A:</strong> When a server responds with <code>401 Unauthorized</code>, it <em>should</em> include a <code>WWW-Authenticate</code> response header. This header tells the client <em>how</em> to authenticate. For example, <code>WWW-Authenticate: Bearer realm="api.example.com"</code> indicates that a Bearer token is expected. This header helps clients understand the required authentication scheme.</p>
+<p><strong>Q: What's the fundamental difference between 401 Unauthorized and 403 Forbidden?</strong><br />
+<strong>A:</strong> A 401 Unauthorized means you failed to authenticate, or you didn't provide credentials. The server is saying, "Prove who you are." A 403 Forbidden means the server knows who you are (you're authenticated), but you don't have the necessary permissions to access the requested resource. It's saying, "I know who you are, but you're not allowed here."</p>
+<p><strong>Q: My token seems valid, but I'm still getting a 401. What should I check next?</strong><br />
+<strong>A:</strong> First, rigorously check server-side logs for specific authentication failure messages. It's possible the token is valid but for the wrong audience, wrong issuer, or its signature is deemed invalid by the server due to a key mismatch. Also, ensure there isn't a significant clock skew between your token issuer and the API server, which could prematurely invalidate JWTs. Finally, double-check that no proxy or load balancer is stripping the <code>Authorization</code> header.</p>
+<p><strong>Q: Can a 401 error be caused by CORS issues?</strong><br />
+<strong>A:</strong> Indirectly. A Cross-Origin Resource Sharing (CORS) preflight <code>OPTIONS</code> request failing will not directly return a 401. However, if the preflight fails, the actual request with your <code>Authorization</code> header will never be sent. This can lead to confusing client-side errors, making it seem like an authentication problem when the request never even reached the server's authentication layer. Always check CORS headers if your frontend and backend are on different origins.</p>
+<p><strong>Q: How should I handle a 401 error in a frontend application?</strong><br />
+<strong>A:</strong> A 401 in a frontend application typically means the user's session has expired or their token is invalid. The standard practice is to either:<br />
+1.  Attempt to refresh the access token using a refresh token (if your authentication scheme supports it).<br />
+2.  If token refresh fails or isn't applicable, redirect the user to the login page to re-authenticate and obtain new credentials.</p>
+<p><strong>Q: Is it safe to log the <code>Authorization</code> header's contents for debugging a 401?</strong><br />
+<strong>A:</strong> Absolutely not. The <code>Authorization</code> header contains sensitive credentials (tokens, passwords). Logging its contents, even temporarily, is a significant security risk and can lead to credential exposure. Only log the <em>presence</em> of the header and perhaps its <em>type</em> (e.g., "Bearer token provided"), but never the actual value. In my experience, security audits always flag this.</p>
 <h2 id="related-errors">Related Errors</h2>
-<ul>
-<li><a href="/errors/openai-401.html">openai-401</a></li>
-</ul>
     </div>
 
     <!-- ── AdSense placement 2 – bottom of article ───────────────────────── -->
@@ -386,7 +417,7 @@ curl<span class="w"> </span>-H<span class="w"> </span><span class="s2">&quot;X-A
     <div class="container">
       <p class="footer-logo">⚡ ErrorFix.dev</p>
       <p>Practical, engineer-written guides for real-world software errors.</p>
-      <p style="margin-top:.5rem">Last updated: <time>May 24, 2026</time>.</p>
+      <p style="margin-top:.5rem">Last updated: <time>May 25, 2026</time>.</p>
       <p class="footer-links" style="margin-top:.75rem">
         <!-- ╔══════════════════════════════════════════════════════════════╗ -->
         <!-- ║  AFFILIATE LINKS – replace the href values below            ║ -->
