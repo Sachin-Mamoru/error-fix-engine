@@ -124,240 +124,224 @@
     <div class="article-content">
       <h1 id="github-actions-error-resource-not-accessible-by-integration">GitHub Actions Error: Resource not accessible by integration</h1>
 <blockquote>
-<p>Encountering 'Resource not accessible by integration' means your workflow's <code>GITHUB_TOKEN</code> lacks permissions; this guide explains how to fix it.</p>
+<p>Encountering "GitHub Actions Error: Resource not accessible by integration" means the GITHUB_TOKEN used by your workflow lacks the necessary permissions to perform an action; this guide explains how to fix it.</p>
 </blockquote>
 <h2 id="what-this-error-means">What This Error Means</h2>
-<p>When your GitHub Actions workflow encounters the "Resource not accessible by integration" error, it signifies a fundamental permissions issue. Specifically, the <code>GITHUB_TOKEN</code>, the special token GitHub automatically provides to your workflows, does not have the necessary scope or privileges to perform a requested action.</p>
-<p>Think of it this way: your workflow job is an "integration" trying to interact with GitHub's API (e.g., pushing code, creating a release, adding a label to an issue). The <code>GITHUB_TOKEN</code> is its credential. If that credential doesn't have the right "keys" for the "door" it's trying to open, you get this error. It's GitHub's security mechanism preventing workflows from accidentally or maliciously performing actions they shouldn't.</p>
+<p>When you encounter the "Resource not accessible by integration" error in your GitHub Actions workflow, it signifies a permissions issue. Specifically, the <code>GITHUB_TOKEN</code> that GitHub Actions automatically generates for each workflow run does not have the necessary scope or permissions to perform a specific operation. "Integration" refers to the GitHub Actions runner itself, which, when executing your workflow, acts on your behalf using this temporary token. The "resource" could be anything from pushing code to the repository, creating a pull request, interacting with packages, or reading sensitive repository settings.</p>
+<p>In my experience, this error usually pops up when an action tries to do something beyond the <code>GITHUB_TOKEN</code>'s default read-only access or when a specific interaction requires an explicit <code>write</code> permission that hasn't been granted. It's GitHub's way of enforcing the principle of least privilege, preventing unintended or malicious actions if your workflow is compromised.</p>
 <h2 id="why-it-happens">Why It Happens</h2>
-<p>The <code>GITHUB_TOKEN</code> is designed with security in mind, operating on the principle of least privilege. By default, it often comes with a limited set of permissions – typically <code>read</code> access for most scopes (like <code>contents</code>, <code>issues</code>, <code>pull-requests</code>). This default prevents workflows from making unwanted changes without explicit permission.</p>
-<p>The error arises when a workflow step attempts an operation that requires <code>write</code> access (or other specific elevated permissions) for a particular scope, but the <code>GITHUB_TOKEN</code> available to that step only has <code>read</code> access, or no access at all, for that scope. For example, if your workflow tries to push commits to the repository, it needs <code>contents: write</code>. If it tries to create a release, it needs <code>contents: write</code> and <code>releases: write</code>. Without these explicit grants, the token is denied access to the resource.</p>
+<p>The core reason this error occurs lies with the <code>GITHUB_TOKEN</code> and its carefully controlled permissions. GitHub generates a unique <code>GITHUB_TOKEN</code> for each workflow run. This token is short-lived and automatically expires when the job finishes. By default, for security, this token has limited permissions, usually read-only access to repository contents and metadata.</p>
+<p>If any step in your workflow, whether it's a built-in action, a custom script, or a third-party action from the Marketplace, attempts an operation that requires elevated permissions (like pushing changes, creating releases, or commenting on issues), and those permissions haven't been explicitly granted to the <code>GITHUB_TOKEN</code>, the "Resource not accessible by integration" error will occur. It's a security mechanism designed to ensure that your CI/CD pipelines only perform actions you've explicitly authorized.</p>
 <h2 id="common-causes">Common Causes</h2>
-<p>In my experience, this error almost always boils down to one of these scenarios:</p>
+<p>I've seen this error manifest in a few common scenarios in production environments:</p>
 <ol>
-<li><strong>Missing <code>permissions</code> block in the workflow file:</strong> The most frequent cause. If your workflow YAML doesn't include a <code>permissions</code> block at all, or if it's missing for a specific job, the <code>GITHUB_TOKEN</code> will revert to its default, often restrictive, <code>read</code>-only access. Many actions, especially those that modify the repository, need more than this.</li>
-<li><strong>Insufficient <code>permissions</code> scope:</strong> You might have a <code>permissions</code> block, but it's not specific enough. For instance, you declare <code>permissions: contents: read</code> when the action actually needs <code>contents: write</code> to perform its task, like updating a file or creating a git tag. I've seen this in production when teams try to automate version bumping.</li>
-<li><strong>Repository-level default permissions are too restrictive:</strong> GitHub allows repository administrators to set a default permission level for the <code>GITHUB_TOKEN</code> for all workflows within that repository. If this default is set to <code>read</code> or even <code>no permissions</code> for a critical scope, it can override or interact unexpectedly with job-level permissions if not carefully managed.</li>
-<li><strong>Third-party actions requiring specific permissions:</strong> You're using a community-contributed GitHub Action (e.g., an action to publish to a package registry, or interact with a third-party service via GitHub's API) that implicitly or explicitly requires certain <code>write</code> scopes for the <code>GITHUB_TOKEN</code> to function correctly. Its documentation should specify these requirements.</li>
-<li><strong>Misunderstanding the scope:</strong> Sometimes, what appears to be a <code>pull-requests</code> permission issue is actually a <code>contents</code> issue, or vice versa, depending on the exact operation being performed by the action. It pays to consult the action's documentation carefully.</li>
+<li><strong>Insufficient Default <code>GITHUB_TOKEN</code> Permissions:</strong> This is the most frequent cause. By default, the <code>GITHUB_TOKEN</code> often has <code>contents: read</code> permissions. If your workflow needs to <code>write</code> to the repository (e.g., push commits, create a branch, merge a PR), create releases, manage issues, or publish packages, these explicit <code>write</code> permissions are required.</li>
+<li><strong>Third-Party Actions Requiring Elevated Privileges:</strong> Many popular community actions (e.g., for creating pull requests, deploying artifacts, or interacting with GitHub Pages) need more than just read access. For instance, an action that creates or updates a pull request will need <code>pull-requests: write</code> permissions. If you simply add such an action without adjusting permissions, it will fail.</li>
+<li><strong>Repository-Level Default Permissions Override:</strong> GitHub allows repository administrators to set default permissions for the <code>GITHUB_TOKEN</code> across all workflows in that repository. If these defaults are set to be very restrictive (e.g., "Read repository contents permission"), it can override the more permissive defaults GitHub might otherwise provide and lead to this error for actions that previously worked.</li>
+<li><strong>Organization-Level Policies:</strong> Similar to repository settings, organization owners can enforce default permissions for all repositories under their organization. If an organization-wide policy sets a restrictive default, it will propagate down and can cause this error.</li>
+<li><strong>Sensitive Resource Access:</strong> The error can also appear if your workflow tries to access protected branches, repository secrets, or other sensitive settings that require administrative access, and the <code>GITHUB_TOKEN</code> is not configured with the appropriate <code>administration</code> scope (which is rarely granted by default).</li>
+<li><strong>OIDC Token Generation:</strong> If your workflow attempts to generate an OIDC token for authentication with cloud providers, it requires <code>id-token: write</code> permission. Without this, the OIDC token generation will fail, which can manifest as a "Resource not accessible" type error downstream.</li>
 </ol>
 <h2 id="step-by-step-fix">Step-by-Step Fix</h2>
-<p>Rectifying "Resource not accessible by integration" is typically a matter of explicitly granting the required permissions to your workflow's <code>GITHUB_TOKEN</code>.</p>
+<p>Rectifying this error primarily involves granting the <code>GITHUB_TOKEN</code> the specific permissions it needs. Here's how I typically approach it:</p>
 <ol>
 <li>
-<p><strong>Identify the failing step:</strong></p>
+<p><strong>Identify the Failing Step:</strong></p>
 <ul>
-<li>Go to your GitHub Actions run.</li>
-<li>Look for the specific job and step that failed. The error message "Resource not accessible by integration" will usually appear in the logs for that step.</li>
-<li>Note down what that step was trying to do (e.g., <code>actions/checkout</code> when trying to push, <code>softprops/action-gh-release</code> when trying to create a release, etc.). This tells you which scope is likely missing permissions.</li>
+<li>Go to your workflow run logs in GitHub Actions.</li>
+<li>Locate the specific job and step that failed. The error message "Resource not accessible by integration" will be clearly visible, often accompanied by details about <em>which</em> resource or action was denied. This context is crucial. For example, it might say <code>Could not resolve to a Node with the global ID of 'MDxxxxx'</code> or <code>resource not accessible by integration for 'contents'</code>.</li>
 </ul>
 </li>
 <li>
-<p><strong>Determine the required permissions:</strong></p>
+<p><strong>Determine the Required Permissions:</strong></p>
 <ul>
-<li>Based on the failing step, consider what it's attempting.<ul>
-<li><strong>Pushing code, creating tags, committing files:</strong> Requires <code>contents: write</code>.</li>
-<li><strong>Creating/updating releases:</strong> Requires <code>contents: write</code> (for assets) and <code>releases: write</code>.</li>
-<li><strong>Opening/closing/labeling issues:</strong> Requires <code>issues: write</code>.</li>
-<li><strong>Creating/updating pull requests:</strong> Requires <code>pull-requests: write</code>.</li>
-<li><strong>Managing GitHub Packages:</strong> Requires <code>packages: write</code>.</li>
-<li><strong>Setting commit statuses:</strong> Requires <code>statuses: write</code>.</li>
+<li><strong>For custom scripts/API calls:</strong> If you're writing a script that interacts with the GitHub API, consult the GitHub REST API documentation for the specific endpoint your script is hitting. Each endpoint lists the required OAuth scopes (which map directly to <code>GITHUB_TOKEN</code> permissions).</li>
+<li><strong>For Marketplace Actions:</strong> Check the documentation for the third-party action you are using. Reputable actions usually explicitly state the <code>permissions</code> they require in their README.</li>
+<li><strong>Common Needs:</strong><ul>
+<li><code>contents: write</code> (for pushing commits, creating files, merging branches)</li>
+<li><code>pull-requests: write</code> (for creating/updating pull requests)</li>
+<li><code>packages: write</code> (for publishing packages)</li>
+<li><code>releases: write</code> (for creating/updating releases)</li>
+<li><code>issues: write</code> (for creating/updating issues)</li>
+<li><code>id-token: write</code> (for OpenID Connect (OIDC) authentication)</li>
 </ul>
 </li>
-<li><strong>Crucially, consult the documentation for the specific action you are using.</strong> Many actions clearly state the minimum <code>permissions</code> required.</li>
-</ul>
-</li>
-<li>
-<p><strong>Add or update the <code>permissions</code> block in your workflow YAML:</strong></p>
-<ul>
-<li>
-<p>The <code>permissions</code> block can be defined at two levels:</p>
-<ul>
-<li><strong>Workflow level:</strong> Applies to all jobs in the workflow. Less granular, potentially over-privileged.</li>
-<li><strong>Job level:</strong> Applies only to a specific job. <strong>This is generally the recommended and more secure approach.</strong> I always advise defining permissions at the job level.</li>
 </ul>
 </li>
 <li>
-<p>Open your workflow <code>.yml</code> file (e.g., <code>.github/workflows/your-workflow.yml</code>).</p>
-</li>
-<li>Locate the <code>job</code> that is failing.</li>
-<li>Add a <code>permissions</code> block under the job definition, specifying only the necessary <code>write</code> scopes.</li>
-</ul>
-<p><code>yaml
-jobs:
-  my_failing_job:
-    runs-on: ubuntu-latest
-    permissions: # &lt;--- Add this block
-      contents: write # &lt;--- Grant write permission for contents
-      pull-requests: write # &lt;--- Add other required permissions here
-      issues: write
-      # ... and so on for other scopes
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0 # Needed if you're pushing subsequent commits/tags
-      - name: My action that needs write access
-        run: |
-          echo "Performing write operation..."
-          # ... (e.g., git commit, git push, gh release create)</code></p>
+<p><strong>Adjust Workflow Permissions (Most Common Fix):</strong></p>
 <ul>
-<li>Alternatively, you can specify <code>read-all</code> or <code>write-all</code>, but these are less secure and should be used with caution:</li>
+<li>You can set permissions at the <strong>workflow level</strong> (applies to all jobs in the workflow) or at the <strong>job level</strong> (applies only to that specific job). Job-level permissions always override workflow-level permissions for that particular job.</li>
+<li>Open your workflow <code>.yml</code> file.</li>
+<li>Add a <code>permissions</code> block, specifying the required scopes:</li>
 </ul>
-<p><code>yaml
-jobs:
-  my_job_with_all_permissions:
-    runs-on: ubuntu-latest
-    permissions: write-all # &lt;--- Grants all available write permissions. Use sparingly!
-    steps:
-      # ...</code></p>
+<p>```yaml</p>
+<h1 id="at-the-workflow-level-applies-to-all-jobs-in-this-workflow">At the workflow level (applies to all jobs in this workflow)</h1>
+<p>name: My CI/CD Workflow<br />
+on: push</p>
+<p>permissions:<br />
+  contents: write # Grant write permission to repository contents<br />
+  pull-requests: write # Grant write permission for pull requests<br />
+  # You can specify 'read' for other scopes if needed, e.g.,<br />
+  # issues: read<br />
+  # packages: read</p>
+<p>jobs:<br />
+  build:<br />
+    runs-on: ubuntu-latest<br />
+    steps:<br />
+      - uses: actions/checkout@v4<br />
+      - name: Create or update PR<br />
+        uses: peter-evans/create-pull-request@v6 # This action requires pull-requests: write</p>
+<p>release:<br />
+    runs-on: ubuntu-latest<br />
+    permissions: # Job-level permissions override workflow-level for this job<br />
+      contents: write # Required for creating release assets<br />
+      releases: write # Required for creating releases<br />
+    steps:<br />
+      - uses: actions/checkout@v4<br />
+      - name: Create a GitHub Release<br />
+        run: |<br />
+          echo "Creating release..."<br />
+          # Some release logic here<br />
+```</p>
+<ul>
+<li><strong>Caution with <code>permissions: write-all</code>:</strong> While <code>permissions: write-all</code> grants maximum access, it is generally discouraged due to the principle of least privilege. Always aim for the minimum necessary permissions. Use <code>read-all</code> if you want all read permissions, and then override specific scopes with <code>write</code> as needed.</li>
+</ul>
 </li>
 <li>
-<p><strong>Review Repository Default Permissions (if necessary):</strong></p>
+<p><strong>Adjust Repository Default Permissions (If workflow changes aren't enough or for consistency):</strong></p>
 <ul>
-<li>If adding job-level permissions doesn't resolve the issue, or if you suspect a broader configuration problem, check your repository's default settings.</li>
-<li>Navigate to your repository on GitHub.com.</li>
-<li>Go to <code>Settings</code> -&gt; <code>Actions</code> -&gt; <code>General</code>.</li>
+<li>Navigate to your repository on GitHub.</li>
+<li>Go to <strong>Settings</strong> -&gt; <strong>Actions</strong> -&gt; <strong>General</strong>.</li>
 <li>Scroll down to "Workflow permissions".</li>
-<li>Ensure "Read and write permissions" is selected, or at least that "Read repository contents and packages permissions" is selected if you only need <code>read</code>. More importantly, if you have <code>write</code> permissions defined at the job level, the repository default should not explicitly deny them. Generally, job-level overrides repository-level, but misconfigurations can happen.</li>
+<li>You can select "Read and write permissions" as a default, or "Restrict default GITHUB_TOKEN permissions" and then configure specific default permissions for scopes like <code>contents</code>, <code>issues</code>, <code>pull-requests</code>, etc.</li>
+<li><strong>Note:</strong> Changing repository defaults affects all workflows <em>that do not explicitly define a <code>permissions</code> block</em>. If a workflow <em>does</em> define <code>permissions</code>, its explicit definition takes precedence.</li>
 </ul>
 </li>
 <li>
-<p><strong>Commit and Re-run:</strong></p>
+<p><strong>Adjust Organization Default Permissions (For organization-wide consistency):</strong></p>
 <ul>
-<li>Commit your changes to the workflow file.</li>
-<li>Push the changes, which will trigger a new workflow run (or manually re-run the failed workflow).</li>
-<li>Observe the logs for the previously failing step. It should now pass.</li>
+<li>If you're an organization owner, you can set default workflow permissions at the organization level.</li>
+<li>Go to your <strong>Organization Settings</strong> -&gt; <strong>Actions</strong> -&gt; <strong>General</strong>.</li>
+<li>Similar to repository settings, you can configure default <code>GITHUB_TOKEN</code> permissions for all repositories in the organization.</li>
 </ul>
 </li>
 </ol>
 <h2 id="code-examples">Code Examples</h2>
-<p>Here are some concise, copy-paste ready examples for common scenarios:</p>
-<h3 id="example-1-pushing-a-version-tag-or-updated-changelogmd">Example 1: Pushing a version tag or updated <code>CHANGELOG.md</code></h3>
-<p>If your workflow updates a file, commits it, and pushes it back to the repository, or creates a git tag, it needs <code>contents: write</code>.</p>
-<div class="highlight"><pre><span></span><code><span class="c1"># .github/workflows/bump-version.yml</span>
-<span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Bump Version</span>
-
+<p>Here are common ways to declare permissions in your GitHub Actions workflows:</p>
+<h3 id="workflow-level-permissions">Workflow-level permissions</h3>
+<p>Applies to all jobs in the workflow.</p>
+<div class="highlight"><pre><span></span><code><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Workflow with Global Write Permissions</span>
 <span class="nt">on</span><span class="p">:</span>
 <span class="w">  </span><span class="nt">push</span><span class="p">:</span>
 <span class="w">    </span><span class="nt">branches</span><span class="p">:</span>
 <span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">main</span>
 
+<span class="nt">permissions</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">contents</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">write</span><span class="w"> </span><span class="c1"># Allows writing to the repo, useful for pushing changes</span>
+<span class="w">  </span><span class="nt">pull-requests</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">write</span><span class="w"> </span><span class="c1"># Allows creating/updating pull requests</span>
+<span class="w">  </span><span class="nt">issues</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">write</span><span class="w"> </span><span class="c1"># Allows creating/updating issues</span>
+<span class="w">  </span><span class="c1"># id-token: write # Required for generating OIDC tokens</span>
+
 <span class="nt">jobs</span><span class="p">:</span>
-<span class="w">  </span><span class="nt">update_and_push</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">build-and-deploy</span><span class="p">:</span>
 <span class="w">    </span><span class="nt">runs-on</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ubuntu-latest</span>
-<span class="w">    </span><span class="nt">permissions</span><span class="p">:</span>
-<span class="w">      </span><span class="nt">contents</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">write</span><span class="w"> </span><span class="c1"># Essential for pushing commits or tags</span>
 <span class="w">    </span><span class="nt">steps</span><span class="p">:</span>
-<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Checkout repository</span>
-<span class="w">        </span><span class="nt">uses</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">actions/checkout@v4</span>
-<span class="w">        </span><span class="nt">with</span><span class="p">:</span>
-<span class="w">          </span><span class="nt">fetch-depth</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0</span><span class="w"> </span><span class="c1"># Needed to fetch full history for subsequent pushes</span>
-
-<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Configure Git</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">uses</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">actions/checkout@v4</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Make a change and push</span>
 <span class="w">        </span><span class="nt">run</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">|</span>
+<span class="w">          </span><span class="no">echo &quot;Date: $(date)&quot; &gt; current_date.txt</span>
 <span class="w">          </span><span class="no">git config user.name &quot;GitHub Actions Bot&quot;</span>
-<span class="w">          </span><span class="no">git config user.email &quot;github-actions[bot]@users.noreply.github.com&quot;</span>
-
-<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Make changes and commit</span>
-<span class="w">        </span><span class="nt">run</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">|</span>
-<span class="w">          </span><span class="no">echo &quot;Updated content $(date)&quot; &gt;&gt; README.md</span>
-<span class="w">          </span><span class="no">git add README.md</span>
-<span class="w">          </span><span class="no">git commit -m &quot;Docs: Update README with build date&quot;</span>
-
-<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Push changes</span>
-<span class="w">        </span><span class="nt">run</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">git push origin main</span>
+<span class="w">          </span><span class="no">git config user.email &quot;actions@github.com&quot;</span>
+<span class="w">          </span><span class="no">git add current_date.txt</span>
+<span class="w">          </span><span class="no">git commit -m &quot;Update current date [skip ci]&quot;</span>
+<span class="w">          </span><span class="no">git push</span>
 </code></pre></div>
 
-<h3 id="example-2-creating-a-github-release">Example 2: Creating a GitHub Release</h3>
-<p>For workflows that create releases, you'll need <code>contents: write</code> (to upload release assets) and <code>releases: write</code>.</p>
-<div class="highlight"><pre><span></span><code><span class="c1"># .github/workflows/create-release.yml</span>
-<span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Create Release</span>
+<h3 id="job-level-permissions">Job-level permissions</h3>
+<p>Overrides workflow-level permissions for a specific job. Useful for granting elevated permissions only where absolutely necessary.</p>
+<div class="highlight"><pre><span></span><code><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Job-Specific Permissions Workflow</span>
+<span class="nt">on</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">push</span><span class="p p-Indicator">]</span>
 
-<span class="nt">on</span><span class="p">:</span>
-<span class="w">  </span><span class="nt">push</span><span class="p">:</span>
-<span class="w">    </span><span class="nt">tags</span><span class="p">:</span>
-<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&#39;v*&#39;</span><span class="w"> </span><span class="c1"># Trigger on new tags like v1.0.0</span>
+<span class="nt">permissions</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">contents</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">read</span><span class="w"> </span><span class="c1"># Default to read-only for security</span>
 
 <span class="nt">jobs</span><span class="p">:</span>
-<span class="w">  </span><span class="nt">release</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">read_only_job</span><span class="p">:</span>
 <span class="w">    </span><span class="nt">runs-on</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ubuntu-latest</span>
-<span class="w">    </span><span class="nt">permissions</span><span class="p">:</span>
-<span class="w">      </span><span class="nt">contents</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">write</span><span class="w"> </span><span class="c1"># For uploading release assets</span>
-<span class="w">      </span><span class="nt">releases</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">write</span><span class="w"> </span><span class="c1"># For creating the release itself</span>
+<span class="w">    </span><span class="nt">steps</span><span class="p">:</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">uses</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">actions/checkout@v4</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">List files (read-only)</span>
+<span class="w">        </span><span class="nt">run</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ls -la</span>
+
+<span class="w">  </span><span class="nt">write_job</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">runs-on</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ubuntu-latest</span>
+<span class="w">    </span><span class="nt">permissions</span><span class="p">:</span><span class="w"> </span><span class="c1"># This job needs write access</span>
+<span class="w">      </span><span class="nt">contents</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">write</span>
+<span class="w">      </span><span class="nt">pull-requests</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">write</span>
+<span class="w">    </span><span class="nt">steps</span><span class="p">:</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">uses</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">actions/checkout@v4</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name: Create a Pull Request (requires pull-requests</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">write)</span>
+<span class="w">        </span><span class="nt">uses</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">peter-evans/create-pull-request@v6</span>
+<span class="w">        </span><span class="nt">with</span><span class="p">:</span>
+<span class="w">          </span><span class="nt">title</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;Automated</span><span class="nv"> </span><span class="s">PR</span><span class="nv"> </span><span class="s">from</span><span class="nv"> </span><span class="s">CI&quot;</span>
+<span class="w">          </span><span class="nt">body</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;This</span><span class="nv"> </span><span class="s">PR</span><span class="nv"> </span><span class="s">was</span><span class="nv"> </span><span class="s">created</span><span class="nv"> </span><span class="s">by</span><span class="nv"> </span><span class="s">a</span><span class="nv"> </span><span class="s">GitHub</span><span class="nv"> </span><span class="s">Actions</span><span class="nv"> </span><span class="s">workflow.&quot;</span>
+<span class="w">          </span><span class="nt">commit-message</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;Automated</span><span class="nv"> </span><span class="s">change&quot;</span>
+<span class="w">          </span><span class="nt">branch</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;automated-branch&quot;</span>
+<span class="w">          </span><span class="nt">base</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;main&quot;</span>
+<span class="w">          </span><span class="nt">delete-branch</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+</code></pre></div>
+
+<h3 id="granular-permissions-for-oidc">Granular Permissions for OIDC</h3>
+<p>When using OpenID Connect (OIDC) to authenticate with cloud providers (AWS, Azure, GCP), the <code>id-token: write</code> permission is crucial.</p>
+<div class="highlight"><pre><span></span><code><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">OIDC Authentication Example</span>
+<span class="nt">on</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">push</span><span class="p p-Indicator">]</span>
+
+<span class="nt">permissions</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">id-token</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">write</span><span class="w"> </span><span class="c1"># Required for OIDC token generation</span>
+<span class="w">  </span><span class="nt">contents</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">read</span><span class="w"> </span><span class="c1"># Typically still need read access</span>
+
+<span class="nt">jobs</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">deploy-to-aws</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">runs-on</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ubuntu-latest</span>
 <span class="w">    </span><span class="nt">steps</span><span class="p">:</span>
 <span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Checkout code</span>
 <span class="w">        </span><span class="nt">uses</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">actions/checkout@v4</span>
-
-<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Build artifact (example)</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Configure AWS credentials</span>
+<span class="w">        </span><span class="nt">uses</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">aws-actions/configure-aws-credentials@v4</span>
+<span class="w">        </span><span class="nt">with</span><span class="p">:</span>
+<span class="w">          </span><span class="nt">role-to-assume</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">arn:aws:iam::123456789012:role/github-actions-role</span>
+<span class="w">          </span><span class="nt">aws-region</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">us-east-1</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Deploy application</span>
 <span class="w">        </span><span class="nt">run</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">|</span>
-<span class="w">          </span><span class="no">echo &quot;My super artifact!&quot; &gt; my_artifact.txt</span>
-
-<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Create Release</span>
-<span class="w">        </span><span class="nt">uses</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">softprops/action-gh-release@v1</span>
-<span class="w">        </span><span class="nt">if</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">startsWith(github.ref, &#39;refs/tags/&#39;)</span>
-<span class="w">        </span><span class="nt">with</span><span class="p">:</span>
-<span class="w">          </span><span class="nt">files</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">my_artifact.txt</span>
-<span class="w">          </span><span class="nt">body</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">|</span>
-<span class="w">            </span><span class="no">This is a new release from GitHub Actions.</span>
-<span class="w">            </span><span class="no">See changes in the `my_artifact.txt` file.</span>
-</code></pre></div>
-
-<h3 id="example-3-commenting-on-an-issue-or-pull-request">Example 3: Commenting on an Issue or Pull Request</h3>
-<p>If your workflow needs to add comments to issues or PRs, it requires <code>issues: write</code> or <code>pull-requests: write</code> respectively.</p>
-<div class="highlight"><pre><span></span><code><span class="c1"># .github/workflows/pr-commenter.yml</span>
-<span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">PR Commenter</span>
-
-<span class="nt">on</span><span class="p">:</span>
-<span class="w">  </span><span class="nt">pull_request_target</span><span class="p">:</span>
-<span class="w">    </span><span class="nt">types</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">opened</span><span class="p p-Indicator">]</span>
-
-<span class="nt">jobs</span><span class="p">:</span>
-<span class="w">  </span><span class="nt">greet_new_pr</span><span class="p">:</span>
-<span class="w">    </span><span class="nt">runs-on</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ubuntu-latest</span>
-<span class="w">    </span><span class="nt">permissions</span><span class="p">:</span>
-<span class="w">      </span><span class="nt">pull-requests</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">write</span><span class="w"> </span><span class="c1"># Required to comment on a pull request</span>
-<span class="w">    </span><span class="nt">steps</span><span class="p">:</span>
-<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Post welcome comment</span>
-<span class="w">        </span><span class="nt">uses</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">actions/github-script@v6</span>
-<span class="w">        </span><span class="nt">with</span><span class="p">:</span>
-<span class="w">          </span><span class="nt">script</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">|</span>
-<span class="w">            </span><span class="no">github.rest.issues.createComment({</span>
-<span class="w">              </span><span class="no">issue_number: context.issue.number,</span>
-<span class="w">              </span><span class="no">owner: context.repo.owner,</span>
-<span class="w">              </span><span class="no">repo: context.repo.repo,</span>
-<span class="w">              </span><span class="no">body: &#39;👋 Thanks for opening this pull request!&#39;</span>
-<span class="w">            </span><span class="no">})</span>
+<span class="w">          </span><span class="no"># AWS CLI commands to deploy</span>
+<span class="w">          </span><span class="no">aws s3 cp my-app s3://my-bucket/</span>
 </code></pre></div>
 
 <h2 id="environment-specific-notes">Environment-Specific Notes</h2>
-<p>The "Resource not accessible by integration" error is highly specific to the GitHub Actions execution environment and the <code>GITHUB_TOKEN</code> mechanism.</p>
+<p>While the core concept of <code>GITHUB_TOKEN</code> permissions remains consistent, how you manage and debug them can have slight nuances across different environments.</p>
 <ul>
-<li><strong>GitHub.com (Cloud):</strong> This is where you'll most frequently encounter and fix this error. The default permissions for <code>GITHUB_TOKEN</code> on GitHub.com are deliberately conservative, requiring explicit grants for <code>write</code> operations. The fix described above applies directly here.</li>
-<li><strong>GitHub Enterprise Server (GHES):</strong> GHES environments behave very similarly to GitHub.com in this regard. The <code>GITHUB_TOKEN</code> still operates under the principle of least privilege. While your GHES administrators might have configured different default permissions at the enterprise or organization level, the mechanism for overriding or specifying permissions in your workflow YAML remains the same. The <code>permissions</code> block is your primary tool.</li>
-<li><strong>Self-hosted Runners:</strong> Even if you're using a self-hosted runner with extensive access to its underlying host system, the <code>GITHUB_TOKEN</code>'s permissions still apply to any interactions with the GitHub API. This error isn't about the runner's local filesystem access; it's about the token's authority to make API calls to GitHub itself. So, the solution is identical for self-hosted runners.</li>
-<li><strong>Local Development/Testing:</strong> This error is specific to GitHub Actions workflows running within GitHub's infrastructure. You won't encounter "Resource not accessible by integration" when developing or testing locally. When interacting with the GitHub API locally, you'd typically use a Personal Access Token (PAT), which has its own granular permission scopes (configured during PAT creation). If you're seeing a similar "permission denied" error locally, it's likely a PAT scope issue, not a <code>GITHUB_TOKEN</code> issue.</li>
+<li><strong>GitHub.com (Cloud):</strong> This is the most common environment. The default <code>GITHUB_TOKEN</code> permissions are generally <code>contents: read</code> and some <code>metadata: read</code>. All the <code>permissions</code> block configurations directly apply. Repository and organization-level settings are managed via the GitHub web UI.</li>
+<li><strong>GitHub Enterprise Server (GHES):</strong> If you're running GitHub Actions on a GHES instance, the enterprise administrator might have set enterprise-wide default permissions that are stricter or different from GitHub.com. Always check with your GHES admin if you're encountering persistent issues that don't seem to be resolved by workflow or repository settings. The <code>GITHUB_TOKEN</code> behavior itself is the same, but the default baseline might vary. Upgrades to GHES instances can sometimes reset or change default permissions, which I've seen cause unexpected failures post-upgrade.</li>
+<li><strong>Local Development / Docker:</strong> The "Resource not accessible by integration" error is specific to the GitHub Actions runtime environment and the <code>GITHUB_TOKEN</code>. When you're developing locally or running parts of your CI/CD pipeline in Docker containers <em>outside</em> of GitHub Actions (e.g., using <code>act</code> to simulate runners), the <code>GITHUB_TOKEN</code> isn't present in the same way. You'd typically use a Personal Access Token (PAT) for local GitHub API interactions. This means the error won't appear during local testing, reinforcing the need to rigorously test your <code>permissions</code> configuration in your actual GitHub Actions workflows. The problem surfaces only when the workflow runs on GitHub's infrastructure, using the auto-generated, permission-constrained token.</li>
 </ul>
 <h2 id="frequently-asked-questions">Frequently Asked Questions</h2>
-<p><strong>Q: I used <code>permissions: write-all</code>, but my workflow still failed. Why?</strong><br />
-<strong>A:</strong> While <code>write-all</code> grants the maximum possible permissions to the <code>GITHUB_TOKEN</code>, it might still not be enough if the underlying issue isn't strictly about the <code>GITHUB_TOKEN</code>'s scope. Common reasons for <code>write-all</code> not fixing it include:<br />
-1.  <strong>Branch Protection Rules:</strong> Even with <code>write-all</code>, if a branch is protected against direct pushes (requiring pull requests or specific status checks), the <code>GITHUB_TOKEN</code> might not be able to bypass these.<br />
-2.  <strong>Separate Authentication:</strong> The action might be trying to use a different authentication method (e.g., a custom Personal Access Token stored in <code>secrets.MY_CUSTOM_TOKEN</code>) which has <em>its own</em> insufficient permissions, not the <code>GITHUB_TOKEN</code>.<br />
-3.  <strong>Organization/Enterprise Policies:</strong> Overriding policies at higher organizational levels could be in play, though this is less common for <code>GITHUB_TOKEN</code> specifically.</p>
-<p><strong>Q: Should I use <code>secrets.GITHUB_TOKEN</code> in my workflow scripts?</strong><br />
-<strong>A:</strong> No, the <code>GITHUB_TOKEN</code> is automatically available to your workflow context. You should not refer to it as <code>secrets.GITHUB_TOKEN</code>. If you need to use it in a script (e.g., with <code>gh</code> CLI or <code>github</code> context in <code>github-script</code> action), you'd typically use <code>github.token</code> or simply let the <code>gh</code> CLI pick it up by default. The <code>permissions</code> block in your YAML directly configures the implicit <code>GITHUB_TOKEN</code>.</p>
-<p><strong>Q: My workflow still fails after adding permissions. What should I check next?</strong><br />
-<strong>A:</strong><br />
-1.  <strong>Review the action's documentation carefully:</strong> Are you sure you've included <em>all</em> the permissions it needs? Some complex actions might require several.<br />
-2.  <strong>Double-check the YAML indentation:</strong> YAML is sensitive to whitespace. A misaligned <code>permissions</code> block won't be parsed correctly.<br />
-3.  <strong>Look for other error messages:</strong> Is there a <em>different</em> error message now? Sometimes, fixing one permission issue reveals another, or an entirely separate problem.<br />
-4.  <strong>Is it truly <code>GITHUB_TOKEN</code>?</strong> If you're manually providing a <code>token:</code> input to an action using a secret (e.g., <code>token: ${{ secrets.MY_PAT }}</code>), then the <code>permissions</code> block for <code>GITHUB_TOKEN</code> is irrelevant. You need to check the scopes of <code>MY_PAT</code>.</p>
-<p><strong>Q: Is <code>permissions: write-all</code> a good practice?</strong><br />
-<strong>A:</strong> Generally, no. While convenient, <code>permissions: write-all</code> grants your workflow comprehensive <code>write</code> access across almost all scopes. This significantly increases the blast radius if your workflow or a third-party action within it is compromised. Best practice dictates granting only the minimum necessary permissions for each specific job (e.g., <code>contents: write</code>, <code>issues: write</code>). I rarely use <code>write-all</code> in production, preferring explicit grants for security.</p>
+<p><strong>Q: Can I just use <code>permissions: write-all</code> to avoid this error?</strong><br />
+<strong>A:</strong> While <code>permissions: write-all</code> would likely solve the error by granting maximum permissions, it is generally <strong>not recommended</strong> for security reasons. It violates the principle of least privilege, making your workflow potentially vulnerable if a third-party action or a script within it is compromised. Always strive to grant only the specific permissions (<code>contents: write</code>, <code>pull-requests: write</code>, etc.) that your workflow absolutely needs.</p>
+<p><strong>Q: My workflow used to work, but now it's failing with this error. What changed?</strong><br />
+<strong>A:</strong> This often indicates a change in the default permissions. Possible culprits include:<br />
+    *   A repository administrator changed the default workflow permissions in <strong>Repository Settings &gt; Actions &gt; General</strong>.<br />
+    *   An organization owner changed the default workflow permissions at the organization level.<br />
+    *   A new step or action was added to your workflow that requires permissions not previously needed.<br />
+    *   A third-party action you're using was updated and now requires additional permissions or has changed its internal GitHub API calls.</p>
+<p><strong>Q: What's the difference between setting <code>permissions</code> at the workflow level versus the job level?</strong><br />
+<strong>A:</strong> Workflow-level <code>permissions</code> apply to all jobs within that workflow by default. Job-level <code>permissions</code> override any workflow-level settings specifically for that particular job. Use workflow-level for permissions common to most jobs, and job-level for jobs that need specific, potentially elevated, or more restricted permissions. This allows for fine-grained control and helps adhere to the principle of least privilege.</p>
+<p><strong>Q: Do I need to create a Personal Access Token (PAT) for every action that needs write access?</strong><br />
+<strong>A:</strong> No, in almost all cases, you should use the built-in <code>GITHUB_TOKEN</code> and explicitly grant it the necessary <code>permissions</code> in your workflow file. Creating and managing PATs is more complex and poses a higher security risk (PATs have long lifetimes and broad scopes if not managed carefully). A PAT is typically only considered as a last resort for scenarios where <code>GITHUB_TOKEN</code> cannot fulfill the requirement, such as interacting with resources in <em>another</em> repository.</p>
+<p><strong>Q: Why do I sometimes see "Bad credentials" instead of "Resource not accessible"?</strong><br />
+<strong>A:</strong> "Bad credentials" usually means the token itself is invalid, expired, or malformed. "Resource not accessible" means the token <em>is</em> valid, but it simply lacks the authorization (permissions) to perform a specific action on a specific resource. This distinction is helpful for debugging.</p>
 <h2 id="related-errors">Related Errors</h2>
-<ul>
-<li><a href="/errors/linux-permission-denied.html">linux-permission-denied</a></li>
-</ul>
+<p><em>(none)</em></p>
     </div>
 
     <!-- ── AdSense placement 2 – bottom of article ───────────────────────── -->
@@ -424,7 +408,7 @@ jobs:
     <div class="container">
       <p class="footer-logo">⚡ ErrorFix.dev</p>
       <p>Practical, engineer-written guides for real-world software errors.</p>
-      <p style="margin-top:.5rem">Last updated: <time>June 07, 2026</time>.</p>
+      <p style="margin-top:.5rem">Last updated: <time>June 08, 2026</time>.</p>
       <p class="footer-links" style="margin-top:.75rem">
         <!-- ╔══════════════════════════════════════════════════════════════╗ -->
         <!-- ║  AFFILIATE LINKS – replace the href values below            ║ -->
