@@ -1,226 +1,240 @@
 # BadRequestError: 400 Bad Request
-> Encountering a 400 Bad Request error with the OpenAI API means your request body or parameters are malformed or invalid; this guide explains how to fix it.
-
-As a Cloud Infrastructure Engineer, I've spent countless hours integrating with various APIs, and the `400 Bad Request` is a familiar sight. While it can be frustrating, it's almost always a client-side issue, meaning the fix lies within your code or configuration. When working with the OpenAI API, this error usually points directly to how you're constructing your API call.
+> Encountering BadRequestError: 400 Bad Request means your request to the OpenAI API was malformed or invalid; this guide explains how to fix it.
 
 ## What This Error Means
 
-A `400 Bad Request` is an HTTP status code indicating that the server cannot or will not process the request due to something that is perceived to be a client error (e.g., malformed request syntax, invalid request message framing, or deceptive request routing). In simpler terms, the OpenAI server understood what you were trying to do – call an API endpoint – but the data or parameters you sent along with that request didn't meet its expectations. The server didn't crash; it just politely (or not so politely) rejected your input.
+The `BadRequestError: 400 Bad Request` is a common HTTP status code indicating that the server cannot or will not process the request due to something that is perceived to be a client error. When you encounter this with the OpenAI API, it specifically means that the request you sent was somehow malformed, incomplete, or contained invalid parameters, preventing the API from understanding or fulfilling it.
 
-This is distinct from other errors like `401 Unauthorized` (missing or invalid API key), `403 Forbidden` (lack of permissions), `404 Not Found` (incorrect endpoint URL), or `5xx Server Error` (something went wrong on OpenAI's side). With a 400, the ball is firmly in your court.
+Crucially, a 400 error is a *client-side error*. This isn't an issue with the OpenAI servers being down or overloaded (those would typically be 5xx errors). Instead, the problem lies within the structure, content, or headers of the request originating from your application or script. The API received your request but couldn't process it because it didn't adhere to the expected format or rules.
 
 ## Why It Happens
 
-The OpenAI API, like most well-designed APIs, has a contract: it expects specific data in a specific format to perform its operations. When your request deviates from this contract, the server can't fulfill your request reliably and throws a 400 error. It's the API's way of saying, "I don't understand what you want because you're not speaking my language correctly."
+In my experience, this error most frequently occurs when the data sent to the OpenAI API doesn't match the API's expectations for a given endpoint. The API has strict contracts regarding the request body structure, required parameters, data types, and valid ranges for those parameters. Any deviation from these contracts can trigger a `400 Bad Request` response.
 
-I've often found this happens because developers (myself included!) sometimes make assumptions about parameter types, required fields, or even subtle differences in JSON structure between different API versions or models.
+It's essentially the API telling you, "I got your message, but I don't understand what you're asking, or your request is syntactically incorrect." This can be frustrating because sometimes the error message from the API isn't immediately obvious, requiring a bit of detective work to pinpoint the exact issue.
 
 ## Common Causes
 
-Based on my experience troubleshooting `400 Bad Request` errors with the OpenAI API, here are the most frequent culprits:
+Through countless hours of debugging, I've identified several common scenarios that lead to `400 Bad Request` errors with the OpenAI API:
 
-1.  **Malformed JSON Body:** This is arguably the most common cause. Syntax errors like missing commas, incorrect quotes, unclosed brackets (`{`, `[`) in your JSON payload will prevent the server from parsing your request.
-    *   *Example:* An extra comma after the last item in a JSON object or array.
-2.  **Missing Required Parameters:** Every OpenAI API endpoint has certain parameters that are mandatory. For instance, when using `/v1/chat/completions`, you *must* provide `model` and `messages`. Forgetting one will result in a 400.
-3.  **Invalid Parameter Types:** Sending a string where an integer is expected, or an object where a string is needed.
-    *   *Example:* Setting `temperature` to `"0.7"` (string) instead of `0.7` (float/number).
-4.  **Out-of-Range Parameter Values:** Some parameters have specific acceptable ranges.
-    *   *Example:* Setting `max_tokens` to `0` or a very high number like `100000` (beyond the model's context window or API limits) can trigger a 400. `temperature` must be between `0` and `2`.
-5.  **Incorrect `Content-Type` Header:** While less common if using official client libraries, manually crafting requests without `Content-Type: application/json` can lead to the server not knowing how to parse your request body.
-6.  **Using Deprecated Models or API Versions:** Sometimes, an older model name or API version you're calling might no longer be supported, leading to a malformed request if the server expects a different format.
-7.  **Empty Request Body (when a body is expected):** Sending an empty POST request to an endpoint that anticipates a JSON payload.
+1.  **Malformed JSON Payload:** This is probably the most frequent cause.
+    *   **Syntax Errors:** Missing commas, extra commas, unclosed braces or brackets, incorrect escaping of characters within strings.
+    *   **Invalid Data Types:** Sending a string when an integer is expected (e.g., `{"temperature": "0.7"}` instead of `{"temperature": 0.7}`).
+    *   **Incorrect Parameter Names:** Typos in parameter keys (e.g., `modle` instead of `model`, `massages` instead of `messages`).
+2.  **Missing Required Parameters:** Every API endpoint has mandatory parameters. If you omit one, the API won't know how to fulfill the request. For example, `model` and `messages` are required for chat completions.
+3.  **Invalid Parameter Values:**
+    *   **Out-of-Range Values:** Parameters like `temperature` or `top_p` have specific valid ranges (e.g., `0.0` to `2.0`). Sending a value outside this range (e.g., `temperature: 3.0`) will result in a 400.
+    *   **Non-existent Models:** Requesting a model name that doesn't exist or is deprecated (e.g., `gpt-4-turbo-v999`).
+    *   **Invalid `role`:** In chat completions, message roles must be `system`, `user`, or `assistant`. Any other role will cause an error.
+4.  **Incorrect Headers:**
+    *   **Missing `Content-Type`:** For requests with a JSON body, the `Content-Type` header *must* be `application/json`.
+    *   **Incorrect `Authorization`:** While a completely invalid or missing API key typically results in a `401 Unauthorized` error, sometimes a malformed `Authorization` header (e.g., `Bearer` prefix missing or incorrect casing) can lead to a 400.
+5.  **Empty Request Body:** Sending an empty body (or `null`) to an endpoint that expects a structured JSON object.
+6.  **Exceeding Context Window / Token Limits:** If your `messages` array for a chat completion is excessively long and exceeds the model's maximum context window, the API may respond with a 400 error, sometimes with a specific message indicating token limit issues.
+7.  **Incorrect API Endpoint:** Accidentally sending a chat completion request to an embeddings endpoint, or vice-versa, can lead to a 400 because the payload structure will be completely mismatched.
 
 ## Step-by-Step Fix
 
-Here’s my go-to troubleshooting process when I hit a `400 Bad Request` with OpenAI:
+Debugging a `400 Bad Request` requires a systematic approach. Here's the workflow I typically follow:
 
-1.  **Validate Your JSON Payload:**
-    *   **Action:** If you're manually constructing your JSON string or debugging, paste it into a JSON linter/validator (e.g., `jsonlint.com`, VS Code's built-in JSON validation). Look for syntax errors: misplaced commas, unescaped characters, incorrect nesting.
-    *   **Code Tip:** When using Python's `json` module, `json.dumps()` typically handles proper formatting, but ensure your input *to* `dumps` is a valid Python dictionary/list.
+1.  **Examine the API Response Body:**
+    *   OpenAI API errors almost always include a JSON response body with more specific details about what went wrong. Look for `{"error": {"message": "..."}}` or similar structures. This `message` often provides crucial clues, like "Invalid value for 'temperature': must be between 0.0 and 2.0" or "Missing required parameter 'model'". This is your first and best debugging tool.
 
-2.  **Cross-Reference OpenAI API Documentation:**
-    *   **Action:** Go directly to the official OpenAI API documentation for the specific endpoint you're calling (e.g., "Chat Completions API"). Carefully review the "Request Body" section.
-    *   **Focus On:**
-        *   **Required Parameters:** Make sure every mandatory field is present.
-        *   **Parameter Names:** Are you using the exact parameter names (e.g., `max_tokens` vs. `maxTokens`)? Casing matters.
-        *   **Data Types:** Is `model` a string? `temperature` a float? `messages` a list of objects?
-        *   **Value Ranges:** Does `temperature` fall between 0 and 2? Is `n` an integer between 1 and 128?
+2.  **Validate Your JSON Payload Syntax:**
+    *   If you're constructing JSON manually or seeing issues, use a JSON linter or online validator (like `jsonlint.com`) to check for syntax errors. Copy your entire request body and paste it in. Often, a single misplaced comma or bracket is the culprit.
+    *   When using `curl`, ensure proper escaping of quotes within the JSON string.
 
-3.  **Log and Inspect the Full Request:**
-    *   **Action:** Before sending, print the *exact* request body and headers you're sending. This is crucial for isolating the problem. Don't just assume what your code is sending; verify it.
-    *   **Python Example:**
-        ```python
-        import json
-        import os
-        from openai import OpenAI
+3.  **Verify Required Parameters:**
+    *   Consult the [OpenAI API documentation](https://platform.openai.com/docs/api-reference/) for the specific endpoint you're calling. Double-check that all *required* parameters are present in your request.
+    *   For chat completions, ensure `model` and `messages` are always present.
 
-        client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+4.  **Check Parameter Types and Ranges:**
+    *   For each parameter, confirm that you're sending the correct data type (e.g., `string`, `integer`, `float`, `boolean`, `array`).
+    *   Review the acceptable range for numerical parameters like `temperature`, `top_p`, `max_tokens`.
+    *   Ensure any `enum` values (like message `role`s: `system`, `user`, `assistant`) are exactly as expected.
 
-        # Your intended request payload
-        payload = {
-            "model": "gpt-3.5-turbo",
-            "messages": [
-                {"role": "system", "content": "You are a helpful assistant."},
-                {"role": "user", "content": "Hello!"}
-            ],
-            "temperature": 0.7,
-            # "max_tokens": "50" # Intentionally wrong type for demonstration
+5.  **Inspect HTTP Headers:**
+    *   Ensure the `Content-Type` header is set to `application/json` when sending a JSON body.
+    *   Verify your `Authorization` header is correctly formatted as `Bearer YOUR_API_KEY`. While 401 is more common for auth issues, a malformed header can sometimes trickle down to a 400.
+
+6.  **Isolate the Issue with Minimal Requests:**
+    *   If your request is complex, try sending the simplest possible valid request to the API. For chat completions, this might be:
+        ```json
+        {
+          "model": "gpt-3.5-turbo",
+          "messages": [
+            {"role": "user", "content": "Hello, world!"}
+          ]
         }
-
-        print("--- Request Payload (as Python dict) ---")
-        print(payload)
-        print("\n--- Request Payload (as JSON string) ---")
-        print(json.dumps(payload, indent=2)) # Pretty print for inspection
-
-        # Example of how you would send the request (assuming 'client' is configured)
-        try:
-            # response = client.chat.completions.create(**payload)
-            # print(response.choices[0].message.content)
-            print("\n(Actual API call commented out for logging example)")
-        except Exception as e:
-            print(f"\nCaught an error during API call: {e}")
-            # If the error is a BadRequestError, the message content often hints at the problem.
-            # print(e.response.json()) # If using requests library or similar, might have a response object
         ```
-    *   **Shell (cURL) Example:**
-        ```bash
-        curl -X POST https://api.openai.com/v1/chat/completions \
-          -H "Content-Type: application/json" \
-          -H "Authorization: Bearer $OPENAI_API_KEY" \
-          -d '{
-            "model": "gpt-3.5-turbo",
-            "messages": [
-              {"role": "system", "content": "You are a helpful assistant."},
-              {"role": "user", "content": "Hello!"}
-            ],
-            "temperature": 0.7
-            # "max_tokens": "50" <- If you include this, the server will error
-          }'
-        ```
-        Run this `curl` command. If it works, the issue is in your code. If it errors, inspect the `-d` payload carefully.
+    *   Once that works, incrementally add parameters back to your original request until you identify which parameter addition or modification causes the 400 error. This "binary search" approach can save a lot of time.
 
-4.  **Isolate the Problem:**
-    *   **Action:** If your request is complex, try sending a minimal, known-good request that definitely works (e.g., just `model` and `messages` for chat completions).
-    *   **Process:** Gradually add parameters back one by one until the error reappears. This pinpoints the exact parameter causing the issue.
+7.  **Review OpenAI SDK Usage:**
+    *   If you're using a client library (e.g., `openai-python`), make sure you're passing arguments to the library functions correctly, according to its documentation. Sometimes, the SDK expects parameters in a slightly different format than the raw HTTP API.
+    *   Update your SDK to the latest version. I've seen issues resolved just by upgrading, as bug fixes or API spec updates are often included.
 
-5.  **Examine the Error Response Body:**
-    *   **Action:** The OpenAI API often provides a JSON response even for 400 errors, containing a more specific error message. In Python, if you're using the `openai` library, the exception object might contain details. If using `requests`, `response.json()` will usually hold this.
-    *   *Example (from Python `openai` library):* `openai.BadRequestError: 400 The maximum tokens must be an integer and cannot be less than 1.` This message immediately tells you `max_tokens` is the culprit and what's wrong with its value.
+### Example Debugging with `curl`
+
+A quick way to test and debug from the command line is using `curl`. Here's how you might test a chat completion request and intentionally introduce an error:
+
+```bash
+# Correct request
+curl -s -X POST https://api.openai.com/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $OPENAI_API_KEY" \
+  -d '{
+    "model": "gpt-3.5-turbo",
+    "messages": [
+      {"role": "user", "content": "What is the capital of France?"}
+    ],
+    "temperature": 0.7
+  }' | json_pp
+```
+This should return a valid response. Now, let's intentionally send an invalid `temperature` value:
+
+```bash
+# Incorrect request (temperature out of range)
+curl -s -X POST https://api.openai.com/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $OPENAI_API_KEY" \
+  -d '{
+    "model": "gpt-3.5-turbo",
+    "messages": [
+      {"role": "user", "content": "What is the capital of France?"}
+    ],
+    "temperature": 3.0
+  }' | json_pp
+```
+The response from this incorrect request will likely look something like this, clearly pointing out the problem:
+```json
+{
+   "error": {
+      "code": "invalid_request_error",
+      "message": "3.0 is greater than the maximum of 2.0 - 'temperature'",
+      "param": "temperature",
+      "type": "invalid_request_error"
+   }
+}
+```
 
 ## Code Examples
 
-Here are some concise examples demonstrating common `400 Bad Request` scenarios and their fixes using the `openai` Python library:
+Here are some concise, copy-paste ready Python examples illustrating how to make a request and what might cause a 400 error.
 
-### Correct API Call
-
-```python
-import os
-from openai import OpenAI
-
-client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
-
-try:
-    response = client.chat.completions.create(
-        model="gpt-3.5-turbo",
-        messages=[
-            {"role": "system", "content": "You are a helpful assistant."},
-            {"role": "user", "content": "What is the capital of France?"}
-        ],
-        temperature=0.7,
-        max_tokens=50
-    )
-    print("Correct API Call Response:")
-    print(response.choices[0].message.content)
-except Exception as e:
-    print(f"Error for correct call: {e}")
-
-```
-
-### Example of `BadRequestError` due to Invalid Parameter Type
-
-Trying to send `max_tokens` as a string instead of an integer.
+First, ensure you have the `openai` library installed: `pip install openai`
 
 ```python
+import openai
 import os
-from openai import OpenAI
-import openai # Import top-level to catch specific errors
 
-client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+# Set your API key from an environment variable for security
+# e.g., export OPENAI_API_KEY="sk-..."
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
+def make_chat_completion_request(model, messages, temperature):
+    """Helper function to make a chat completion request."""
+    try:
+        response = openai.ChatCompletion.create(
+            model=model,
+            messages=messages,
+            temperature=temperature
+        )
+        print("Success! Response:")
+        print(response.choices[0].message['content'])
+    except openai.error.InvalidRequestError as e:
+        # This is where a 400 Bad Request usually manifests in the SDK
+        print(f"Error: {e}")
+    except Exception as e:
+        print(f"An unexpected error occurred: {e}")
+
+# --- Example 1: Correct Request ---
+print("--- Correct Request Example ---")
+make_chat_completion_request(
+    model="gpt-3.5-turbo",
+    messages=[
+        {"role": "system", "content": "You are a helpful assistant."},
+        {"role": "user", "content": "Tell me a fun fact about space."}
+    ],
+    temperature=0.7
+)
+
+# --- Example 2: Invalid Temperature (Causes 400) ---
+print("\n--- Invalid Temperature Example (Expected 400) ---")
+make_chat_completion_request(
+    model="gpt-3.5-turbo",
+    messages=[
+        {"role": "user", "content": "What's the weather like?"}
+    ],
+    temperature=3.5 # Invalid: must be between 0.0 and 2.0
+)
+
+# --- Example 3: Missing Required Parameter 'messages' (Causes 400) ---
+print("\n--- Missing Required Parameter Example (Expected 400) ---")
+make_chat_completion_request(
+    model="gpt-3.5-turbo",
+    messages=[], # Empty messages array is technically valid but might be caught by some API versions
+    temperature=0.5
+)
+# A more explicit missing parameter:
 try:
-    response = client.chat.completions.create(
+    openai.ChatCompletion.create(
         model="gpt-3.5-turbo",
-        messages=[
-            {"role": "system", "content": "You are a helpful assistant."},
-            {"role": "user", "content": "Tell me a joke."}
-        ],
-        temperature=0.7,
-        max_tokens="50"  # INCORRECT: Should be an integer (50), not a string ("50")
+        # messages parameter is completely omitted here
+        temperature=0.5
     )
-    print("Response with incorrect max_tokens type:")
-    print(response.choices[0].message.content)
-except openai.BadRequestError as e:
-    print(f"\nCaught BadRequestError due to 'max_tokens' type:")
-    print(e)
-    # The error message will likely be: "400 The maximum tokens must be an integer and cannot be less than 1."
-except Exception as e:
-    print(f"\nCaught unexpected error: {e}")
+except openai.error.InvalidRequestError as e:
+    print(f"Error for missing messages: {e}")
 
-# Fix: Change max_tokens to an integer
-# try:
-#     response = client.chat.completions.create(
-#         model="gpt-3.5-turbo",
-#         messages=[
-#             {"role": "system", "content": "You are a helpful assistant."},
-#             {"role": "user", "content": "Tell me a joke."}
-#         ],
-#         temperature=0.7,
-#         max_tokens=50  # CORRECT: Integer
-#     )
-#     print("\nFixed call response:")
-#     print(response.choices[0].message.content)
-# except Exception as e:
-#     print(f"Error for fixed call: {e}")
+# --- Example 4: Invalid Model Name (Causes 400) ---
+print("\n--- Invalid Model Name Example (Expected 400) ---")
+make_chat_completion_request(
+    model="non-existent-model-v1", # Typo or old model
+    messages=[
+        {"role": "user", "content": "Hello!"}
+    ],
+    temperature=0.7
+)
 ```
 
 ## Environment-Specific Notes
 
-The fundamental cause of a `400 Bad Request` remains the same across environments, but how you troubleshoot or the peripheral factors can differ.
-
-*   **Cloud (AWS Lambda, Google Cloud Functions, Azure Functions):**
-    *   **Environment Variables:** Ensure your `OPENAI_API_KEY` (or whatever credential you use) is correctly configured in your function's environment variables. While an invalid key usually causes a 401, a *malformed* key could potentially lead to a 400.
-    *   **Logging:** Ensure comprehensive logging is enabled. I've seen this in production when logs are insufficient, making it hard to inspect the exact payload sent from a serverless function. Use `print()` statements (which often go to CloudWatch Logs or Stackdriver) before making the API call to dump the request body.
-    *   **Payload Size Limits:** Be mindful of payload size limits for both the API you're calling and the cloud function itself. While less common with OpenAI's request sizes, very large prompt inputs *could* theoretically exceed a proxy limit before even reaching OpenAI, though a 413 (Payload Too Large) is more typical.
-
-*   **Docker Containers:**
-    *   **Network Proxies:** If your Docker container is behind a corporate proxy, ensure proxy settings (`HTTP_PROXY`, `HTTPS_PROXY`) are correctly configured within the container's environment. An incorrectly configured proxy *might* mangle the request, leading to a 400.
-    *   **`Content-Type` Headers:** When services within Docker containers communicate, ensure `Content-Type` headers are consistently set, especially if you're not using a high-level client library.
-    *   **Container Logs:** Remember to check your container's `stdout`/`stderr` using `docker logs <container_id>` for any debug prints you added.
+The context in which you're making API calls can influence how you debug `BadRequestError: 400 Bad Request`.
 
 *   **Local Development:**
-    *   **IDE Auto-formatting:** Be wary of IDEs or editors that aggressively reformat JSON or code, as they might introduce syntax errors (e.g., adding an extra comma) without you noticing immediately.
-    *   **Firewalls/Proxies:** Local firewalls or corporate proxies can sometimes interfere, though usually they'd block the request entirely (timeout) or return a different error.
-    *   **Debugging Tools:** Use network inspection tools (like browser developer tools for frontend calls, or Wireshark/tcpdump for deeper network inspection if you suspect low-level issues) to view the raw HTTP request being sent.
+    *   **Pros:** You have direct access to your code, console output, and network requests. It's often easiest to debug here. You can use breakpoints, print statements, and `curl` commands directly.
+    *   **Cons:** Sometimes, local environment variables (like your `OPENAI_API_KEY`) might differ from staging or production, or proxy settings could cause issues.
+    *   **Tip:** Use tools like Postman or Insomnia to compose and test API requests outside your code, verifying the raw JSON payload before integrating it.
+
+*   **Docker Containers:**
+    *   **Pros:** Standardized environment.
+    *   **Cons:** Debugging can be trickier. You might need to `docker exec` into the container to inspect logs or run `curl` commands. Environment variables for API keys need to be correctly passed into the container at runtime.
+    *   **Tip:** Ensure your `Dockerfile` and `docker-compose.yml` correctly set environment variables (e.g., using `ENV` or `environment` in compose). Check container logs (`docker logs <container_id>`) for any exceptions caught by your application, which might contain the specific OpenAI error message.
+
+*   **Cloud Environments (e.g., AWS Lambda, Azure Functions, Google Cloud Run/GKE):**
+    *   **Pros:** Scalability, managed infrastructure.
+    *   **Cons:** Debugging usually relies heavily on centralized logging and monitoring. Direct interaction with the running code is limited. Network egress rules can sometimes cause unexpected behaviors, though less commonly a 400 (more often a timeout or connection refused).
+    *   **Tip:**
+        *   **Logging:** Ensure your application logs the full API request (sanitizing API keys!) and the full API response, especially the error body. Cloud environments like CloudWatch (AWS), Application Insights (Azure), or Cloud Logging (GCP) are crucial for this.
+        *   **Environment Variables:** Verify that environment variables holding your OpenAI API key are correctly configured in your serverless function or container orchestration platform.
+        *   **VPC/Network Configuration:** While less common for 400 errors, ensure your cloud resources have appropriate network access to external endpoints like `api.openai.com`. If outbound connections are blocked, you might get a connection error, but if a partially formed request gets through and then fails, it could be confusing.
+
+I've personally seen this in production when a new feature was deployed, and a developer overlooked a specific validation rule for a new parameter, leading to 400s only for certain user inputs that hit that edge case. Robust logging of API responses was key to quickly identifying and fixing the issue.
 
 ## Frequently Asked Questions
 
-**Q: Is a 400 Bad Request error always my fault as the client?**
-**A:** In the vast majority of cases, yes. A 400 status code explicitly tells you that the server considers your request malformed or invalid according to its rules. It's almost never a problem on the server's end.
+**Q: Is a 400 Bad Request a server-side or client-side error?**
+**A:** It is definitively a client-side error. It means the server (OpenAI's API) received your request but couldn't process it because the request itself was malformed or invalid according to its rules.
 
-**Q: How can I get a more detailed error message than just "400 Bad Request"?**
-**A:** The OpenAI API typically returns a JSON response body with more specifics. When catching the `BadRequestError` in Python, inspect the exception object (e.g., `str(e)`) or the underlying response object if your library provides it (`e.response.json()` for `requests`). This will often contain a human-readable message like "The 'temperature' parameter must be a float."
+**Q: How can I get more detailed information about why my request was bad?**
+**A:** Always inspect the response body from the OpenAI API. It almost always includes a JSON object with an `error` field containing a `message` that provides specific details about the issue (e.g., "Missing required parameter 'model'", "temperature value out of range").
 
-**Q: My code worked yesterday, but today I'm getting a 400. What changed?**
-**A:** This is a classic. I typically start by considering:
-1.  **Input Data Changes:** Are you feeding different data into your request generation logic? The new input might have characters that need escaping, or values that are out of range.
-2.  **API Version Changes:** Has OpenAI updated its API, deprecating a parameter or changing an expected format? Check the official changelog.
-3.  **Dependency Updates:** If you updated your `openai` library or other related packages, they might have introduced a subtle change in how requests are formed.
-4.  **Configuration Drift:** Has an environment variable or a configuration file been accidentally modified?
+**Q: My code works locally but I get a 400 when deployed to production. What could be different?**
+**A:** Common differences include environment variables (API keys, base URLs), network configurations (firewalls, proxies), different versions of the OpenAI SDK or Python itself, or even changes in how parameters are dynamically generated in production based on live data. Thoroughly compare the request payload and headers generated in both environments.
 
-**Q: Can rate limiting cause a 400 error?**
-**A:** No, rate limiting typically results in a `429 Too Many Requests` status code. A 400 means the *structure* or *content* of your request is bad, not that you've sent too many good requests.
+**Q: Can exceeding token limits for a model cause a 400 error?**
+**A:** Yes, it often can. If your input (e.g., the `messages` array for chat completions) exceeds the maximum context window or token limit for the chosen model, the API will typically respond with a 400 Bad Request error, often with a message indicating a token or context length issue.
 
-**Q: I'm sending JSON, but the server still says it's malformed. What else could it be?**
-**A:** Double-check your `Content-Type` header is precisely `application/json`. Also, ensure you're not double-encoding your JSON (e.g., calling `json.dumps()` on a string that's already JSON). Lastly, verify you're sending a POST or PUT request, not a GET request, if a body is expected.
+**Q: I'm getting a 400 error even though I have a valid OpenAI API key. Why?**
+**A:** A 400 error is about the *content* of your request, not about your authentication. If your API key were invalid or missing, you'd typically receive a `401 Unauthorized` error. A 400 means your key is likely valid, but the request body, parameters, or headers you sent alongside it are incorrect.
 
 ## Related Errors
