@@ -1,174 +1,220 @@
 # Python RecursionError: maximum recursion depth exceeded
-> Encountering Python RecursionError: maximum recursion depth exceeded means your Python function is calling itself too many times; this guide explains how to fix it with practical examples.
+> Encountering Python's RecursionError means your function has called itself too many times without a proper exit condition; this guide explains how to fix it.
 
-When you're knee-deep in Python code, especially with algorithms that process complex data structures, hitting a `RecursionError` can be a jarring stop. It's Python's way of telling you that your function has called itself too many times and pushed the interpreter's call stack to its limit. As an Infrastructure Engineer, I've seen this in production systems where seemingly innocuous recursive calls can bring down services if not handled correctly. This guide will walk you through understanding, diagnosing, and fixing this common runtime issue.
+When you're dealing with Python at runtime, particularly with algorithms that leverage recursion, hitting a `RecursionError: maximum recursion depth exceeded` can be a common hurdle. As an Infrastructure Engineer, I've seen this crop up in everything from data processing scripts to complex API backend services, often indicating an issue with algorithm design or an unexpected edge case in input data. This error means your code has attempted to call a function recursively more times than Python's interpreter allows by default.
 
 ## What This Error Means
 
-At its core, `RecursionError: maximum recursion depth exceeded` signifies that a Python function has invoked itself (either directly or through a chain of calls) so many times that it has surpassed the interpreter's default recursion limit. Every time a function is called, Python adds a "frame" to its call stack to keep track of local variables and where to return after the function completes. Recursive functions, by their nature, build up this stack. When the stack grows beyond a certain threshold, Python prevents a potential system crash by raising this error. Think of it like a safety net for infinite loops disguised as recursion.
+At its core, recursion is a programming technique where a function calls itself to solve a problem. It's often used for tasks that can be broken down into smaller, self-similar subproblems, such as traversing tree structures, calculating factorials, or sorting algorithms. Each time a function is called, a new "frame" is added to the program's call stack. This frame stores information about the function's local variables, arguments, and where to return to once the function completes.
+
+The `RecursionError` occurs when the number of these frames on the call stack exceeds a predefined limit. Python implements this limit (typically 1000 or 3000, depending on the Python version and system) as a safeguard. This isn't just an arbitrary number; it's a critical safety mechanism. Without it, unbounded recursion would continue to add frames to the call stack until it exhausted all available memory, leading to a "stack overflow" and a program crash (or even a system-wide crash in some environments). So, while frustrating, this error is Python telling you, "Hey, something's not right here, and I'm stopping before things get worse."
 
 ## Why It Happens
 
-Python, by design, implements a default recursion limit (typically 1000, though it can vary slightly between versions and operating systems). This limit is a crucial safeguard against stack overflow errors. Without it, a runaway recursive function could endlessly consume memory by adding frames to the call stack until your program runs out of system resources, leading to a much more severe and often unrecoverable crash.
+The most common reason for hitting the recursion limit is a function that either lacks a proper "base case" or has a base case that is never reached under certain conditions. The base case is the non-recursive part of a recursive function that defines when the recursion should stop. Without it, or if it's flawed, the function will call itself indefinitely, incrementing the recursion depth with each call until Python's safety limit is breached.
 
-When your recursive function doesn't have a clear "escape route" – a condition under which it stops calling itself and simply returns a value – it will continue to add frames to the stack. Once the number of frames exceeds the set limit, the `RecursionError` is triggered. While the limit can be adjusted, encountering this error often points to either a logical flaw in the recursive algorithm or an instance where recursion isn't the most appropriate solution for the problem at hand given Python's default stack limitations. In my experience, increasing the limit without a deep understanding of the root cause can merely postpone the problem or introduce new memory-related issues.
+Another reason, less common but equally impactful, is legitimately deep recursion. Sometimes, the problem you're trying to solve (e.g., processing a deeply nested JSON structure, traversing a very large and deep directory tree, or certain graph algorithms) genuinely requires a recursive depth that exceeds Python's default limit. In these cases, the recursion is theoretically finite, but the specific input or data structure pushes it beyond the interpreter's default bounds.
+
+I've also encountered scenarios where unexpected input data, perhaps malformed or larger than anticipated, inadvertently triggers a deeper recursion path than the algorithm was designed to handle. This often points to a need for more robust input validation or a different algorithmic approach.
 
 ## Common Causes
 
-Identifying the root cause is the first step towards a sustainable fix. Here are the most frequent culprits for `RecursionError`:
+Let's break down the typical culprits behind this error:
 
-*   **Missing Base Case:** This is, by far, the most common reason. A recursive function *must* have one or more base cases—conditions under which the function stops recursing and returns a result directly, without making further recursive calls. If your function lacks this, it will simply call itself forever until the recursion limit is hit.
-*   **Incorrect Base Case Logic:** The base case might exist, but its conditions are never met for certain inputs, or the logic to reach it is flawed. This means the function continues to recurse past the point it should have terminated.
-*   **Input Size Too Large for Recursive Approach:** Even with a perfectly sound base case, some problems, when applied to very large inputs (e.g., traversing an extremely deep tree, calculating a large factorial), might naturally require a recursion depth that exceeds Python's default limit. Here, the logic isn't "wrong," but the recursive model is simply not efficient or suitable for the scale.
-*   **Inefficient Recursive Step:** The way the function breaks down the problem or makes subsequent recursive calls might lead to an unnecessarily rapid increase in recursion depth, quickly hitting the limit.
-*   **Mutual Recursion without Termination:** This occurs when two or more functions call each other in a cycle (e.g., `func_a` calls `func_b`, which then calls `func_a` again). If there isn't a proper base case or termination condition within this cycle, it will also lead to an infinite recursion.
+*   **Missing or Flawed Base Case:** This is overwhelmingly the primary cause. A recursive function *must* have a condition that tells it when to stop recursing and start returning values. If this condition is missing, incorrect, or never met for a given input, the recursion will continue forever. For example, a factorial function without `if n == 0: return 1` will recurse infinitely for non-positive numbers.
+*   **Large Inputs / Deep Data Structures:** Even with a correct base case, processing extremely large datasets or navigating deeply nested data structures (like a tree with thousands of levels) can push the recursion depth beyond the default limit. This isn't a bug in the recursion logic itself, but rather an indication that the problem's scale exceeds the default recursive capacity.
+*   **Mutual Recursion Issues:** Sometimes, two or more functions call each other in a cyclical fashion. If the termination conditions for this cycle are incorrect or never met, it can also lead to an unbounded recursion depth across multiple functions.
+*   **Accidental Self-Reference or Incorrect Logic:** While rare, a function might inadvertently call itself due to a typo or a misunderstanding of how a helper function or method resolution order works, leading to an unintended recursive loop.
 
 ## Step-by-Step Fix
 
-Addressing a `RecursionError` requires a methodical approach.
+Addressing a `RecursionError` usually involves a systematic approach:
 
-1.  **Examine the Traceback:** Python's traceback is your most valuable diagnostic tool. When a `RecursionError` occurs, the traceback will often be very long, showing hundreds or thousands of repeated calls to the same function.
+1.  **Identify the Recursive Function:**
+    The traceback provided by Python will clearly point to the function where the error occurred. This is your starting point. Look for lines repeating the same function call in the traceback.
+
+2.  **Analyze the Base Case:**
+    *   **Does it exist?** Review the recursive function's code. Is there an `if` statement or similar condition that explicitly stops the recursion?
+    *   **Is it reachable?** For a given input, can you logically guarantee that the base case condition will eventually be met? Use print statements or a debugger to trace the values of the function's arguments as it recurses. For example, in a function `f(n)`, ensure `n` is consistently moving towards the base case (e.g., `n-1` decreasing towards `0`).
+    *   **Example Debugging:**
+        ```python
+        def problematic_recursion(n):
+            print(f"Current n: {n}") # Debug statement
+            if n < 0: # This might be intended as a base case, but if called with n=0, it won't hit.
+                return 0
+            return problematic_recursion(n + 1) # This increments, moving AWAY from a negative base case.
+
+        # problematic_recursion(0) will recurse infinitely.
+        ```
+
+3.  **Refactor to Iteration (The Recommended Approach):**
+    In my experience, this is often the most robust and performant long-term solution, especially for infrastructure-level code that needs to be scalable and resilient. Many problems solvable with recursion can also be solved iteratively using loops (e.g., `for` or `while`) and explicit data structures like stacks or queues. This avoids the recursion depth limit entirely and usually offers better memory usage and performance in Python due to the overhead of function calls.
+
+    **Example: Recursive vs. Iterative Factorial**
+    A common recursive example is calculating factorial:
     ```python
-    Traceback (most recent call last):
-      File "my_script.py", line 10, in <module>
-        my_recursive_function(1001)
-      File "my_script.py", line 7, in my_recursive_function
-        my_recursive_function(n - 1)
-      File "my_script.py", line 7, in my_recursive_function
-        my_recursive_function(n - 1)
-      ...
-      [Previous line repeated 997 more times]
-    RecursionError: maximum recursion depth exceeded
+    def factorial_recursive(n):
+        if n == 0 or n == 1:
+            return 1
+        return n * factorial_recursive(n - 1)
     ```
-    Focus on the lines immediately before `RecursionError`. You'll typically see one or two function names repeating many times. This is your culprit.
+    The iterative equivalent:
+    ```python
+    def factorial_iterative(n):
+        if n < 0:
+            raise ValueError("Factorial is not defined for negative numbers")
+        result = 1
+        for i in range(1, n + 1):
+            result *= i
+        return result
+    ```
+    This pattern of conversion is applicable to many recursive problems, including tree traversals (using a stack) and graph algorithms.
 
-2.  **Identify the Recursive Function(s):** Pinpoint which function (or set of mutually recursive functions) is causing the loop. This will be the function name that appears repeatedly in the traceback.
-
-3.  **Locate and Verify the Base Case:**
-    *   Go to the source code of the identified function. Does it have a conditional statement (e.g., `if`, `elif`) that *does not* make a recursive call? This is your base case.
-    *   Ensure that this base case is logically sound and is *guaranteed* to be met for all valid inputs. Step through the function's logic mentally or with a debugger using small, problematic inputs. For example, if you're summing numbers down to zero, ensure your base case correctly handles `n=0`.
-
-4.  **Consider Iterative Alternatives (Recommended):** For many problems, an iterative (loop-based) solution can achieve the same result as recursion without hitting the depth limit. This is often the most robust and performant fix in Python, especially for large inputs, because Python doesn't optimize for tail recursion.
-    *   If your recursive function operates like a simple loop (e.g., iterating through a list, calculating a factorial), it's usually straightforward to convert it to a `for` or `while` loop.
-    *   For more complex recursive structures like tree or graph traversals, you might need to manage your own stack data structure explicitly.
-
-5.  **Increase the Recursion Limit (Use with Extreme Caution!):** If you are absolutely confident that:
-    *   Your recursive algorithm is logically correct and *will* terminate.
-    *   The required recursion depth is genuinely high for your problem.
-    *   An iterative refactor is significantly more complex or less readable for your specific use case.
-    Then, and only then, consider temporarily increasing the recursion limit using the `sys` module.
+4.  **Increase Recursion Limit (Use with Extreme Caution):**
+    If you are absolutely certain that your recursive algorithm is correct, will always terminate, and the default limit is genuinely too low for your expected data scale, you can increase Python's recursion limit. This should be a last resort and used judiciously, as it increases the risk of a true stack overflow, which can be much harder to recover from.
 
     ```python
     import sys
 
-    # Get the current limit
+    # Check the current limit
     print(f"Current recursion limit: {sys.getrecursionlimit()}")
 
-    # Set a new, higher limit (e.g., 2000 or 3000)
-    # Be aware: This consumes more memory and could lead to a MemoryError if too high.
-    sys.setrecursionlimit(3000)
-    print(f"New recursion limit: {sys.getrecursionlimit()}")
-
-    # Your high-depth recursive function calls here
+    # Increase the limit (e.g., to 2000)
+    # Only do this if you understand the memory implications and are sure of termination.
+    try:
+        sys.setrecursionlimit(2000)
+        print(f"New recursion limit: {sys.getrecursionlimit()}")
+        # Your potentially deep recursive function call here
+    except RecursionError as e:
+        print(f"Still hit recursion error even with increased limit: {e}")
+    except Exception as e:
+        print(f"An unexpected error occurred: {e}")
+    finally:
+        # It's good practice to revert if not needed globally
+        sys.setrecursionlimit(1000) # Revert to default or a safer known limit
     ```
-    I've used `sys.setrecursionlimit` in specific scenarios, like parsing deeply nested configuration files or XML structures with a known maximum depth. However, it's a workaround, not a fix for fundamentally flawed logic or an indication that recursion is simply the wrong paradigm for the problem's scale. Document any such changes thoroughly.
+    When I've had to use `sys.setrecursionlimit()` in production, it's always been accompanied by extensive load testing and memory profiling to ensure we weren't just deferring a more severe problem.
+
+5.  **Optimize the Algorithm (Advanced):**
+    For certain types of recursive problems, techniques like memoization (dynamic programming) can help reduce the number of recursive calls by storing results of already computed subproblems. While this doesn't directly solve the depth issue, it can significantly optimize the *total* calls needed, potentially preventing the limit from being hit for problems where redundant computation is an issue. Python's `functools.lru_cache` decorator is excellent for this.
+
+    ```python
+    from functools import lru_cache
+
+    @lru_cache(maxsize=None) # Cache results indefinitely
+    def fibonacci(n):
+        if n <= 1:
+            return n
+        return fibonacci(n - 1) + fibonacci(n - 2)
+
+    # Without lru_cache, fibonacci(50) would likely hit RecursionError
+    # With lru_cache, it's efficient even for relatively large n
+    # print(fibonacci(50))
+    ```
 
 ## Code Examples
 
-Here are some concise, copy-paste ready examples to illustrate the problem and solutions.
+Here are some concise, copy-paste ready examples illustrating common scenarios and solutions.
 
-**Broken Recursive Function (Missing Base Case)**
-This function will call itself indefinitely because there's no condition to stop the recursion.
-
+**1. Recursive Function with Missing Base Case (Causes Error)**
 ```python
-def broken_recursion(n):
-    # This function lacks a base case.
-    # It will recurse forever, hitting the recursion limit.
-    print(f"Current n: {n}")
-    return broken_recursion(n - 1)
+# broken_recursion.py
+def countdown_to_infinity(n):
+    # Missing a base case to stop the recursion
+    print(f"Counting down from: {n}")
+    return countdown_to_infinity(n + 1) # Incorrect logic, moves away from a stop condition if intended to reach 0
 
-# Uncommenting the line below will raise RecursionError
-# broken_recursion(10)
+# Uncomment to run and see the RecursionError
+# countdown_to_infinity(0)
 ```
 
-**Fixed Recursive Function (With Base Case)**
-This `factorial` function correctly defines a base case (`n == 0` or `n == 1`) to terminate the recursion.
-
+**2. Correct Recursive Function with Proper Base Case**
 ```python
-def factorial_recursive(n):
-    if n < 0:
-        raise ValueError("Factorial is not defined for negative numbers.")
-    if n == 0 or n == 1:  # Base case: stops the recursion
-        return 1
-    else:
-        return n * factorial_recursive(n - 1)
+# correct_recursion.py
+def countdown(n):
+    if n <= 0:  # Base case: stop when n is 0 or negative
+        print("Blast off!")
+        return
+    print(f"Counting down: {n}")
+    countdown(n - 1) # Recursive call, moves towards the base case
 
-# Example usage with a valid input
-print(f"Factorial of 5 (recursive): {factorial_recursive(5)}")
-# Expected output: Factorial of 5 (recursive): 120
-
-# This would likely hit the default limit for large N
-# print(f"Factorial of 1000 (recursive): {factorial_recursive(1000)}")
+# countdown(5)
 ```
 
-**Iterative Alternative (Factorial)**
-For robust solutions with potentially large inputs, an iterative approach is often preferred in Python.
-
+**3. Converting a Recursive Function to an Iterative One (Recommended)**
 ```python
-def factorial_iterative(n):
-    if n < 0:
-        raise ValueError("Factorial is not defined for negative numbers.")
-    if n == 0 or n == 1:
-        return 1
-    
-    result = 1
-    for i in range(2, n + 1):
-        result *= i
-    return result
+# iterative_solution.py
+def depth_first_search_recursive(graph, node, visited=None):
+    if visited is None:
+        visited = set()
+    visited.add(node)
+    print(f"Visited (recursive): {node}")
+    for neighbor in graph.get(node, []):
+        if neighbor not in visited:
+            depth_first_search_recursive(graph, neighbor, visited)
+    return visited
 
-# Example usage
-print(f"Factorial of 5 (iterative): {factorial_iterative(5)}")
-# Expected output: Factorial of 5 (iterative): 120
+def depth_first_search_iterative(graph, start_node):
+    visited = set()
+    stack = [start_node]
+    while stack:
+        node = stack.pop()
+        if node not in visited:
+            visited.add(node)
+            print(f"Visited (iterative): {node}")
+            # Add neighbors to stack for next iteration (order depends on desired DFS behavior)
+            for neighbor in reversed(graph.get(node, [])): # Reverse to match recursive order
+                if neighbor not in visited:
+                    stack.append(neighbor)
+    return visited
 
-# This works perfectly fine for large N
-print(f"Factorial of 1000 (iterative): {factorial_iterative(1000)}") 
+graph = {
+    'A': ['B', 'C'],
+    'B': ['D', 'E'],
+    'C': ['F'],
+    'D': [],
+    'E': ['F'],
+    'F': []
+}
+
+# print("--- Recursive DFS ---")
+# depth_first_search_recursive(graph, 'A')
+
+# print("\n--- Iterative DFS ---")
+# depth_first_search_iterative(graph, 'A')
 ```
 
 ## Environment-Specific Notes
 
-How you debug and resolve `RecursionError` can vary slightly depending on your deployment environment.
+The impact and troubleshooting approach for `RecursionError` can vary slightly depending on your deployment environment.
 
 *   **Local Development:**
-    *   Your IDE's debugger (e.g., VS Code, PyCharm) is your best friend here. Set breakpoints inside your recursive function and step through the calls. Observe the values of parameters, especially the one controlling the recursion (e.g., `n` in `factorial`). This visual inspection helps you see exactly why the base case isn't being met or why the depth is increasing too quickly. This is where I always start.
-    *   Adjusting `sys.setrecursionlimit` is straightforward. Just remember it's a per-process change and won't persist across different runs or interpreter sessions.
+    Debugging is usually straightforward here. You have direct access to the traceback, can easily use Python's built-in debugger (`pdb`), or integrate with IDE debuggers. `sys.setrecursionlimit()` can be tested without impacting other services. The main concern is understanding the problem's scale.
 
-*   **Cloud Functions/Serverless (e.g., AWS Lambda, Google Cloud Functions, Azure Functions):**
-    *   Direct debugging is often limited. Your primary tool will be the service's logging mechanisms (CloudWatch Logs, Cloud Logging, etc.). Ensure your function logs the full traceback when an error occurs.
-    *   Beware of cold starts: if your recursive function is part of a function's initialization or a critical path, increasing the recursion limit might not save you if the function itself runs out of memory due to the large stack, which can happen before `RecursionError` is even raised.
-    *   Memory limits are critical here. Each function invocation has a configured memory limit. Extensive recursion, even if it eventually terminates, can rapidly consume this memory, leading to an Out-Of-Memory (OOM) error before `RecursionError` fires. This is a strong indicator that an iterative rewrite is necessary.
+*   **Cloud Environments (AWS Lambda, Google Cloud Functions, Azure Functions):**
+    This is where `RecursionError` can be particularly tricky. Serverless functions often have strict memory and execution time limits. Deep recursion can quickly consume the allocated memory, leading to an Out-of-Memory (OOM) error *before* the Python `RecursionError` is even logged. Or, if the recursion is simply too slow, it might hit a function timeout.
+    *   **Logging is paramount:** Ensure your functions log verbosely to capture the full traceback. Cloud logging services (CloudWatch, Stackdriver, Azure Monitor) are your best friends.
+    *   **Iteration over Recursion:** In cloud functions, iterative solutions are almost always preferred. They are more predictable in terms of memory usage and generally more efficient, fitting well within the ephemeral, resource-constrained nature of serverless.
+    *   `sys.setrecursionlimit()` should be used with extreme caution here. Increasing it might just shift the problem from a `RecursionError` to an OOM or timeout, which are harder to diagnose.
 
-*   **Docker/Containerized Applications:**
-    *   You can often attach debuggers to running containers, similar to local development, but this might not be feasible in production.
-    *   Logs are essential. Ensure your container logging is configured to capture full Python tracebacks.
-    *   Changes to `sys.setrecursionlimit` within a Docker container are isolated to that container instance. If you scale your application, each new container will start with the default limit unless explicitly configured in your container's entry point script or application code.
-    *   Resource constraints defined in your container orchestrator (e.g., Kubernetes, ECS) for CPU and RAM can magnify the problem. A recursive function might hit memory limits much faster in a resource-constrained container than on a powerful local development machine. Monitoring container resource usage is crucial to catch these scenarios. I've often seen `RecursionError` preceding an OOM kill in containers, which nearly always drives me to an iterative solution.
+*   **Docker Containers:**
+    Similar to local development but with resource constraints. If your Docker container has strict memory limits (e.g., set via `docker run -m` or in orchestrators like Kubernetes), deep recursion could lead to the container being killed by the OOM killer before Python explicitly raises `RecursionError`.
+    *   **Container Logs:** Make sure your application's standard output/error (stdout/stderr) is correctly captured by your container logging solution (e.g., `docker logs`, Kubernetes `kubectl logs`).
+    *   **Resource Monitoring:** Keep an eye on container resource usage. Spikes in memory or CPU might indicate an inefficient recursive process.
 
 ## Frequently Asked Questions
 
-*   **Q: Can I just increase the recursion limit indefinitely?**
-    *   A: No. While you can raise the limit, there's a physical limit to your system's available memory. Each stack frame consumes memory. Setting the limit excessively high will eventually lead to a `MemoryError` or, in extreme cases, a system crash. It should be a carefully considered workaround, not a default solution.
+**Q: Why does Python have a recursion limit at all?**
+**A:** Python sets a recursion limit primarily as a safety measure. It prevents infinite recursion from causing a stack overflow, which would consume all available memory and crash your program or even the entire system. It acts as a guardrail against common algorithmic mistakes.
 
-*   **Q: Is recursion always bad in Python?**
-    *   A: Not at all. Recursion can provide elegant, concise, and highly readable solutions for problems that are inherently recursive (e.g., tree traversals, certain mathematical definitions). However, Python's interpreter doesn't perform tail call optimization (TCO) like some other languages, which means iterative solutions are often more performant and less memory-intensive for deeply recursive problems.
+**Q: Is recursion inherently bad or inefficient in Python?**
+**A:** Not inherently bad, but often less efficient than iterative solutions in Python. Python does not optimize for "tail-call recursion," meaning each recursive call adds a new frame to the call stack, incurring memory and performance overhead. For many problems, especially those requiring deep recursion, an iterative approach using loops and explicit stacks/queues is usually more performant and robust.
 
-*   **Q: How do I choose between a recursive and an iterative solution?**
-    *   A: Prioritize correctness and clarity first. For problems with small, predictable recursion depths, a recursive solution can be very expressive. For problems with potentially large or unbounded depths, or when performance and memory efficiency are critical, an iterative approach is generally safer and more performant in Python.
+**Q: Can I catch a `RecursionError` using `try...except`?**
+**A:** Yes, `RecursionError` is a subclass of `RuntimeError`, so you can catch it with a `try...except RecursionError:` block. However, merely catching it often masks a fundamental design flaw. It's generally better to fix the underlying issue (e.g., by adding a proper base case or refactoring to iteration) rather than just catching the error.
 
-*   **Q: What if I absolutely need deep recursion for a specific algorithm (e.g., a complex parser)?**
-    *   A: If you've rigorously verified your algorithm, tested it thoroughly with various inputs, and profiled its memory usage, then increasing `sys.setrecursionlimit` is an option. Make sure to document your reasoning and the chosen limit clearly. Another advanced technique is to manually manage your own stack data structure to transform the recursive logic into an iterative one, giving you full control over memory.
-
-*   **Q: The traceback is huge! How do I make sense of it?**
-    *   A: Don't panic. Scroll to the very bottom to find the `RecursionError` message itself. Then, look for the lines just above it where a function name is repeated numerous times. This repeating function is your primary suspect. You can also use text editor search functions (`grep` or `Ctrl+F`) to find repeating patterns.
+**Q: What's the practical difference between an infinite loop and infinite recursion?**
+**A:** An infinite loop (e.g., `while True: pass`) primarily consumes CPU cycles without necessarily increasing memory footprint (unless new data is constantly being allocated). Infinite recursion, on the other hand, rapidly consumes memory by pushing new stack frames onto the call stack with each call. This leads to a `RecursionError` (or a full stack overflow) as memory is exhausted.
 
 ## Related Errors
 *(none)*
