@@ -122175,3 +122175,1448 @@ errors:
   - waiting
   - runtime
   tool: Kubernetes
+- context: runtime, pod lifecycle
+  description: A pod is stuck in the 'Pending' state and cannot be scheduled onto
+    a node, often due to resource constraints, node affinity/taints, or persistent
+    volume issues.
+  error_code: null
+  error_name: Pod status is Pending
+  related: []
+  tags:
+  - pod
+  - scheduling
+  - resources
+  - pending
+  - volume
+  tool: Kubernetes
+- context: runtime, pod lifecycle
+  description: A container is stuck in the 'ContainerCreating' state, often due to
+    slow image pulls, pending volume mounts, or issues with the container runtime.
+  error_code: null
+  error_name: ContainerCreating (stuck)
+  related: []
+  tags:
+  - pod
+  - container
+  - image
+  - volume
+  - runtime
+  tool: Kubernetes
+- context: runtime, pod lifecycle
+  description: The container runtime is repeatedly attempting to pull an image but
+    failing, likely due to an issue with the image name, tag, or registry access.
+  error_code: null
+  error_name: Back-off pulling image "X"
+  related: []
+  tags:
+  - pod
+  - image
+  - registry
+  - pull
+  - retry
+  tool: Kubernetes
+- context: runtime, pod lifecycle
+  description: One or more containers in a pod exited with a non-zero status code,
+    indicating an application-level error or script failure.
+  error_code: null
+  error_name: Pod "X" X/X containers with non-zero exit code
+  related: []
+  tags:
+  - pod
+  - container
+  - exit code
+  - application
+  - failure
+  tool: Kubernetes
+- context: runtime, pod lifecycle
+  description: The image pull failed because the container runtime was denied access
+    to the image registry, usually due to incorrect or missing authentication credentials.
+  error_code: null
+  error_name: 'Failed to pull image "image:tag": rpc error: code = Unknown desc =
+    Error response from daemon: pull access denied'
+  related: []
+  tags:
+  - image
+  - registry
+  - authentication
+  - pull
+  - permissions
+  tool: Kubernetes
+- context: runtime, pod lifecycle
+  description: The specified image could not be pulled because no manifest entry was
+    found that matches the node's architecture (e.g., trying to run an `amd64` image
+    on an `arm64` node).
+  error_code: null
+  error_name: 'Failed to pull image "X": rpc error: code = NotFound desc = failed
+    to pull and unpack image "X": no match for platform in manifest'
+  related: []
+  tags:
+  - image
+  - platform
+  - architecture
+  - pull
+  - registry
+  tool: Kubernetes
+- context: runtime, storage
+  description: A pod cannot mount a volume because it is already exclusively in use
+    by another pod, often occurring with RWO (ReadWriteOnce) volumes in specific storage
+    configurations.
+  error_code: null
+  error_name: 'Volume X is not available for pod Y. Reason: X is being used by another
+    pod.'
+  related: []
+  tags:
+  - volume
+  - storage
+  - concurrency
+  - PVC
+  - pod
+  tool: Kubernetes
+- context: runtime, scheduling
+  description: No nodes are available for scheduling a pod because all nodes lack
+    sufficient resources (CPU, memory, GPU, etc.) or do not meet specific criteria
+    (like node selectors).
+  error_code: null
+  error_name: '0/X nodes are available: Y (Insufficient X, Y, Z)'
+  related: []
+  tags:
+  - pod
+  - scheduling
+  - resources
+  - node
+  - capacity
+  tool: Kubernetes
+- context: runtime, scheduling
+  description: A pod's node affinity rules could not be satisfied, meaning no available
+    node has the required labels or attributes for the pod to be scheduled.
+  error_code: null
+  error_name: 'NodeAffinity: no nodes match X'
+  related: []
+  tags:
+  - pod
+  - scheduling
+  - node
+  - affinity
+  - labels
+  tool: Kubernetes
+- context: API
+  description: An attempt was made to update a Kubernetes resource without specifying
+    the correct `resourceVersion`, leading to a conflict when multiple clients try
+    to modify the same resource simultaneously.
+  error_code: Conflict
+  error_name: 'Error from server (Conflict): resourceVersion must be specified for
+    update'
+  related: []
+  tags:
+  - resource
+  - update
+  - conflict
+  - resourceVersion
+  tool: Kubernetes
+- context: API, validation
+  description: The API server rejected a resource creation request due to a malformed
+    manifest, invalid field values, or incorrect API version.
+  error_code: BadRequest
+  error_name: 'Error from server (BadRequest): error when creating "X": X'
+  related: []
+  tags:
+  - resource
+  - creation
+  - validation
+  - YAML
+  - manifest
+  tool: Kubernetes
+- context: API, networking
+  description: A request to the Kubernetes API server took too long to complete and
+    timed out, often indicating a slow API server or network latency.
+  error_code: Timeout
+  error_name: 'Error from server (Timeout): The request timed out.'
+  related: []
+  tags:
+  - API server
+  - timeout
+  - network
+  - latency
+  tool: Kubernetes
+- context: CLI, networking, security
+  description: kubectl failed to establish a secure connection because the TLS certificate
+    presented by the API server does not match the hostname used to connect, indicating
+    a DNS or certificate misconfiguration.
+  error_code: null
+  error_name: 'error: unable to connect to the server: x509: certificate is valid
+    for X, not Y'
+  related: []
+  tags:
+  - kubectl
+  - TLS
+  - certificate
+  - x509
+  - DNS
+  - API server
+  tool: kubectl
+- context: CLI, networking, security
+  description: kubectl could not complete the TLS handshake with the API server, often
+    due to incompatible TLS versions, cipher suites, or fundamental certificate issues.
+  error_code: null
+  error_name: 'error: unable to connect to the server: remote error: tls: handshake
+    failure'
+  related: []
+  tags:
+  - kubectl
+  - TLS
+  - handshake
+  - API server
+  - certificate
+  tool: kubectl
+- context: CLI
+  description: kubectl failed to load the specified kubeconfig file because the file
+    does not exist at the given path.
+  error_code: null
+  error_name: 'error: error loading config file "X": stat X: no such file or directory'
+  related: []
+  tags:
+  - kubectl
+  - kubeconfig
+  - file system
+  - configuration
+  tool: kubectl
+- context: API, server
+  description: The Kubernetes API server is still initializing or experiencing issues
+    and is not yet able to serve requests.
+  error_code: null
+  error_name: 'The API server is not ready: X'
+  related: []
+  tags:
+  - API server
+  - health
+  - unavailable
+  - initialization
+  tool: Kubernetes
+- context: CLI
+  description: kubectl apply was invoked without any valid Kubernetes resource definitions
+    (e.g., an empty YAML file or stdin).
+  error_code: null
+  error_name: 'client: no objects passed to apply'
+  related: []
+  tags:
+  - kubectl
+  - apply
+  - manifest
+  - YAML
+  tool: kubectl
+- context: CLI, networking
+  description: kubectl failed to establish a TCP connection to the Kubernetes API
+    server, often due to a firewall, incorrect IP address/port, or the API server
+    process not listening.
+  error_code: null
+  error_name: 'Unable to connect to the server: dial tcp X:X: connect: connection
+    refused'
+  related: []
+  tags:
+  - kubectl
+  - connection
+  - network
+  - firewall
+  - API server
+  tool: kubectl
+- context: runtime, networking
+  description: A component within Kubernetes (e.g., a controller) failed to fetch
+    data from another service due to a TLS handshake timeout, indicating network latency
+    or a busy target service.
+  error_code: null
+  error_name: 'Unable to fetch X: net/http: TLS handshake timeout'
+  related: []
+  tags:
+  - network
+  - TLS
+  - timeout
+  - controller
+  tool: Kubernetes
+- context: security, cluster operation
+  description: A TLS certificate was presented that is not trusted by the client because
+    its signing authority (CA) is not in the client's trust store.
+  error_code: null
+  error_name: certificate signed by unknown authority
+  related: []
+  tags:
+  - certificate
+  - TLS
+  - CA
+  - trust
+  - authentication
+  tool: Kubernetes
+- context: API, validation, manifest
+  description: A Kubernetes manifest contains a field that is not recognized by the
+    API server for the specified resource type and API version.
+  error_code: null
+  error_name: invalid or unknown field "X" in Y
+  related: []
+  tags:
+  - manifest
+  - YAML
+  - validation
+  - schema
+  - API
+  tool: Kubernetes
+- context: API, validation, manifest
+  description: A pod definition (often within a Deployment or DaemonSet) contains
+    multiple containers with the same name, which is not allowed.
+  error_code: null
+  error_name: 'spec.template.spec.containers[0].name: Duplicate value: "X"'
+  related: []
+  tags:
+  - manifest
+  - pod
+  - container
+  - validation
+  tool: Kubernetes
+- context: CLI
+  description: Helm tried to install a release with a name that already exists in
+    the cluster, and the operation was not an upgrade or the existing release is in
+    an unmanageable state.
+  error_code: null
+  error_name: 'Error: X already exists and cannot be updated with X'
+  related: []
+  tags:
+  - helm
+  - release
+  - installation
+  - conflict
+  tool: Helm
+- context: CLI, templating
+  description: Helm encountered an error while rendering the Kubernetes manifests
+    from the chart templates, usually due to syntax errors in Go templates or invalid
+    values.
+  error_code: null
+  error_name: 'Error: UPGRADE FAILED: "X" failed: render error in "Y": Z'
+  related: []
+  tags:
+  - helm
+  - template
+  - render
+  - chart
+  - YAML
+  - syntax
+  tool: Helm
+- context: CLI, deployment
+  description: Helm's operation (install/upgrade) failed because the deployed resources
+    did not reach a ready state within the specified timeout, often indicating underlying
+    application issues.
+  error_code: null
+  error_name: 'Error: release X failed: X timed out waiting for the condition'
+  related: []
+  tags:
+  - helm
+  - timeout
+  - release
+  - deployment
+  - readiness
+  tool: Helm
+- context: CLI, deployment
+  description: Helm attempted to install resources but found that some Kubernetes
+    resources (like a Service or ConfigMap) already exist with the same name, preventing
+    the installation.
+  error_code: null
+  error_name: 'Error: INSTALLATION FAILED: rendered manifests contain a resource that
+    already exists. Unable to continue with install'
+  related: []
+  tags:
+  - helm
+  - installation
+  - resource
+  - conflict
+  - Kubernetes
+  tool: Helm
+- context: CLI, deployment
+  description: During an upgrade, Helm generated a new resource (not previously managed
+    by this release) that already exists in the cluster, leading to a conflict.
+  error_code: null
+  error_name: 'Error: UPGRADE FAILED: rendered manifests contain a new resource that
+    already exists in the cluster: X'
+  related: []
+  tags:
+  - helm
+  - upgrade
+  - resource
+  - conflict
+  - Kubernetes
+  tool: Helm
+- context: CLI, deployment
+  description: Helm failed to query for existing Kubernetes resources using labels,
+    specifically failing to find a Service, which might indicate a problem with the
+    service or network connectivity.
+  error_code: null
+  error_name: 'Error: INSTALLATION FAILED: query: failed to query with labels: X:
+    Service "X" not found'
+  related: []
+  tags:
+  - helm
+  - service
+  - Kubernetes
+  - query
+  - not found
+  tool: Helm
+- context: CLI, templating
+  description: A generic error indicating a problem during the Helm chart templating
+    phase, often a syntax error or a logical issue within the Go template files.
+  error_code: null
+  error_name: 'Error: UPGRADE FAILED: template: X'
+  related: []
+  tags:
+  - helm
+  - template
+  - chart
+  - syntax
+  tool: Helm
+- context: CLI, validation
+  description: The release name provided to Helm does not conform to Kubernetes naming
+    conventions, requiring it to be lowercase and follow RFC 1123 subdomain rules.
+  error_code: null
+  error_name: 'Error: X is an invalid name: it must be a lower case RFC 1123 subdomain'
+  related: []
+  tags:
+  - helm
+  - name
+  - validation
+  - RFC 1123
+  tool: Helm
+- context: CLI
+  description: Helm could not find the specified chart in the configured repository,
+    typically due to an incorrect chart name, a misspelled repository name, or the
+    chart being removed.
+  error_code: null
+  error_name: 'Error: chart "X" not found in https://charts.helm.sh/stable repository'
+  related: []
+  tags:
+  - helm
+  - chart
+  - repository
+  - not found
+  tool: Helm
+- context: CLI, networking
+  description: Helm failed to download a chart, often because the repository index
+    (which maps chart names to locations) is not cached locally, or there are network
+    issues preventing it from being fetched.
+  error_code: null
+  error_name: 'Error: failed to download "X" (no cached index found)'
+  related: []
+  tags:
+  - helm
+  - chart
+  - download
+  - repository
+  - cache
+  tool: Helm
+- context: CLI
+  description: The Helm command was executed in a directory that does not contain
+    a valid `Chart.yaml` file or a packaged chart archive, so Helm cannot identify
+    a chart to operate on.
+  error_code: null
+  error_name: 'Error: looks like there''s no chart in this directory'
+  related: []
+  tags:
+  - helm
+  - chart
+  - directory
+  - Chart.yaml
+  tool: Helm
+- context: CLI, templating
+  description: A value passed to a Helm chart via `--set` or `values.yaml` has an
+    incorrect data type (e.g., a map was provided where a string was expected), causing
+    a template rendering failure.
+  error_code: null
+  error_name: 'Error: X must be of type string: got Y (type map[string]interface {})'
+  related: []
+  tags:
+  - helm
+  - values
+  - type mismatch
+  - template
+  - YAML
+  tool: Helm
+- context: CLI, API, deployment
+  description: Helm failed to create a Kubernetes resource defined in its manifests,
+    often due to an invalid configuration, insufficient permissions, or a conflict
+    with an existing resource.
+  error_code: null
+  error_name: 'Error: failed to create X: X'
+  related: []
+  tags:
+  - helm
+  - Kubernetes
+  - resource
+  - creation
+  - API
+  tool: Helm
+- context: CLI, deployment
+  description: Helm cannot install a chart because a specific Kubernetes resource
+    it intends to create already exists in the cluster and is not managed by Helm
+    (or this release).
+  error_code: null
+  error_name: 'Error: object X of kind Y already exists. Cannot install X'
+  related: []
+  tags:
+  - helm
+  - installation
+  - resource
+  - conflict
+  - Kubernetes
+  tool: Helm
+- context: CLI
+  description: Helm was instructed to uninstall a release that it cannot find in its
+    records.
+  error_code: null
+  error_name: 'Error: uninstall: Release "X" does not exist!'
+  related: []
+  tags:
+  - helm
+  - uninstall
+  - release
+  - not found
+  tool: Helm
+- context: CLI, deployment
+  description: A Helm hook configured to run after an upgrade operation failed, preventing
+    the upgrade from completing successfully.
+  error_code: null
+  error_name: 'Error: UPGRADE FAILED: post-upgrade hooks failed: X'
+  related: []
+  tags:
+  - helm
+  - upgrade
+  - hook
+  - failure
+  - deployment
+  tool: Helm
+- context: CLI
+  description: Helm cannot perform a rollback operation because the specified release
+    has no previous successful deployments in its history to revert to.
+  error_code: null
+  error_name: 'Error: X does not have any deployed releases to rollback'
+  related: []
+  tags:
+  - helm
+  - rollback
+  - release
+  - history
+  tool: Helm
+- context: CLI
+  description: A Helm command that operates on resources within a specific namespace
+    was invoked without explicitly providing the `--namespace` flag.
+  error_code: null
+  error_name: 'Error: the --namespace flag is required'
+  related: []
+  tags:
+  - helm
+  - CLI
+  - namespace
+  - flag
+  - argument
+  tool: Helm
+- context: CLI
+  description: The argument provided for a Helm chart was neither a recognized chart
+    name (e.g., from a repository) nor a valid file path to a chart directory or archive.
+  error_code: null
+  error_name: 'Error: X provided is not valid chart name or path'
+  related: []
+  tags:
+  - helm
+  - chart
+  - path
+  - name
+  - validation
+  tool: Helm
+- context: CLI, networking
+  description: Helm failed to connect to or recognize a configured chart repository,
+    possibly due to an incorrect URL, network issues, or the repository being offline.
+  error_code: null
+  error_name: 'Error: X is not a valid chart repository or cannot be reached'
+  related: []
+  tags:
+  - helm
+  - repository
+  - network
+  - connection
+  - chart
+  tool: Helm
+- context: CLI
+  description: Helm was invoked with a subcommand or plugin name that it does not
+    recognize or cannot locate.
+  error_code: null
+  error_name: 'Error: cannot find command "X"'
+  related: []
+  tags:
+  - helm
+  - CLI
+  - command
+  - plugin
+  tool: Helm
+- context: CLI, validation
+  description: Helm failed to parse or validate the Kubernetes YAML manifests generated
+    from the chart, usually due to malformed YAML or schema violations.
+  error_code: null
+  error_name: 'Error: UPGRADE FAILED: unable to build Kubernetes objects from release
+    manifest: X'
+  related: []
+  tags:
+  - helm
+  - YAML
+  - manifest
+  - validation
+  - schema
+  tool: Helm
+- context: CLI, API, permissions
+  description: Helm failed to retrieve a specific Kubernetes resource (e.g., a Secret,
+    ConfigMap, or CRD) that it needed for its operation, often due to permissions
+    or the resource not existing.
+  error_code: null
+  error_name: 'Error: failed to get X: X'
+  related: []
+  tags:
+  - helm
+  - Kubernetes
+  - resource
+  - permissions
+  - not found
+  tool: Helm
+- context: CLI, templating
+  description: A generic error indicating that the Helm chart rendering process failed
+    with an unspecified exit status, often implying a deeper issue within the chart's
+    templates or dependencies.
+  error_code: null
+  error_name: 'Error: failed to render chart: exit status 1'
+  related: []
+  tags:
+  - helm
+  - chart
+  - render
+  - template
+  - failure
+  tool: Helm
+- context: CLI, API, deployment
+  description: During a Helm upgrade, an attempt was made to change an immutable field,
+    such as a Service selector, which Kubernetes does not allow to be modified after
+    creation.
+  error_code: null
+  error_name: 'Error: X cannot be updated with a new selector'
+  related: []
+  tags:
+  - helm
+  - Kubernetes
+  - immutable field
+  - Service
+  - selector
+  tool: Helm
+- context: CLI
+  description: Helm was asked to rollback a release that currently has no successful
+    deployments in its history, meaning there's nothing to revert to.
+  error_code: null
+  error_name: 'Error: no deployed releases to rollback for "X"'
+  related: []
+  tags:
+  - helm
+  - rollback
+  - release
+  - history
+  tool: Helm
+- context: runtime, controller, API
+  description: A Kubernetes controller or other component failed to establish a watch
+    on Pod resources, often due to RBAC permissions or network connectivity issues
+    to the API server.
+  error_code: null
+  error_name: 'Failed to watch *v1.Pod: X'
+  related: []
+  tags:
+  - controller
+  - watch
+  - API
+  - RBAC
+  - permissions
+  tool: Kubernetes
+- context: runtime, authentication
+  description: A pod or controller using a service account attempted to access the
+    Kubernetes API but no API token (secret) was mounted or available for its service
+    account.
+  error_code: null
+  error_name: No API token found for service account "X"
+  related: []
+  tags:
+  - service account
+  - API token
+  - authentication
+  - RBAC
+  - secret
+  tool: Kubernetes
+- context: runtime, controller
+  description: A specific Kubernetes controller encountered an error while attempting
+    to synchronize the desired state of a resource (Y) with its actual state, with
+    Z providing more details.
+  error_code: null
+  error_name: 'X controller failed to sync "Y": Z'
+  related: []
+  tags:
+  - controller
+  - sync
+  - resource
+  - operator
+  tool: Kubernetes
+- context: runtime, controller, API
+  description: A Kubernetes component (e.g., a controller or webhook) attempted to
+    retrieve a resource (like a Secret, ConfigMap, or Endpoint) but it could not be
+    found.
+  error_code: null
+  error_name: 'Failed to get X: X not found'
+  related: []
+  tags:
+  - resource
+  - not found
+  - controller
+  - API
+  tool: Kubernetes
+- context: API, runtime
+  description: An operation was attempted on a Kubernetes resource that is currently
+    in the process of being deleted, leading to a conflict or unprocessable state.
+  error_code: null
+  error_name: 'object is being deleted: X'
+  related: []
+  tags:
+  - resource
+  - deletion
+  - conflict
+  - lifecycle
+  tool: Kubernetes
+- context: runtime, lifecycle
+  description: A Kubernetes resource (like a Pod or Namespace) is stuck in the 'Terminating'
+    state and cannot be fully removed, often due to finalizers, blocking resources,
+    or controller issues.
+  error_code: null
+  error_name: Terminating (stuck indefinitely)
+  related: []
+  tags:
+  - resource
+  - termination
+  - stuck
+  - finalizer
+  - namespace
+  tool: Kubernetes
+- context: runtime, node, networking
+  description: The container runtime on a node reports that its network plugin is
+    not ready, preventing pods from being scheduled or gaining network connectivity.
+  error_code: null
+  error_name: 'Container runtime network not ready: NetworkReady=false reason:NetworkPluginNotReady'
+  related: []
+  tags:
+  - network
+  - CNI
+  - node
+  - container runtime
+  - kubelet
+  tool: Kubernetes
+- context: runtime, node
+  description: A node has reached its disk usage threshold, causing new pods to fail
+    scheduling and existing pods to potentially be evicted.
+  error_code: null
+  error_name: Node X has insufficient disk space
+  related: []
+  tags:
+  - node
+  - disk
+  - storage
+  - resources
+  - eviction
+  tool: Kubernetes
+- context: runtime, controller, API
+  description: A Kubernetes controller or component failed to update the status subresource
+    of an object, often due to RBAC permissions.
+  error_code: null
+  error_name: 'Failed to update status of X: Y'
+  related: []
+  tags:
+  - controller
+  - status
+  - API
+  - permissions
+  tool: Kubernetes
+- context: runtime, pod lifecycle
+  description: A pod or container is in a terminating state, and any changes or attempts
+    to pull images are being ignored as the resource is being cleaned up.
+  error_code: null
+  error_name: The image X in container Y will be ignored because the resource X is
+    being deleted.
+  related: []
+  tags:
+  - pod
+  - container
+  - image
+  - deletion
+  - lifecycle
+  tool: Kubernetes
+- context: runtime, networking
+  description: A CNI plugin attempted to assign an IP address to a pod that is already
+    in use, indicating a conflict in the network configuration or IP address management
+    (IPAM).
+  error_code: null
+  error_name: IP address X already in use
+  related: []
+  tags:
+  - network
+  - CNI
+  - IPAM
+  - IP address
+  - conflict
+  tool: Kubernetes
+- context: runtime, networking
+  description: The Container Network Interface (CNI) plugin failed to allocate an
+    IP address for a pod, often due to network saturation, misconfiguration, or an
+    IPAM issue.
+  error_code: null
+  error_name: 'Failed to allocate IP for pod "X": Y'
+  related: []
+  tags:
+  - network
+  - CNI
+  - IPAM
+  - IP address
+  - pod
+  tool: Kubernetes
+- context: runtime, monitoring
+  description: The Kubernetes event recorder is dropping events because too many events
+    are being generated, often indicating a noisy or unhealthy component.
+  error_code: null
+  error_name: X events are filtered due to throttling.
+  related: []
+  tags:
+  - events
+  - throttling
+  - monitoring
+  - health
+  tool: Kubernetes
+- context: runtime, networking, node
+  description: The kubelet on a node could not get a Pod CIDR assigned, preventing
+    it from routing traffic to pods on that node, typically indicating a CNI or kube-controller-manager
+    issue.
+  error_code: null
+  error_name: kubelet X has no pod CIDR assigned
+  related: []
+  tags:
+  - kubelet
+  - node
+  - CIDR
+  - network
+  - CNI
+  tool: Kubernetes
+- context: runtime, node
+  description: A specific node did not possess a required attribute or resource, leading
+    to scheduling or operational issues.
+  error_code: null
+  error_name: 'Node X did not have a Y. Reason: Z'
+  related: []
+  tags:
+  - node
+  - attribute
+  - resource
+  - scheduling
+  tool: Kubernetes
+- context: runtime, node
+  description: The underlying operating system on a node is experiencing resource
+    exhaustion (e.g., system memory, process IDs), which can destabilize the node
+    and its pods.
+  error_code: null
+  error_name: Node system is out of X (memory, pid, etc.)
+  related: []
+  tags:
+  - node
+  - resources
+  - memory
+  - pid
+  - system
+  tool: Kubernetes
+- context: runtime, node
+  description: A critical dependency, such as a device driver or kernel module, is
+    missing on a node, preventing certain functionalities (e.g., storage, networking)
+    from operating correctly.
+  error_code: null
+  error_name: Required X not found (e.g., specific driver, kernel module)
+  related: []
+  tags:
+  - node
+  - driver
+  - kernel
+  - dependency
+  - storage
+  - network
+  tool: Kubernetes
+- context: API, validation
+  description: An attempt was made to modify a field in a Kubernetes resource (e.g.,
+    a Service's `type` or a PersistentVolume's `capacity`) that cannot be changed
+    after the resource has been created.
+  error_code: null
+  error_name: X is immutable after creation
+  related: []
+  tags:
+  - resource
+  - immutable
+  - validation
+  - API
+  tool: Kubernetes
+- context: runtime, container
+  description: A container's main command or an init container terminated with a non-zero
+    exit code, indicating a failure within the application or script.
+  error_code: null
+  error_name: command terminated with exit code X
+  related: []
+  tags:
+  - container
+  - exit code
+  - application
+  - script
+  - failure
+  tool: Kubernetes
+- context: runtime, scheduling, node
+  description: The number of pods on a node has exceeded its configured maximum capacity,
+    preventing new pods from being scheduled there.
+  error_code: null
+  error_name: Too many pods
+  related: []
+  tags:
+  - pod
+  - node
+  - capacity
+  - scheduling
+  - resources
+  tool: Kubernetes
+- context: runtime, networking
+  description: Kubernetes attempted to create an Endpoints resource but found one
+    already existing with the same name, indicating a conflict or misconfiguration,
+    often with Services.
+  error_code: null
+  error_name: 'failed to create endpoint: endpoints "X" already exists'
+  related: []
+  tags:
+  - endpoints
+  - service
+  - conflict
+  - networking
+  tool: Kubernetes
+- context: runtime, node, API
+  description: The kubelet or another controller failed to update the status or configuration
+    of a node in the API server, often due to network issues or RBAC permissions.
+  error_code: null
+  error_name: 'Failed to update node "X": X'
+  related: []
+  tags:
+  - node
+  - kubelet
+  - API
+  - permissions
+  tool: Kubernetes
+- context: runtime, security
+  description: A pod or controller attempted to access a Kubernetes Secret that does
+    not exist in the specified namespace.
+  error_code: null
+  error_name: 'failed to get secret "X": secrets "X" not found'
+  related: []
+  tags:
+  - secret
+  - not found
+  - pod
+  - controller
+  - security
+  tool: Kubernetes
+- context: runtime, configuration
+  description: A pod or controller attempted to access a Kubernetes ConfigMap that
+    does not exist in the specified namespace.
+  error_code: null
+  error_name: 'failed to get configmap "X": configmaps "X" not found'
+  related: []
+  tags:
+  - configmap
+  - not found
+  - pod
+  - controller
+  - configuration
+  tool: Kubernetes
+- context: API, authorization
+  description: The authenticated user or service account lacks the necessary RBAC
+    permissions to modify (patch) Deployment resources in the specified namespace.
+  error_code: null
+  error_name: 'Forbidden: User "X" cannot patch deployments.apps in the namespace
+    "Y"'
+  related: []
+  tags:
+  - RBAC
+  - permissions
+  - user
+  - service account
+  - deployment
+  tool: Kubernetes
+- context: API, authorization
+  description: The specified Kubernetes namespace does not exist or the authenticated
+    user/service account does not have permission to view it.
+  error_code: null
+  error_name: the namespace "X" was not found (or is forbidden)
+  related: []
+  tags:
+  - namespace
+  - not found
+  - permissions
+  - RBAC
+  tool: Kubernetes
+- context: runtime, networking
+  description: A pod is attempting to bind to a host port that is already in use by
+    another process or pod on the node, preventing the pod from starting.
+  error_code: null
+  error_name: 'HostPort: X is in use'
+  related: []
+  tags:
+  - pod
+  - networking
+  - hostPort
+  - conflict
+  - node
+  tool: Kubernetes
+- context: runtime, container runtime
+  description: The container runtime (CRI) failed to create the pod sandbox (a set
+    of shared resources like network namespace) for a pod, often due to issues with
+    the runtime or CNI.
+  error_code: null
+  error_name: 'Failed to create pod sandbox: X'
+  related: []
+  tags:
+  - pod
+  - container runtime
+  - CRI
+  - sandbox
+  - networking
+  tool: Kubernetes
+- context: API
+  description: An attempt was made to delete the protected `default` namespace, which
+    is disallowed in Kubernetes.
+  error_code: null
+  error_name: Cannot delete default namespace
+  related: []
+  tags:
+  - namespace
+  - deletion
+  - protected
+  tool: Kubernetes
+- context: API, validation
+  description: A Kubernetes resource definition failed validation against its OpenAPI
+    schema, indicating a malformed or incorrect configuration.
+  error_code: null
+  error_name: 'failed to validate against schema: X'
+  related: []
+  tags:
+  - API
+  - schema
+  - validation
+  - manifest
+  tool: Kubernetes
+- context: runtime, networking, node
+  description: The `kube-proxy` component responsible for network proxying and service
+    load balancing is not running on a node, leading to service unreachability.
+  error_code: null
+  error_name: kube-proxy is not running
+  related: []
+  tags:
+  - kube-proxy
+  - networking
+  - service
+  - node
+  tool: Kubernetes
+- context: runtime, networking, DNS
+  description: A DNS query within the cluster (e.g., from CoreDNS) received a `SERVFAIL`
+    response, indicating an issue with the DNS server itself or its upstream resolvers.
+  error_code: null
+  error_name: 'DNS error: SERVFAIL'
+  related: []
+  tags:
+  - DNS
+  - CoreDNS
+  - networking
+  - service discovery
+  tool: Kubernetes
+- context: runtime, storage
+  description: A pod cannot start because it references one or more PersistentVolumeClaims
+    (PVCs) that have not yet been bound to a PersistentVolume (PV), often due to lack
+    of available storage.
+  error_code: null
+  error_name: pod has unbound immediate PersistentVolumeClaims
+  related: []
+  tags:
+  - pod
+  - PVC
+  - PV
+  - storage
+  - binding
+  tool: Kubernetes
+- context: runtime, authentication
+  description: A pod or other resource references a Kubernetes ServiceAccount that
+    does not exist in its namespace, preventing it from obtaining permissions.
+  error_code: null
+  error_name: The service account X does not exist
+  related: []
+  tags:
+  - service account
+  - not found
+  - authentication
+  - RBAC
+  tool: Kubernetes
+- context: CLI, runtime
+  description: kubectl failed to retrieve logs from a container, often due to network
+    issues, the container not running, or permission problems with the kubelet.
+  error_code: null
+  error_name: 'unable to retrieve container logs: X'
+  related: []
+  tags:
+  - kubectl
+  - logs
+  - container
+  - kubelet
+  - networking
+  tool: Kubernetes
+- context: CLI, manifest
+  description: kubectl was provided with a YAML or JSON file that it could not parse
+    as a valid Kubernetes resource, typically due to syntax errors or an unknown API
+    version/kind.
+  error_code: null
+  error_name: 'error: unable to load X: unable to recognize X'
+  related: []
+  tags:
+  - kubectl
+  - YAML
+  - manifest
+  - parsing
+  - syntax
+  tool: Kubernetes
+- context: runtime, API
+  description: A generic error indicating that the creation of a Kubernetes resource
+    failed for a specific reason (X), often seen in controller logs.
+  error_code: null
+  error_name: 'Error creating X: X'
+  related: []
+  tags:
+  - resource
+  - creation
+  - API
+  - controller
+  tool: Kubernetes
+- context: runtime, controller
+  description: A controller or reconciler failed to synchronize a specific Kubernetes
+    resource, indicating a potential issue with the controller's logic or dependencies.
+  error_code: null
+  error_name: 'Failed to sync X: X'
+  related: []
+  tags:
+  - controller
+  - sync
+  - resource
+  - reconciliation
+  tool: Kubernetes
+- context: API
+  description: An update or patch operation on a Kubernetes resource failed because
+    it did not include the necessary `resourceVersion` field, leading to a conflict.
+  error_code: null
+  error_name: resource X does not have request.resourceVersion specified
+  related: []
+  tags:
+  - resource
+  - update
+  - patch
+  - resourceVersion
+  - conflict
+  tool: Kubernetes
+- context: runtime, scheduling
+  description: A pod's node selector specified a label that does not exist on any
+    available node, preventing the pod from being scheduled.
+  error_code: null
+  error_name: node selector "X" not found
+  related: []
+  tags:
+  - pod
+  - scheduling
+  - node
+  - selector
+  - label
+  tool: Kubernetes
+- context: runtime, scheduling
+  description: A pod cannot be scheduled on a node because the node has a taint (X)
+    and the pod does not have a corresponding toleration for that taint.
+  error_code: null
+  error_name: 'Taint-Effect: X is not tolerated'
+  related: []
+  tags:
+  - pod
+  - scheduling
+  - node
+  - taint
+  - toleration
+  tool: Kubernetes
+- context: API
+  description: The Kubernetes API server took too long to process a request and returned
+    a timeout error, often due to high load or internal issues.
+  error_code: null
+  error_name: the server was unable to return a response in time
+  related: []
+  tags:
+  - API server
+  - timeout
+  - latency
+  - load
+  tool: Kubernetes
+- context: API, validation, networking
+  description: A Service or Ingress resource references a port name (X) that is not
+    defined in the target pod's container port specifications.
+  error_code: null
+  error_name: port X not found
+  related: []
+  tags:
+  - service
+  - ingress
+  - port
+  - validation
+  - networking
+  tool: Kubernetes
+- context: runtime, pod lifecycle
+  description: A pod's status indicates it has no containers that are currently in
+    a ready state, often due to startup issues, failed readiness probes, or continuous
+    crashing.
+  error_code: null
+  error_name: Pod has no ready container
+  related: []
+  tags:
+  - pod
+  - container
+  - readiness
+  - health
+  - lifecycle
+  tool: Kubernetes
+- context: runtime, storage
+  description: A pod is configured to use a hostPath volume, but the specified path
+    on the node's filesystem does not exist, causing the volume mount to fail.
+  error_code: null
+  error_name: 'HostPathVolumeNotFound: hostPath volume mount X not found'
+  related: []
+  tags:
+  - volume
+  - hostPath
+  - mount
+  - node
+  - filesystem
+  tool: Kubernetes
+- context: runtime, storage
+  description: A PersistentVolumeClaim (PVC) or PersistentVolume (PV) references a
+    StorageClass that does not exist in the cluster, preventing dynamic provisioning.
+  error_code: null
+  error_name: StorageClass "X" not found
+  related: []
+  tags:
+  - storage
+  - StorageClass
+  - PVC
+  - PV
+  - provisioning
+  tool: Kubernetes
+- context: API
+  description: An attempt to delete a Kubernetes resource failed because the specified
+    resource could not be located in the API server.
+  error_code: null
+  error_name: 'failed to delete X: X not found'
+  related: []
+  tags:
+  - resource
+  - deletion
+  - not found
+  - API
+  tool: Kubernetes
+- context: CLI, API
+  description: A kubectl command or Kubernetes component failed to retrieve information
+    about a specific API group, often due to network issues or an unavailable API
+    server.
+  error_code: null
+  error_name: failed to fetch API group X
+  related: []
+  tags:
+  - API group
+  - API server
+  - network
+  - kubectl
+  tool: Kubernetes
+- context: API, authorization
+  description: A user or service account lacks the necessary cluster-scoped RBAC permissions
+    to create a resource in a specific API group.
+  error_code: null
+  error_name: cannot create resource "X" in API group "Y" at the cluster scope
+  related: []
+  tags:
+  - RBAC
+  - permissions
+  - cluster-scope
+  - API group
+  tool: Kubernetes
+- context: CLI, resource
+  description: kubectl was unable to find any resources matching the specified type,
+    name, or label selectors.
+  error_code: null
+  error_name: 'error: unable to find any of the requested resources'
+  related: []
+  tags:
+  - kubectl
+  - resource
+  - not found
+  - selector
+  tool: Kubernetes
+- context: runtime, scheduling, node
+  description: A node has been marked as unschedulable (e.g., due to `kubectl cordon`
+    or a taint), preventing new pods from being placed on it.
+  error_code: null
+  error_name: node is unschedulable
+  related: []
+  tags:
+  - node
+  - scheduling
+  - cordon
+  - taint
+  tool: Kubernetes
+- context: runtime, storage, node
+  description: The kubelet failed to unmount a volume from a pod, often during pod
+    termination, which can cause the pod to get stuck in the 'Terminating' state.
+  error_code: null
+  error_name: 'failed to unmount volume: X'
+  related: []
+  tags:
+  - volume
+  - unmount
+  - kubelet
+  - termination
+  - storage
+  tool: Kubernetes
+- context: API, runtime
+  description: A controller or kubectl command attempted to retrieve a Deployment
+    resource that does not exist in the specified namespace.
+  error_code: null
+  error_name: 'Error getting deployment: deployments.apps "X" not found'
+  related: []
+  tags:
+  - deployment
+  - not found
+  - controller
+  - kubectl
+  tool: Kubernetes
+- context: runtime, node, container runtime
+  description: The configured container runtime (e.g., containerd, CRI-O) on a node
+    is not in a healthy or ready state, preventing pod operations.
+  error_code: null
+  error_name: 'Container runtime X is not ready: X'
+  related: []
+  tags:
+  - container runtime
+  - node
+  - CRI
+  - health
+  - kubelet
+  tool: Kubernetes
+- context: runtime, security, networking
+  description: A TLS handshake failed between two Kubernetes components (e.g., kubelet
+    to API server, or webhook to API server), typically due to certificate issues.
+  error_code: null
+  error_name: 'TLS handshake error from X: Y'
+  related: []
+  tags:
+  - TLS
+  - handshake
+  - certificate
+  - networking
+  - security
+  tool: Kubernetes
+- context: API, lifecycle
+  description: A Kubernetes namespace is stuck in the 'Terminating' state because
+    there are still finalizers on resources within the namespace that prevent its
+    deletion.
+  error_code: null
+  error_name: Namespace has finalizers remaining
+  related: []
+  tags:
+  - namespace
+  - termination
+  - finalizer
+  - deletion
+  tool: Kubernetes
+- context: runtime, node
+  description: The kubelet on a node is not sending its ready status, which will cause
+    the node to be marked as 'NotReady' and pods to eventually be evicted.
+  error_code: null
+  error_name: kubelet not posting ready status
+  related: []
+  tags:
+  - kubelet
+  - node
+  - health
+  - status
+  tool: Kubernetes
+- context: API
+  description: An API request, typically for creating or updating a large resource
+    (e.g., a huge ConfigMap or Secret), exceeded the API server's maximum request
+    body size.
+  error_code: null
+  error_name: The request body was too large
+  related: []
+  tags:
+  - API
+  - request
+  - size limit
+  - ConfigMap
+  - Secret
+  tool: Kubernetes
+- context: API
+  description: The Kubernetes API server is experiencing too many requests from a
+    client and is rate-limiting, often indicating an aggressive controller or misbehaving
+    client.
+  error_code: null
+  error_name: 'Error from server (TooManyRequests): X'
+  related: []
+  tags:
+  - API server
+  - rate limit
+  - TooManyRequests
+  - client
+  tool: Kubernetes
+- context: API, validation, authorization
+  description: A generic error indicating that a specific operation could not be performed
+    on a Kubernetes resource, with the details indicating the reason (e.g., forbidden,
+    immutable).
+  error_code: null
+  error_name: 'Cannot perform X on X: X'
+  related: []
+  tags:
+  - API
+  - operation
+  - resource
+  - validation
+  - permissions
+  tool: Kubernetes
+- context: runtime, networking
+  description: A Service of type `LoadBalancer` failed to get an external IP address
+    because the cloud provider's load balancer controller could not provision one.
+  error_code: null
+  error_name: ServiceType LoadBalancer controller did not find any available load
+    balancers
+  related: []
+  tags:
+  - Service
+  - LoadBalancer
+  - cloud provider
+  - networking
+  - controller
+  tool: Kubernetes
+- context: API, networking
+  description: An Ingress resource failed to be created, typically due to validation
+    errors, conflicts, or issues with the Ingress controller.
+  error_code: null
+  error_name: 'Failed to create ingress: X'
+  related: []
+  tags:
+  - Ingress
+  - creation
+  - networking
+  - controller
+  tool: Kubernetes
