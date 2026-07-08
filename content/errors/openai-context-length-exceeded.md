@@ -1,335 +1,253 @@
 # InvalidRequestError: context_length_exceeded
-> Encountering `InvalidRequestError: context_length_exceeded` means your prompt or conversation history has exceeded the OpenAI model's token limit; this guide explains how to fix it.
+> Encountering `InvalidRequestError: context_length_exceeded` means your API prompt exceeds the model's token limit; this guide explains how to fix it.
 
 ## What This Error Means
 
-As an Infrastructure Engineer, I've seen this error pop up frequently when integrating with the OpenAI API, especially in applications dealing with verbose inputs or extended conversational contexts. Simply put, `InvalidRequestError: context_length_exceeded` signals that the total amount of text you've sent to an OpenAI model—this includes your main prompt, any system messages, and all preceding user and assistant messages in a conversation—has surpassed the maximum token limit for the specific model you're using.
+As an Infrastructure Engineer, I've seen this error pop up frequently when integrating with OpenAI's API, especially in applications that handle user-generated content or complex data processing. Simply put, `InvalidRequestError: context_length_exceeded` means that the total number of tokens in your request – encompassing your input prompt, system messages, and any chat history – has exceeded the maximum limit that the specific OpenAI model you're using can process in a single API call. It's essentially the model saying, "Your message is too long; I can't fit it all into my working memory."
 
-OpenAI models have a finite "context window," which is essentially their short-term memory or processing capacity. This capacity is measured in "tokens," not words. A token can be as short as a single character or as long as a word. When your input stream exceeds this predefined token limit, the API cannot process the request and throws this error, preventing the model from generating a response. It's a hard limit, enforced at the API gateway.
+This isn't an error due to network issues or malformed JSON; it's a semantic limit. The model has a fixed "context window," and once your input goes beyond that window, the API rejects the request rather than processing an incomplete or truncated version of your prompt.
 
 ## Why It Happens
 
-This error occurs because every OpenAI model is engineered with a specific maximum context length. For instance, `gpt-3.5-turbo` might have a 4K or 16K token limit, while `gpt-4o` and `gpt-4-turbo` offer significantly larger windows like 128K tokens. When you send a request, the API tokenizes your entire input and checks if the total token count fits within the model's limit. If it doesn't, the `context_length_exceeded` error is returned.
+Every large language model operates with a predefined "context window" size, measured in tokens. A token is roughly equivalent to 4 characters for English text, or about ¾ of a word. When you send a request to the OpenAI API, your entire message – including any system instructions, the user's prompt, and previous turns in a conversation (if you're managing chat history) – is converted into tokens.
 
-It's important to understand that the context window needs to accommodate both your input *and* the model's potential output. While this error specifically flags an *input* problem, effective context management often means leaving enough room for a meaningful response. In my experience, misunderstanding how tokens are counted and how conversation history accumulates is the most common root cause. Developers often estimate word counts and mistakenly assume they map directly to tokens, only to find the tokenization process results in a much higher count.
+This error occurs when the sum of these tokens surpasses the model's maximum allowed input length. Different models have different context window sizes. For example, `gpt-3.5-turbo` typically has a smaller context window than `gpt-4` or specific `gpt-4-turbo` variants. If you switch models without re-evaluating your prompt size, you're likely to hit this limit.
+
+In my experience, developers often underestimate how quickly tokens accumulate, especially when dealing with verbose inputs or extended conversational threads. It’s not just the new input that counts, but everything you've sent as context for the current turn.
 
 ## Common Causes
 
-Based on various production systems I've supported, these are the most frequent scenarios leading to `context_length_exceeded`:
+Identifying the root cause is the first step to resolution. Here are the most common scenarios I've encountered:
 
-1.  **Excessive Conversation History:** In chatbot or conversational AI applications, each turn of dialogue (both user and assistant messages) is typically sent back to the API to maintain context. Over time, these messages accumulate, and if not managed, the total token count of the `messages` array can easily exceed the model's limit. This is, by far, the most common culprit.
-2.  **Overly Verbose Prompts:** A single, very long prompt designed to provide extensive instructions, examples, or background information can exceed the limit even without conversation history. This often happens when users try to embed entire documents or large codebases directly into the prompt.
-3.  **Large Document Summarization/Analysis:** Attempting to feed large articles, reports, or data files directly into the API for summarization, extraction, or analysis without pre-processing or chunking.
-4.  **Embedding Data or Code:** Prompts that include large JSON payloads, extensive database schemas, or significant blocks of code for analysis or generation tasks. These structured data types can be very token-dense.
-5.  **Model Switching Without Adjustment:** Moving an application from a model with a larger context window (e.g., `gpt-4o`) to one with a smaller context window (e.g., `gpt-3.5-turbo`) without reducing the input size will almost certainly trigger this error.
-6.  **Tokenization Nuances:** Different languages and types of content can result in varying token counts. For example, highly technical text or code often tokenizes differently than natural language, potentially consuming more tokens than anticipated.
+1.  **Overly Long Input Prompts:** The most straightforward cause. If you're feeding entire documents, long articles, or extensive data sets directly into a single API call, you're highly susceptible to hitting the token limit.
+2.  **Extensive Chat Histories:** In conversational applications, developers often send the entire conversation history with each API call to maintain context. As the conversation lengthens, the cumulative token count of past messages can easily exceed the limit. This is a very common pitfall in chatbot development.
+3.  **Including Too Much "System" or "Context" Information:** Some applications prepend a large block of system instructions, examples, or external data (e.g., retrieved relevant documents) to every prompt. While helpful for grounding the model, this introductory context can consume a significant portion of the available token budget.
+4.  **Using a Model with a Smaller Context Window:** If your application was initially developed with a model that had a larger context window (e.g., `gpt-4-32k`) and then switched to a smaller one (e.g., `gpt-3.5-turbo-16k`) without adjusting prompt engineering, this error will surface.
+5.  **Not Accounting for Output Tokens:** While the error specifically relates to *input* context length, it's worth noting that a portion of the context window *can* be reserved for the model's expected output. If you're setting `max_tokens` very high and your input is already near the limit, there might not be enough room left for a substantial response, potentially leading to errors, though typically `context_length_exceeded` is about the *input* not fitting.
 
 ## Step-by-Step Fix
 
-Addressing `context_length_exceeded` requires a systematic approach to managing your input.
+Addressing this error requires strategies to manage and reduce the token count of your requests.
 
-1.  **Identify Your Model's Context Limit:**
-    First, confirm the exact context window size for the OpenAI model you are currently using. This information is available in the official OpenAI documentation. For example, `gpt-3.5-turbo` typically has 4,096 or 16,384 tokens, while `gpt-4o` has 128,000 tokens. Knowing this number is foundational.
-
-2.  **Accurately Estimate Token Usage:**
-    Do not guess. Use OpenAI's `tiktoken` library to get precise token counts for your input strings. This is crucial for debugging and implementing effective trimming strategies.
+1.  **Identify Current Token Count:**
+    Before making changes, determine how many tokens your current requests are actually consuming. OpenAI provides `tiktoken` for this.
 
     ```python
     import tiktoken
 
-    def count_tokens(text: str, model_name: str) -> int:
-        """Counts tokens in a string for a given model."""
-        encoding = tiktoken.encoding_for_model(model_name)
+    def count_tokens(text: str, model: str = "gpt-3.5-turbo") -> int:
+        """Returns the number of tokens in a text string."""
+        encoding = tiktoken.encoding_for_model(model)
         return len(encoding.encode(text))
 
-    # Example: Count tokens for a hypothetical long prompt
-    long_prompt_example = "Your very detailed prompt goes here. Make sure to include all instructions, few-shot examples, and any background information the model needs to perform its task effectively and accurately. This string can get quite long, especially when you're explaining complex concepts or providing extensive context for a specialized domain. Remember that tokens are not just words, but often sub-word units, so a long sentence might consume more tokens than you'd expect. Punctuation, spaces, and even emojis count too!"
+    # Example for a simple prompt
+    prompt = "Summarize this very long document about infrastructure architecture..."
+    token_count = count_tokens(prompt)
+    print(f"Prompt token count: {token_count}")
 
-    model_to_check = "gpt-3.5-turbo" # Or "gpt-4o", etc.
-    estimated_tokens = count_tokens(long_prompt_example, model_to_check)
-    print(f"Estimated tokens for prompt (using {model_to_check}): {estimated_tokens}")
+    # Example for a chat message list
+    messages = [
+        {"role": "system", "content": "You are a helpful assistant."},
+        {"role": "user", "content": "Tell me about infrastructure as code."},
+        {"role": "assistant", "content": "Infrastructure as Code (IaC) is managing and provisioning infrastructure through code..."},
+        {"role": "user", "content": "What are its benefits?"}
+    ]
+
+    def count_chat_tokens(messages: list, model: str = "gpt-3.5-turbo") -> int:
+        """Returns the number of tokens in a list of messages."""
+        try:
+            encoding = tiktoken.encoding_for_model(model)
+        except KeyError:
+            encoding = tiktoken.get_encoding("cl100k_base") # Fallback for unsupported models
+
+        num_tokens = 0
+        for message in messages:
+            # Each message typically adds a few tokens for metadata (role, name)
+            num_tokens += 4 # every message follows <im_start>{role/name}\n{content}<im_end>\n
+            for key, value in message.items():
+                num_tokens += len(encoding.encode(value))
+        num_tokens += 2 # every reply is primed with <im_start>assistant
+        return num_tokens
+
+    chat_token_count = count_chat_tokens(messages)
+    print(f"Chat message token count: {chat_token_count}")
     ```
 
-3.  **Implement Input Reduction Strategies:**
-    This is where the real work happens. You'll need to strategically reduce the token count of your requests.
+2.  **Choose an Appropriate Model:**
+    If possible, upgrade to a model with a larger context window. For example, `gpt-4-turbo` variants often offer 128k token contexts, which is significantly more than `gpt-3.5-turbo`'s 16k. Be aware that larger models generally come with higher costs and potentially slower response times.
 
-    *   **Truncate Conversation History (Most Common Fix):** For chatbots, remove older messages from the `messages` array until the total token count is below the limit. A common strategy is to keep the system message and the most recent N turns of conversation.
+    ```python
+    # Ensure you are using a model with sufficient context
+    # model_name = "gpt-3.5-turbo" # often 16k context
+    model_name = "gpt-4-turbo" # often 128k context
+    # openai.chat.completions.create(model=model_name, messages=...)
+    ```
 
-        ```python
-        import tiktoken
+3.  **Implement Input Truncation or Summarization:**
+    *   **Truncation:** For long inputs that don't need absolute fidelity, simply cut off the text after a certain token count. This is a blunt instrument but effective.
+    *   **Summarization:** If the core meaning is important, consider summarizing portions of the input before sending them to the main model. You could even use another, smaller model to do the summarization.
+    *   **Chunking + Embeddings:** For very large documents, break them into chunks, create embeddings, and retrieve only the most relevant chunks based on the user's query. This is the basis of Retrieval-Augmented Generation (RAG).
 
-        def trim_messages(messages, max_tokens_limit, model_name="gpt-3.5-turbo"):
-            """
-            Trims message history to fit within max_tokens_limit,
-            prioritizing newer messages.
-            Reserves a small buffer for potential output tokens.
-            """
-            encoding = tiktoken.encoding_for_model(model_name)
-            trimmed_messages = []
-            current_tokens = 0
+4.  **Manage Chat History:**
+    This is critical for conversational AI.
+    *   **Sliding Window:** Maintain a fixed number of recent turns. When the history exceeds a threshold, remove the oldest messages.
+    *   **Summarize Past Turns:** Periodically summarize older parts of the conversation. For example, after 10 turns, summarize the first 5 turns into a single "summary" message and replace the original 5 messages with it.
+    *   **Prioritization:** In my experience, it can be useful to prioritize keeping the `system` message and the most recent user/assistant turns, as these usually carry the most weight for the current interaction.
+
+    ```python
+    def reduce_chat_history(messages: list, max_tokens: int, model: str = "gpt-3.5-turbo") -> list:
+        """
+        Reduces chat history by removing oldest messages until total tokens are below max_tokens.
+        Prioritizes keeping the system message and recent user/assistant turns.
+        """
+        if not messages:
+            return []
+
+        # Keep system message if present
+        system_message = None
+        if messages[0]["role"] == "system":
+            system_message = messages[0]
+            messages_to_process = messages[1:]
+        else:
+            messages_to_process = messages
+
+        current_messages = [system_message] if system_message else []
+        current_tokens = count_chat_tokens(current_messages, model)
+        
+        # Add messages from most recent to oldest
+        for i in range(len(messages_to_process) - 1, -1, -1):
+            msg = messages_to_process[i]
+            msg_tokens = count_chat_tokens([msg], model) # Estimate tokens for individual message
             
-            # OpenAI token counting has some overhead per message,
-            # plus a few tokens for start/end of conversation.
-            # I've found that a buffer of 3-4 tokens per message is a good heuristic,
-            # plus a small constant for overall conversation overhead.
-            # This is an empirical estimate, actual overhead varies.
-            MESSAGE_OVERHEAD_TOKENS = 4
-            CONVERSATION_OVERHEAD_TOKENS = 3 
+            # Check if adding this message exceeds the limit
+            # We add a buffer of 100-200 tokens for the potential new response
+            if current_tokens + msg_tokens + 200 < max_tokens: 
+                current_messages.insert(len(current_messages) if system_message else 0, msg)
+                current_tokens += msg_tokens
+            else:
+                break # Stop adding if we exceed the limit
 
-            # Start with a buffer for the expected response
-            # Adjust this based on your typical response length
-            response_token_buffer = 500 
-            effective_max_input_tokens = max_tokens_limit - response_token_buffer
-
-            # Process messages from oldest to newest to potentially remove the oldest
-            # However, for retaining *most recent* context, we iterate newest to oldest
-            # and build the list in reverse.
+        # Ensure system message is always at the beginning if present
+        if system_message and current_messages[0] != system_message:
+            current_messages.remove(system_message) # Remove if it got re-inserted somewhere else
+            current_messages.insert(0, system_message) # Insert at the beginning
             
-            # Check for system message and add it first if it exists
-            system_message = None
-            if messages and messages[0]['role'] == 'system':
-                system_message = messages[0]
-                # Calculate system message tokens including overhead
-                system_tokens = len(encoding.encode(system_message["content"])) + MESSAGE_OVERHEAD_TOKENS
-                if system_tokens > effective_max_input_tokens:
-                    # System message alone exceeds limit, this is an error condition
-                    print("Warning: System message alone exceeds token limit.")
-                    return [system_message], system_tokens # Or raise an error
-                trimmed_messages.append(system_message)
-                current_tokens += system_tokens
+        return current_messages
+    ```
 
-            # Now, process other messages from newest to oldest
-            other_messages = messages[1:] if system_message else messages
-            temp_messages_reversed = [] # To build in reverse
-            for message in reversed(other_messages):
-                message_content_tokens = len(encoding.encode(message["content"]))
-                message_total_tokens = message_content_tokens + MESSAGE_OVERHEAD_TOKENS
-                
-                # Check if adding this message (plus the overall conversation overhead)
-                # would exceed the effective limit
-                if current_tokens + message_total_tokens + CONVERSATION_OVERHEAD_TOKENS <= effective_max_input_tokens:
-                    temp_messages_reversed.append(message)
-                    current_tokens += message_total_tokens
-                else:
-                    break # Stop adding messages if we're over the limit
-
-            # Reconstruct the final list, putting system message first, then newest messages
-            final_messages = trimmed_messages + list(reversed(temp_messages_reversed))
-            return final_messages, current_tokens + CONVERSATION_OVERHEAD_TOKENS # Add final overhead
-            
-        # Example Usage:
-        conversation_history = [
-            {"role": "system", "content": "You are a helpful assistant."},
-            {"role": "user", "content": "Hello, how are you today?"},
-            {"role": "assistant", "content": "I'm doing well, thank you! How can I assist you?"},
-            {"role": "user", "content": "Tell me a very long and detailed story about a space-faring cat adventurer named Captain Fluffernutter and his quest to retrieve the legendary Yarn Ball of Eternity from the dreaded Nebula of No Naps. The story should cover his origin, his trusty spaceship 'The Whisker Wonder', his crew of loyal squirrels, and the perilous journey through asteroid fields and cosmic dust bunnies. Detail his encounters with space pirates, ancient alien civilizations, and the unique challenges of space travel for a feline. " * 300}, # This will be very long
-            {"role": "assistant", "content": "Once upon a time, in a galaxy far, far away, lived Captain Fluffernutter, a tabby of unparalleled courage..." * 100}, # Also long
-            {"role": "user", "content": "Summarize the key events of Captain Fluffernutter's journey."},
-        ]
-
-        model_token_limit = 4096 # Example for gpt-3.5-turbo
-        trimmed_conv, actual_tokens = trim_messages(conversation_history, model_token_limit, "gpt-3.5-turbo")
-
-        print(f"Original messages count: {len(conversation_history)}, Trimmed messages count: {len(trimmed_conv)}")
-        print(f"Tokens after trimming: {actual_tokens}")
-        ```
-
-    *   **Summarize/Condense Input:** If your initial prompt or a part of your conversation history is very long but doesn't need to be entirely verbatim, summarize it. You can even use another, smaller model (or a cheaper, larger context one) to summarize previous turns before feeding them into your primary model.
-    *   **Context Compression / Retrieval Augmented Generation (RAG):** Instead of sending entire documents, use embedding models and vector databases to retrieve only the most relevant chunks of information for a given query. This significantly reduces input size while maintaining relevance. This is a common pattern I've implemented in production for complex question-answering systems.
-    *   **Refine Prompts for Conciseness:** Review your prompts. Can you express the same instructions or context using fewer words? Remove redundant examples or overly verbose explanations. Often, a well-crafted, concise prompt is more effective than a lengthy one.
-    *   **Chunking and Batching:** For tasks like summarizing a very large document, break it into smaller, manageable chunks. Process each chunk sequentially, perhaps generating a summary for each, and then combining or summarizing those summaries.
-
-4.  **Consider a Larger Context Model:**
-    If your use case genuinely requires a large context window and reduction strategies are proving difficult or detrimental to performance, upgrading to a model with a larger context window (e.g., `gpt-4-turbo` or `gpt-4o`) is a straightforward, albeit potentially more expensive, solution. Always check the cost implications.
-
-5.  **Manage `max_tokens` for Output:**
-    While `context_length_exceeded` is about input, remember that the `max_tokens` parameter you set for the model's *response* also contributes to the total context window. If you request a very large `max_tokens` for the output, it leaves less room for your input, potentially exacerbating the problem. Ensure `max_tokens` is set realistically for your expected response length.
+5.  **Refine Prompt Engineering:**
+    *   Be concise. Can you phrase your instructions or examples more efficiently?
+    *   Remove redundant information.
+    *   Use examples judiciously; sometimes one good example is better than five mediocre ones that eat up tokens.
 
 ## Code Examples
 
-Here are some concise, copy-paste ready code examples for Python, which is a common language for interacting with OpenAI.
+Here are some concise, copy-paste ready examples for common scenarios.
 
-### 1. Counting Tokens Precisely
+### 1. Counting Tokens with `tiktoken`
+
+Essential for debugging and proactive management.
 
 ```python
 import tiktoken
 
-def get_token_count(text: str, model_name: str = "gpt-3.5-turbo") -> int:
-    """
-    Returns the number of tokens in a text string for a given model.
-    """
+def num_tokens_from_string(string: str, encoding_name: str = "cl100k_base") -> int:
+    """Returns the number of tokens in a text string."""
+    encoding = tiktoken.get_encoding(encoding_name)
+    return len(encoding.encode(string))
+
+def num_tokens_from_messages(messages: list[dict], model: str = "gpt-3.5-turbo") -> int:
+    """Returns the number of tokens used by a list of messages."""
     try:
-        encoding = tiktoken.encoding_for_model(model_name)
-    except KeyError:
-        # Fallback for models not explicitly in tiktoken, often behaves similarly to cl100k_base
-        encoding = tiktoken.get_encoding("cl100k_base") 
-    return len(encoding.encode(text))
-
-# Example usage for a simple prompt:
-my_prompt = "What are the key differences between a cat and a dog?"
-model = "gpt-4o"
-tokens = get_token_count(my_prompt, model)
-print(f"Prompt: '{my_prompt}'")
-print(f"Tokens ({model}): {tokens}")
-
-# Example usage for a messages array (common in chat completions)
-messages = [
-    {"role": "system", "content": "You are a helpful assistant."},
-    {"role": "user", "content": "Tell me about large language models."},
-    {"role": "assistant", "content": "Large Language Models (LLMs) are deep learning models that can generate human-like text..."},
-]
-
-def get_messages_token_count(messages: list, model_name: str = "gpt-3.5-turbo") -> int:
-    """
-    Returns the token count for a list of messages,
-    following OpenAI's recommendations for chat completion tokens.
-    """
-    try:
-        encoding = tiktoken.encoding_for_model(model_name)
+        encoding = tiktoken.encoding_for_model(model)
     except KeyError:
         encoding = tiktoken.get_encoding("cl100k_base")
-
-    token_per_message = 3 # For role, content, and name (if present)
-    token_per_name = 1 # If name is present
+    
     num_tokens = 0
     for message in messages:
-        num_tokens += token_per_message
+        num_tokens += 4  # every message follows <im_start>{role/name}\n{content}<im_end>\n
         for key, value in message.items():
             num_tokens += len(encoding.encode(value))
-            if key == "name":
-                num_tokens += token_per_name
-    num_tokens += 3 # Every reply is primed with <|start|>assistant<|message|>
+    num_tokens += 2  # every reply is primed with <im_start>assistant
     return num_tokens
 
-messages_tokens = get_messages_token_count(messages, model)
-print(f"\nMessages: {messages}")
-print(f"Tokens for messages ({model}): {messages_tokens}")
+# Example usage
+text_to_analyze = "This is a sample sentence to count tokens."
+print(f"Tokens in text: {num_tokens_from_string(text_to_analyze)}")
+
+chat_messages = [
+    {"role": "system", "content": "You are a helpful assistant."},
+    {"role": "user", "content": "What is the capital of France?"},
+    {"role": "assistant", "content": "The capital of France is Paris."},
+    {"role": "user", "content": "And Germany?"}
+]
+print(f"Tokens in chat messages: {num_tokens_from_messages(chat_messages)}")
 ```
 
-### 2. Basic Conversation Truncation Strategy
+### 2. Truncating Long User Input
 
-This strategy keeps the system message (if any) and then prunes messages from the *oldest* end of the conversation history until the token limit is met. It prioritizes keeping the most recent exchanges.
+A simple function to ensure user input doesn't exceed a specific token limit.
 
 ```python
 import tiktoken
 
-def safe_trim_messages(messages: list, max_tokens: int, model_name: str = "gpt-3.5-turbo", response_buffer: int = 200) -> list:
-    """
-    Trims a list of messages to fit within max_tokens, prioritizing the most recent.
-    Reserves 'response_buffer' tokens for the model's expected reply.
-    """
-    encoding = tiktoken.encoding_for_model(model_name)
+def truncate_text_by_tokens(text: str, max_tokens: int, model: str = "gpt-3.5-turbo") -> str:
+    """Truncates text to ensure it does not exceed max_tokens."""
+    encoding = tiktoken.encoding_for_model(model)
+    tokens = encoding.encode(text)
     
-    # Calculate effective max tokens for input after reserving buffer for response
-    effective_max_input_tokens = max_tokens - response_buffer
+    if len(tokens) > max_tokens:
+        truncated_tokens = tokens[:max_tokens]
+        truncated_text = encoding.decode(truncated_tokens)
+        # Often helpful to add an ellipsis or similar indicator
+        if not truncated_text.endswith("..."):
+            truncated_text = truncated_text.rsplit(' ', 1)[0] + "..." # Try to cut at word boundary
+        return truncated_text
+    return text
 
-    # OpenAI chat completion token calculation overheads
-    # These are empirical and can vary slightly
-    tokens_per_message = 4  # role, content, and some delimiters/overhead
-    tokens_per_name = 1     # if 'name' field is used
-    completion_overhead = 3 # start of sequence token for response
-
-    current_tokens = completion_overhead
-    trimmed_messages = []
-    
-    # Handle system message separately to ensure it's always included if possible
-    system_message = None
-    other_messages = []
-    if messages and messages[0].get('role') == 'system':
-        system_message = messages[0]
-        # Calculate tokens for system message
-        system_msg_tokens = tokens_per_message + sum(len(encoding.encode(v)) for k, v in system_message.items())
-        if 'name' in system_message: system_msg_tokens += tokens_per_name
-        
-        if current_tokens + system_msg_tokens <= effective_max_input_tokens:
-            trimmed_messages.append(system_message)
-            current_tokens += system_msg_tokens
-            other_messages = messages[1:]
-        else:
-            # System message alone is too long or too close to the limit
-            print(f"Warning: System message alone consumes {system_msg_tokens} tokens, leaving minimal space.")
-            return [system_message] # Return only system message if it's the main culprit
-    else:
-        other_messages = messages
-
-    # Add other messages from newest to oldest
-    # This ensures the most recent context is preserved
-    temp_messages = []
-    for msg in reversed(other_messages):
-        msg_tokens = tokens_per_message + sum(len(encoding.encode(v)) for k, v in msg.items())
-        if 'name' in msg: msg_tokens += tokens_per_name
-
-        if current_tokens + msg_tokens <= effective_max_input_tokens:
-            temp_messages.insert(0, msg) # Insert at beginning to maintain original order
-            current_tokens += msg_tokens
-        else:
-            break # Stop if adding this message would exceed the limit
-
-    # Combine system message (if present) and the kept recent messages
-    final_messages = trimmed_messages + temp_messages
-    
-    # Optional: Log how much was trimmed
-    # print(f"Original message count: {len(messages)}, Trimmed to: {len(final_messages)}")
-    # print(f"Final token count: {current_tokens}")
-
-    return final_messages
-
-# Example with a long conversation
-long_conversation = [
-    {"role": "system", "content": "You are a wise mentor, helping a young apprentice."},
-    {"role": "user", "content": "I'm struggling with my coding project."},
-    {"role": "assistant", "content": "Tell me more about it. What specific challenges are you facing?"},
-] * 10 # Simulate 10 turns of short conversation
-
-# Add a very long message at the end
-long_conversation.append({"role": "user", "content": "Here is my entire codebase, please review it for errors and suggest improvements: " + ("print('hello world')\n" * 500)})
-
-
-model = "gpt-3.5-turbo"
-model_limit = 4096
-
-trimmed_conversation = safe_trim_messages(long_conversation, model_limit, model, response_buffer=500)
-
-print(f"Original conversation length: {len(long_conversation)}")
-print(f"Trimmed conversation length: {len(trimmed_conversation)}")
-print(f"Tokens in trimmed conversation (estimate): {get_messages_token_count(trimmed_conversation, model)}")
-
-# Now use trimmed_conversation with the OpenAI API
-# openai.ChatCompletion.create(model=model, messages=trimmed_conversation, max_tokens=200)
+# Example
+long_text = "This is a very, very long piece of text that definitely goes over the limit for demonstration purposes. We need to cut it down to size. Imagine this is a whole document or an extensive log file." * 10
+truncated = truncate_text_by_tokens(long_text, 50)
+print(f"Original length: {len(long_text)} chars, Truncated length: {len(truncated)} chars")
+print(f"Original tokens: {num_tokens_from_string(long_text)}, Truncated tokens: {num_tokens_from_string(truncated)}")
+print(truncated)
 ```
 
 ## Environment-Specific Notes
 
-Managing context length can have different implications depending on your deployment environment.
+The fundamental solution to `context_length_exceeded` remains the same across environments, but how you monitor and manage it can differ.
 
-*   **Local Development:**
-    This is the easiest environment to experiment with token counting and truncation strategies. You have direct control over dependencies like `tiktoken` and can rapidly iterate. I recommend spending time here to perfect your context management logic before deploying.
+*   **Cloud Deployments (AWS, GCP, Azure):**
+    *   **Monitoring:** Implement logging for API request sizes. CloudWatch, Stackdriver, or Azure Monitor can track payload sizes if properly configured. Set up alerts for `InvalidRequestError` types.
+    *   **Dynamic Context Management:** For applications that deal with highly variable input lengths (e.g., summarization of user-uploaded documents), consider implementing dynamic logic to select the appropriate model (e.g., a cheaper, smaller model for short inputs, a more expensive, larger model for long inputs).
+    *   **Serverless (Lambda, Cloud Functions):** Be mindful of cold starts if you're loading `tiktoken` or other tokenizer libraries on the fly. Package them efficiently.
 
 *   **Docker Containers:**
-    When deploying applications in Docker, ensure `tiktoken` and its dependencies are included in your `Dockerfile`. For services that experience high request volumes, the CPU overhead of tokenization might become a consideration, especially for very large prompts, though it's typically minimal. Monitor container resource usage if you're dealing with extreme context lengths or a large number of concurrent requests.
+    *   **Logging:** Ensure your application's logs, especially those indicating prompt length or truncation events, are correctly forwarded to your container orchestration's log aggregation system (e.g., ELK stack, Grafana Loki).
+    *   **Resource Limits:** While not directly related to *this* error, ensure your container has sufficient memory and CPU if you're doing complex pre-processing or summarization locally before sending to the API.
+    *   **Dependencies:** Pre-install `tiktoken` and other necessary libraries in your Dockerfile to avoid runtime installation issues.
 
-*   **Cloud (AWS Lambda, Azure Functions, GCP Cloud Functions):**
-    Serverless environments introduce specific concerns:
-    *   **Cold Starts:** Loading `tiktoken` and its encoding models can contribute to cold start times, especially if it's not cached between invocations. Pre-packaging `tiktoken` in your deployment package is essential.
-    *   **Memory Limits:** While `tiktoken` itself isn't memory-intensive, processing extremely large strings or very long message arrays could theoretically approach memory limits in constrained serverless functions.
-    *   **Execution Time Limits:** Complex summarization or RAG strategies that involve multiple steps (e.g., calling another embedding model, querying a vector DB, then calling the main LLM) can push serverless function execution time limits. Optimize these workflows for speed.
-    *   **Caching:** For persistent conversational contexts, consider storing summarized conversation states or full message histories in a fast cache (like AWS ElastiCache, Azure Cache for Redis, or GCP Memorystore for Redis) rather than re-calculating or re-sending everything with each API call. This improves performance and can significantly reduce token usage by sending only the most recent diffs or summary.
+*   **Local Development:**
+    *   **Immediate Feedback:** Leverage print statements and local `tiktoken` calculations during development. It's much easier to debug locally than in a production environment.
+    *   **Testing with Edge Cases:** Deliberately create test cases with very long inputs or extensive chat histories to ensure your context management logic holds up before deployment.
+    *   **Development Tools:** Utilize IDE features for stepping through code and inspecting variables to understand exactly what's being sent to the API. I often use a simple `print(json.dumps(messages, indent=2))` right before the API call to visualize the full payload.
 
 ## Frequently Asked Questions
 
-**Q: Does `max_tokens` for the response count towards the total context length?**
-**A:** Yes, the `max_tokens` parameter you set for the model's output is reserved from the total context window. The model needs to ensure it has enough space to generate a response up to that length. If `(input_tokens + requested_max_output_tokens)` exceeds the model's total capacity, you will likely get this error. It's good practice to leave a buffer.
+**Q: What exactly is a "token"?**
+**A:** A token is a fundamental unit of text that large language models process. It can be a word, a part of a word, a punctuation mark, or even a single character. For English text, one token generally corresponds to about 4 characters or 0.75 words.
 
-**Q: Can I increase the model's context length dynamically?**
-**A:** No, the context length is a fixed architectural constraint of a specific OpenAI model. You cannot dynamically increase it. Your only options are to reduce your input or use a different model that inherently offers a larger context window.
+**Q: Can I increase the context length limit for my OpenAI model?**
+**A:** No, the context length limit is a fixed property of the specific model you are using and cannot be altered by the user via API parameters. Your only options are to choose a model with a larger inherent context window or to reduce the size of your input.
 
-**Q: Is there a way to stream a very long prompt to avoid the limit?**
-**A:** No, the entire prompt (all messages in the `messages` array) must be sent in a single API call for the model to process it as a coherent context. Streaming is typically for the *output* from the model, not the input.
+**Q: Does the model's *output* count towards the context length limit?**
+**A:** The `InvalidRequestError: context_length_exceeded` specifically refers to the *input* you send to the model. However, when you make an API call, the total context window (e.g., 16k tokens) must accommodate both your input *and* the model's potential output (controlled by `max_tokens` in your request). If your input is very close to the model's maximum and `max_tokens` is also high, you might encounter other errors, but `context_length_exceeded` is primarily about the input.
 
-**Q: How does `tiktoken` compare to a simple word count?**
-**A:** `tiktoken` provides the exact token count that OpenAI's models use, which is far more accurate than a simple word count. Tokens are often sub-word units (e.g., "tokenization" might be "token", "iza", "tion"), and punctuation, spaces, and even characters in non-English languages are counted. A word count will almost always be lower than the actual token count. Always rely on `tiktoken` for precise measurements.
+**Q: How do I choose the right model given my context length requirements?**
+**A:** Evaluate your typical input size. If your prompts are consistently short (e.g., under 4000 tokens), `gpt-3.5-turbo-16k` might be sufficient and cost-effective. For applications requiring extensive context (e.g., processing long documents, detailed conversations), `gpt-4-turbo` or its 128k context variants are usually necessary despite the higher cost. Always benchmark costs and performance.
 
-**Q: What if even my system message is too long?**
-**A:** If your system message alone (or combined with minimal other context) exceeds the limit, you must make it more concise. Condense instructions, use bullet points, or reference external knowledge if the full detail isn't needed in every interaction.
+**Q: Is there an easy way to just "summarize" old chat messages automatically?**
+**A:** Yes, a common pattern is to detect when the token count is approaching the limit, then take older turns (e.g., everything except the last 3-5 turns) and send them to the model with a prompt like "Summarize the following conversation history concisely for context:" and then replace those old turns with the generated summary. This keeps the history compact.
 
 ## Related Errors
+*(none)*
