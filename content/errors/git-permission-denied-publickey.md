@@ -1,227 +1,236 @@
 # Git error: Permission denied (publickey)
-> Encountering 'Git error: Permission denied (publickey)' means your SSH key setup is incorrect; this guide explains how to fix it.
+> Encountering 'Permission denied (publickey)' means your Git client can't authenticate with the remote server using an SSH key; this guide explains how to fix it.
 
 ## What This Error Means
 
-When you see the "Permission denied (publickey)" error during a Git operation (like `git clone`, `git pull`, or `git push`), it means your local machine is attempting to authenticate with a remote Git server (e.g., GitHub, GitLab, Bitbucket) using the SSH protocol, but the server is rejecting the connection. This isn't a problem with Git itself, but rather with how your SSH client is trying to prove its identity to the SSH server. The server expects to find a matching public key for a private key that your client presents, and that validation is failing. Essentially, the server doesn't recognize you or doesn't trust the key you're trying to use.
+When you attempt to interact with a remote Git repository (e.g., `git push`, `git pull`, `git clone`) and receive `Permission denied (publickey)`, it indicates that your local Git client failed to authenticate with the remote Git server using an SSH key. SSH (Secure Shell) relies on a pair of cryptographic keys – a private key kept on your local machine and a corresponding public key registered with the remote server – to establish a secure, authenticated connection without requiring a password each time. This error explicitly states that the server couldn't verify your identity based on the public key it expected to receive.
 
 ## Why It Happens
 
-This error fundamentally happens because the secure handshake between your local machine's SSH client and the remote Git server's SSH daemon isn't completing successfully. SSH authentication relies on a key pair: a private key stored securely on your local machine and a corresponding public key registered with the remote service. When you initiate an SSH connection (which Git does under the hood for SSH URLs), your client tries to use one of its known private keys to sign a challenge from the server. The server then verifies this signature using the public key it has on file for your user. If the private key isn't available, isn't loaded, has incorrect permissions, or if the corresponding public key isn't on the server, the authentication fails, leading to the "Permission denied (publickey)" error.
+This error fundamentally means the SSH handshake process failed because the server could not find a matching public key for the private key presented by your client, or the private key itself was not accessible or correctly configured. The server is saying, "I don't recognize you, or I can't prove who you are with the information you're providing." It's a security mechanism preventing unauthorized access to your repositories. From my experience, it's one of the most common setup hurdles for new developers and even seasoned engineers setting up a new machine or environment.
 
 ## Common Causes
 
-In my experience, this error almost always boils down to one of a few common issues:
+Several scenarios can lead to the `Permission denied (publickey)` error:
 
-1.  **Missing or Incorrect Private Key:** The SSH client can't find your private key in the default location (`~/.ssh/id_rsa`, `~/.ssh/id_ed25519`, etc.) or it's simply not present on your system.
-2.  **Private Key Not Loaded into SSH Agent:** Even if the private key exists, the `ssh-agent` (a program that holds private keys in memory for SSH) might not have it loaded. This means it's not available for the SSH client to use.
-3.  **Incorrect Key Permissions:** For security reasons, SSH keys must have very strict file permissions. If your private key file (e.g., `id_rsa`) or the `~/.ssh` directory is too permissive, the SSH client will refuse to use it.
-4.  **Public Key Not Registered on Remote:** The corresponding public key is not uploaded to your user profile on the remote Git service (GitHub, GitLab, Bitbucket, etc.) or is associated with a different user account.
-5.  **Using the Wrong SSH Key:** You might have multiple SSH keys, and the client is trying to use a key that isn't recognized by the specific remote repository or user account. This often happens when working with multiple organizations or personal/work accounts.
-6.  **SSH Configuration Issues (`~/.ssh/config`):** Your SSH configuration file might be directing your SSH client to use the wrong key for a particular host, or it might have incorrect host entries.
-7.  **Incorrect Remote URL:** You're trying to use an SSH remote URL (e.g., `git@github.com:user/repo.git`), but you've mistakenly configured Git to use an HTTPS URL (e.g., `https://github.com/user/repo.git`), or vice-versa, causing Git to try the wrong authentication method.
-8.  **Server Fingerprint Change:** Less common but possible, the remote server's host key (fingerprint) might have changed, triggering a warning and preventing connection. This typically prompts a different error message but can indirectly block SSH.
+1.  **Missing SSH Key Pair:** You haven't generated an SSH key pair (`id_rsa`/`id_rsa.pub` or similar) on your local machine.
+2.  **Public Key Not Registered:** Your SSH public key (`id_rsa.pub`) has not been added to your user account on the remote Git hosting service (e.g., GitHub, GitLab, Bitbucket).
+3.  **Private Key Not Loaded in `ssh-agent`:** Even if you have a key, your `ssh-agent` (a background program that holds your private keys) isn't running or hasn't loaded your private key, especially if it's passphrase-protected.
+4.  **Incorrect File Permissions:** The permissions on your `~/.ssh` directory or the private key file itself are too liberal, which SSH considers a security risk and will refuse to use the key.
+5.  **Wrong Private Key Being Used:** If you have multiple SSH keys, Git (or rather, SSH) might be trying to use a different private key than the one whose public counterpart is registered on the remote server. This often happens when `~/.ssh/config` is misconfigured or absent.
+6.  **Incorrect Git Remote URL:** Your Git remote URL might be using HTTPS instead of SSH, or it might be pointing to a different server/user where your key isn't registered. While not a direct SSH key issue, it can manifest similarly if SSH is then attempted.
+7.  **Key Expired or Revoked:** Less common, but sometimes keys can be configured to expire or might have been manually revoked by a repository administrator.
+8.  **SSH Agent Forwarding Issues:** In environments like remote servers or Docker, if you're trying to use a local key, agent forwarding might not be correctly set up.
 
 ## Step-by-Step Fix
 
-Let's walk through the troubleshooting steps. I always follow this sequence when I hit this error, and it rarely fails to identify the root cause.
+Let's walk through a systematic approach to diagnose and resolve this issue. I've found this sequence reliable in debugging these kinds of problems.
 
-### Step 1: Verify SSH Agent Status and Loaded Keys
+### 1. Verify Your Git Remote URL
 
-First, ensure your `ssh-agent` is running and has your keys loaded.
+First, ensure your Git remote URL is configured to use SSH, not HTTPS.
+```bash
+git remote -v
+```
+You should see URLs starting with `git@` (e.g., `git@github.com:youruser/yourrepo.git`). If it's `https://github.com/...`, you might need to change it.
 
-1.  **Check if `ssh-agent` is running:**
+```bash
+# To change an HTTPS URL to SSH
+git remote set-url origin git@github.com:youruser/yourrepo.git
+```
+
+### 2. Check for Existing SSH Keys
+
+Look in your `~/.ssh` directory for existing key pairs.
+```bash
+ls -al ~/.ssh
+```
+You're looking for files like `id_rsa`, `id_ed25519`, `id_dsa`, etc., and their corresponding `.pub` public key files. If you don't see any, you'll need to generate one (Step 3).
+
+### 3. Generate a New SSH Key Pair (If Needed)
+
+If you don't have an SSH key or want to create a new one, use `ssh-keygen`. It's generally recommended to use `ed25519` for modern systems.
+```bash
+ssh-keygen -t ed25519 -C "your_email@example.com"
+```
+*   Press Enter to accept the default file path (`~/.ssh/id_ed25519`).
+*   **Strongly recommend** setting a passphrase. It adds an extra layer of security. You'll enter it twice.
+
+### 4. Ensure Correct File Permissions
+
+SSH is very particular about key permissions for security reasons.
+```bash
+chmod 700 ~/.ssh
+chmod 600 ~/.ssh/id_ed25519 # Or your private key file name
+chmod 644 ~/.ssh/id_ed25519.pub # Or your public key file name
+```
+In my experience, incorrect permissions are a very common cause, especially when files are copied or restored.
+
+### 5. Add Your Private Key to the `ssh-agent`
+
+The `ssh-agent` manages your private keys and handles passphrases, so you don't have to enter them repeatedly.
+
+*   **Start the `ssh-agent` (if not running):**
     ```bash
     eval "$(ssh-agent -s)"
     ```
-    If it's not running, this command will start it and set the necessary environment variables. If it's already running, it might just output the agent PID.
+    You should see output like `Agent pid 1234`.
 
-2.  **List loaded keys:**
+*   **Add your private key to the agent:**
     ```bash
-    ssh-add -l
+    ssh-add ~/.ssh/id_ed25519 # Or your private key file name
     ```
-    This command lists the fingerprints of all identities currently loaded into the `ssh-agent`. If you see "The agent has no identities," your key isn't loaded. If you see keys listed, ensure they are the correct ones for your Git host.
+    If your key has a passphrase, you'll be prompted to enter it now. This only needs to be done once per session or until the agent is killed. To persist this across reboots, you might need to add `eval "$(ssh-agent -s)" && ssh-add ~/.ssh/id_ed25519` to your shell's startup file (e.g., `~/.bashrc`, `~/.zshrc`).
 
-### Step 2: Add Your SSH Key to the Agent
+### 6. Add Your Public Key to the Remote Git Service
 
-If your key isn't loaded, add it.
+This is critical. The remote server needs to know your public key to authenticate you.
 
-1.  **Identify your private key file:** Common names are `id_rsa` or `id_ed25519` within your `~/.ssh` directory.
-2.  **Add the key:**
+1.  **Copy your public key:**
     ```bash
-    ssh-add ~/.ssh/id_rsa
-    # Or for Ed25519 keys:
-    # ssh-add ~/.ssh/id_ed25519
+    cat ~/.ssh/id_ed25519.pub
     ```
-    If your key has a passphrase, you'll be prompted to enter it. If you get an error like "Could not open a connection to your authentication agent," repeat Step 1 to ensure the agent is running. If you see "No such file or directory," your private key might be in a different location or missing.
+    Copy the entire output, starting with `ssh-ed25519` and ending with `your_email@example.com`.
 
-### Step 3: Check Key Permissions
-
-Incorrect permissions are a frequent culprit.
-
-1.  **Check permissions for your `~/.ssh` directory:**
-    ```bash
-    chmod 700 ~/.ssh
-    ```
-2.  **Check permissions for your private key file:**
-    ```bash
-    chmod 600 ~/.ssh/id_rsa
-    # Or for Ed25519 keys:
-    # chmod 600 ~/.ssh/id_ed25519
-    ```
-    The private key file should only be readable by you, and the `~/.ssh` directory should only be accessible by you. SSH is very strict about this for security reasons.
-
-### Step 4: Verify Public Key on Remote Git Host
-
-Ensure the public key corresponding to your private key is correctly registered on GitHub, GitLab, Bitbucket, or your self-hosted Git server.
-
-1.  **Locate your public key:** This is usually the private key file name with a `.pub` extension (e.g., `~/.ssh/id_rsa.pub`).
-2.  **Copy the public key content:**
-    ```bash
-    cat ~/.ssh/id_rsa.pub
-    # Or for Ed25519 keys:
-    # cat ~/.ssh/id_ed25519.pub
-    ```
-    Copy the *entire* output, starting with `ssh-rsa` or `ssh-ed25519` and ending with your email/comment.
-3.  **Go to your Git host's settings:**
+2.  **Go to your Git hosting service settings:**
     *   **GitHub:** Settings -> SSH and GPG keys -> New SSH key.
-    *   **GitLab:** User Settings -> SSH Keys -> Add an SSH key.
-    *   **Bitbucket:** Personal settings -> SSH keys -> Add key.
-4.  **Paste the public key:** Ensure there are no extra spaces or line breaks.
-5.  **Verify it's for the correct user account.** I've seen this when users have multiple accounts and upload the key to the wrong one.
+    *   **GitLab:** User Settings -> SSH Keys.
+    *   **Bitbucket:** Personal settings -> SSH keys.
 
-### Step 5: Test SSH Connection to the Git Host
+3.  Paste your public key into the designated field and give it a descriptive title.
 
-This step verifies that SSH itself can connect, independently of Git.
+### 7. Test the SSH Connection
 
+You can test if your SSH setup is working correctly without cloning a repository.
 ```bash
-ssh -T git@github.com
-# For GitLab: ssh -T git@gitlab.com
-# For Bitbucket: ssh -T git@bitbucket.org
+ssh -T git@github.com # Replace github.com with your Git server if different
 ```
-*   If successful, you'll typically see a message like "Hi [username]! You've successfully authenticated..." or similar. This means your SSH setup is likely correct, and the issue might be with your Git remote URL.
-*   If it still fails with "Permission denied (publickey)," then the problem is still with your SSH key setup on your local machine or with the public key on the remote. Re-check steps 1-4 carefully.
+*   **First connection:** You might be asked to confirm the authenticity of the host. Type `yes` and press Enter. This adds the host's fingerprint to `~/.ssh/known_hosts`.
+*   **Success:** You should see a message confirming successful authentication (e.g., "Hi yourusername! You've successfully authenticated...").
+*   **Failure:** If it still fails with `Permission denied (publickey)`, proceed to the next step.
 
-### Step 6: Review SSH Configuration (`~/.ssh/config`)
+### 8. Inspect `~/.ssh/config`
 
-If you have specific SSH configurations, they might be interfering.
+If you have multiple keys or encounter issues with specific hosts, your `~/.ssh/config` file might be involved.
+```bash
+cat ~/.ssh/config
+```
+Look for `Host` entries that might specify a particular `IdentityFile`. For example:
+```
+Host github.com
+  Hostname github.com
+  User git
+  IdentityFile ~/.ssh/my_github_key
+  IdentitiesOnly yes # This forces SSH to only use the specified IdentityFile
+```
+If you find such an entry, ensure the `IdentityFile` points to the *correct* private key file whose public counterpart is registered on GitHub.
 
-1.  **Open or create `~/.ssh/config`:**
-    ```bash
-    nano ~/.ssh/config
-    # Or use your preferred text editor
-    ```
-2.  **Ensure correct `IdentityFile` entries:** If you have multiple keys or custom key names, your config file should specify which key to use for which host.
-    ```
-    Host github.com
-      Hostname github.com
-      User git
-      IdentityFile ~/.ssh/id_rsa_myproject
-      # Or for the default key:
-      # IdentityFile ~/.ssh/id_rsa
-      # Or an Ed25519 key:
-      # IdentityFile ~/.ssh/id_ed25519
-    ```
-    The `User git` line is important as Git SSH operations typically use the 'git' user on the remote.
-3.  **Remove any conflicting entries** or ensure the correct `IdentityFile` points to the key you want to use.
+### 9. Use Verbose SSH for Diagnosis
 
-### Step 7: Check Git Remote URL
-
-Even if SSH is working, Git needs to be told to use SSH.
-
-1.  **Check your current remote URL:**
-    ```bash
-    git remote -v
-    ```
-    Look for an entry like `origin git@github.com:user/repo.git (fetch)`. If it's `https://github.com/user/repo.git`, then Git is trying to use HTTPS authentication, not SSH.
-
-2.  **Change to SSH URL if necessary:**
-    ```bash
-    git remote set-url origin git@github.com:user/repo.git
-    ```
-    Replace `user/repo.git` with the correct path to your repository. After this, try your Git command again.
+When all else fails, run SSH in verbose mode to get detailed debugging output.
+```bash
+ssh -vvv git@github.com
+```
+Look for lines indicating which private keys SSH is trying, where it's looking, and why it's failing. This output often pinpoints the exact problem (e.g., "no mutual signature algorithm", "authentications that can continue: publickey", "Trying private key: /path/to/key").
 
 ## Code Examples
 
-Here are some of the most critical commands, ready for copy-paste:
+Here are the key commands you'll likely use, ready to copy-paste.
 
-*   **Start SSH agent and add default private key (with passphrase prompt):**
-    ```bash
-    eval "$(ssh-agent -s)" && ssh-add ~/.ssh/id_rsa
-    ```
+```bash
+# 1. Generate an SSH key pair (replace email with yours)
+ssh-keygen -t ed25519 -C "carmen.ortega@example.com"
 
-*   **List keys currently loaded in SSH agent:**
-    ```bash
-    ssh-add -l
-    ```
+# 2. Check and set correct permissions for SSH directory and private key
+chmod 700 ~/.ssh
+chmod 600 ~/.ssh/id_ed25519 # Use your private key filename
 
-*   **Set correct permissions for the SSH directory and private key:**
-    ```bash
-    chmod 700 ~/.ssh && chmod 600 ~/.ssh/id_rsa
-    ```
+# 3. Start the ssh-agent (if not running)
+eval "$(ssh-agent -s)"
 
-*   **Test SSH connection to GitHub (replace host as needed):**
-    ```bash
-    ssh -T git@github.com
-    ```
+# 4. Add your private key to the ssh-agent
+ssh-add ~/.ssh/id_ed25519 # Use your private key filename
 
-*   **View current Git remote URLs:**
-    ```bash
-    git remote -v
-    ```
+# 5. Copy your public key to clipboard (macOS example, adjust for Linux/Windows)
+# macOS:
+pbcopy < ~/.ssh/id_ed25519.pub
+# Linux (requires xclip):
+xclip -sel clip < ~/.ssh/id_ed25519.pub
 
-*   **Change Git remote URL from HTTPS to SSH:**
-    ```bash
-    git remote set-url origin git@github.com:your_username/your_repository.git
-    ```
+# 6. Test your SSH connection (replace github.com if needed)
+ssh -T git@github.com
+
+# 7. Example .ssh/config entry for specific key
+# Create/edit ~/.ssh/config and add:
+# Host specific-github.com
+#   Hostname github.com
+#   User git
+#   IdentityFile ~/.ssh/id_ed25519_special
+#   IdentitiesOnly yes
+# Then use: git clone specific-github.com:youruser/yourrepo.git
+
+# 8. Get verbose SSH output for debugging
+ssh -vvv git@github.com
+```
 
 ## Environment-Specific Notes
 
-The "Permission denied (publickey)" error can manifest differently or require slightly different approaches depending on your environment.
+The `Permission denied (publickey)` error can manifest differently or require specific considerations based on your environment.
 
-*   **Cloud Virtual Machines (AWS EC2, GCP Compute Engine, Azure VMs):**
-    *   **Key Management:** For initial access, cloud providers often provide or require you to specify an SSH key pair during instance creation. Ensure you're using the *correct* private key associated with the EC2 instance or VM when connecting to it. If you're using a jump host or bastion, your key needs to be on the jump host or forwarded.
-    *   **SSH Agent Forwarding:** When connecting from a local machine *through* a cloud VM to another Git host (e.g., from an EC2 instance to GitHub), you'll often need to use SSH agent forwarding. This allows your local `ssh-agent` to provide keys to remote connections without copying private keys to the VM. Add `-A` to your `ssh` command: `ssh -A user@your-vm-ip`.
-    *   **Permissions:** Just like on a local machine, file permissions on cloud VMs are critical. The `~/.ssh` directory and key files must have correct permissions.
+### Cloud Virtual Machines (AWS EC2, GCP, Azure VMs)
 
-*   **Docker Containers:**
-    *   **No Persistent Agent:** Docker containers are ephemeral. If you start an `ssh-agent` inside a container and add keys, they will be lost when the container stops.
-    *   **Mounting Keys:** For development containers, you can mount your local `~/.ssh` directory as a volume into the container: `-v ~/.ssh:/root/.ssh`. However, be cautious with this as it can expose your keys if the container is compromised.
-    *   **SSH Agent Forwarding:** The most secure way to use your local SSH keys inside a running Docker container is SSH agent forwarding. This involves mounting the `ssh-agent` socket into the container.
-        ```bash
-        docker run -it \
-          -v "$SSH_AUTH_SOCK:/ssh-auth.sock" \
-          -e SSH_AUTH_SOCK="/ssh-auth.sock" \
-          your_image_name bash
-        ```
-        This allows Git operations within the container to use the keys managed by your host's `ssh-agent`.
+When working with cloud VMs, SSH keys are fundamental.
+*   **Initial Access:** You usually provision a key pair (or use an existing one) when launching an instance. This is the key used to `ssh` *into* the VM from your local machine.
+*   **Git Operations from VM:** If you're trying to perform Git operations *from* the VM to a remote Git service (e.g., cloning a private repository from GitHub inside an EC2 instance), you need to set up SSH keys *on the VM itself* just as you would on your local machine. This means generating a new key pair on the VM, adding its public key to your Git service account, and ensuring the `ssh-agent` is running and loaded on the VM.
+*   **SSH Agent Forwarding:** A more advanced technique is `ssh-agent` forwarding. This allows your local `ssh-agent` (and thus your local private keys) to be used on the remote VM. This means you don't have to copy your private key to the VM, improving security. You enable it with the `-A` flag when SSHing into the VM: `ssh -A user@your-vm-ip`. Then, Git operations inside the VM will use your local agent. I've seen this used effectively in production CI/CD environments where secrets need to be tightly controlled.
 
-*   **Local Development Machines (macOS, Linux, Windows WSL/Git Bash):**
-    *   **Standard Practices:** The steps outlined above (checking `ssh-agent`, permissions, `~/.ssh/config`) are most relevant here.
-    *   **Multiple Users/Keys:** If you manage multiple Git accounts (personal, work) on the same machine, ensure your `~/.ssh/config` file explicitly defines `IdentityFile` for different `Host` entries to avoid conflicts and ensure the correct key is used.
-    *   **Windows:** Git Bash for Windows usually works similar to Linux. For native Windows SSH clients, key paths and permissions might differ slightly, but the `ssh-agent` concept remains. Tools like Pageant (part of PuTTY) can act as an `ssh-agent`.
+### Docker Containers
+
+Docker containers are ephemeral and isolated, which introduces specific challenges for SSH keys.
+*   **During Build (Dockerfile):** If your `Dockerfile` needs to clone private repositories, you cannot rely on an `ssh-agent`. You typically copy the private key into the container *during the build process* (which is generally discouraged due to security risks, as the key might end up in intermediate layers), or use multi-stage builds to only include necessary artifacts. A safer approach for private repos during builds is often to use deploy tokens or `git config --global url."https://oauth2:TOKEN@github.com".insteadOf "git@github.com"`.
+*   **During Runtime:** For containers running Git operations, you can:
+    *   **Mount the `~/.ssh` directory:** `docker run -v ~/.ssh:/root/.ssh ...`. This makes your local keys available inside the container. Be cautious with permissions.
+    *   **SSH Agent Forwarding:** If you're running a Docker container from an SSH session that has agent forwarding enabled, you can sometimes forward the agent into the container. This is complex and often requires `socat` or similar tools.
+    *   **Dedicated Keys:** Generate a specific key for the container, add its public key to your Git service, and mount only that key into the container.
+
+### Local Development Environment
+
+This is the primary scenario covered in the "Step-by-Step Fix" section. The key considerations are:
+*   Ensuring your `~/.ssh` directory exists and has correct permissions.
+*   Having an `id_rsa` or `id_ed25519` key pair.
+*   Making sure the `ssh-agent` is running and your key is added, especially if it has a passphrase.
+*   Verifying your public key is registered with the remote Git service.
+*   Managing multiple keys with `~/.ssh/config` if you have different identities for different services or accounts.
 
 ## Frequently Asked Questions
 
-**Q: What if `ssh-add` says "Could not open a connection to your authentication agent"?**
-A: This means your `ssh-agent` is not running or its environment variables aren't correctly set. Run `eval "$(ssh-agent -s)"` to start it and configure your shell, then try `ssh-add` again.
+**Q: Can I use an SSH key with a passphrase?**
+A: Yes, and it's highly recommended for security. When you add a passphrase-protected key to the `ssh-agent` using `ssh-add`, you'll be prompted for the passphrase once. The `ssh-agent` then holds the decrypted key in memory, so you won't need to re-enter the passphrase for subsequent operations in that session.
 
-**Q: Why do I have multiple SSH keys? How do I choose which one?**
-A: You might have multiple keys for different purposes (e.g., personal GitHub, work GitLab, specific projects requiring unique keys). You can manage which key is used by creating or editing your `~/.ssh/config` file. Use `Host` entries combined with `IdentityFile` to specify which private key to use for a particular remote hostname.
-
-**Q: Is it safe to use SSH keys without a passphrase?**
-A: While convenient, using keys without a passphrase is less secure. If someone gains access to your private key file, they can impersonate you without any further authentication. I strongly recommend using passphrases and relying on `ssh-agent` to manage them so you only enter it once per session.
-
-**Q: My key is loaded, permissions are correct, and the public key is on the remote, but it still fails. What else?**
-A: Double-check the Git remote URL (`git remote -v`). Ensure it's using the SSH protocol (`git@github.com:...`) and not HTTPS. Also, try connecting verbosely using `ssh -vvv git@github.com` (replace `github.com` with your host) to get detailed debug output, which can sometimes reveal specific SSH client/server handshake issues.
-
-**Q: How do I generate a new SSH key pair?**
-A: You can generate a new SSH key pair using `ssh-keygen`.
-```bash
-ssh-keygen -t ed25519 -C "your_email@example.com"
-# For RSA keys (less recommended now):
-# ssh-keygen -t rsa -b 4096 -C "your_email@example.com"
+**Q: I have multiple SSH keys (e.g., one for work, one for personal projects). How do I manage them?**
+A: Use the `~/.ssh/config` file. You can define specific keys for different hosts. For instance:
 ```
-Follow the prompts, remembering to set a strong passphrase. This will typically create `id_ed25519` and `id_ed25519.pub` (or `id_rsa` and `id_rsa.pub`) in your `~/.ssh` directory.
+Host github.com-personal
+  Hostname github.com
+  User git
+  IdentityFile ~/.ssh/id_ed25519_personal
+  IdentitiesOnly yes
+
+Host github.com-work
+  Hostname github.com
+  User git
+  IdentityFile ~/.ssh/id_ed25519_work
+  IdentitiesOnly yes
+```
+Then, when cloning or interacting with repositories, you use the alias in the URL: `git clone github.com-personal:youruser/personal-repo.git`.
+
+**Q: Why does it work on my old machine but not on my new one?**
+A: This usually means your new machine is missing one or more of the crucial components: your private key, the `ssh-agent` setup, or the public key registered on the remote service. Go through the "Step-by-Step Fix" section on your new machine; specifically, ensure the private key is copied over (and has correct permissions), the `ssh-agent` is running, and the key is added to it.
+
+**Q: Is it safe to store my SSH private key without a passphrase?**
+A: While convenient, storing a private key without a passphrase is a significant security risk. If someone gains access to your machine, they gain immediate access to any system authenticated with that key. A passphrase provides an extra layer of protection, requiring an attacker to know both the key and the passphrase.
+
+**Q: How do I remove an SSH key from the `ssh-agent`?**
+A: To remove a specific key: `ssh-add -d ~/.ssh/id_ed25519`. To remove all keys: `ssh-add -D`. This is useful if you've added a temporary key or need to switch identities.
 
 ## Related Errors
