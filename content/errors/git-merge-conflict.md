@@ -1,230 +1,265 @@
 # Git merge conflict – Automatic merge failed; fix conflicts
-> Encountering "Automatic merge failed" means Git cannot automatically reconcile diverging changes between branches; this guide explains how to fix it.
+> Encountering "Automatic merge failed; fix conflicts" means Git couldn't reconcile divergent changes in the same file lines across branches; this guide explains how to fix it.
 
 ## What This Error Means
 
-This error message, "Automatic merge failed; fix conflicts," is Git's way of telling you that it tried to combine two sets of changes from different branches, but encountered a situation where it couldn't decide which change to keep. Specifically, it means that the same lines of code (or lines very close to each other) in the same file have been modified differently in the branches you're trying to merge. Git is smart, but it's not intelligent enough to understand your intent, so it pauses the merge process and asks for your human intervention to resolve the ambiguities.
+When you attempt to merge one Git branch into another, Git performs an automatic merge operation. If successful, it creates a new merge commit that combines the histories and changes from both branches. However, sometimes Git encounters situations where it cannot automatically determine how to integrate changes from both branches into a single, cohesive file. This is precisely what "Automatic merge failed; fix conflicts" signifies.
 
-You'll typically see output similar to this after a `git merge` or `git pull` command:
-
-```
-Automatic merge failed; fix conflicts and then commit the result.
-```
-
-And `git status` will show files that are "unmerged":
-
-```bash
-On branch main
-You have unmerged paths.
-  (fix conflicts and run "git commit")
-  (use "git merge --abort" to abandon the merge)
-
-Unmerged paths:
-  (use "git add <file>..." to mark resolution)
-        both modified:   src/feature.js
-        both modified:   docs/README.md
-```
-
-The files listed under "Unmerged paths" are the ones you need to manually resolve.
+Essentially, this error indicates that two branches have made incompatible changes to the same lines of code within the same file, or one branch deleted a file while the other modified it, or similar ambiguities. Git, being a version control system, is intelligent, but it cannot read your mind or the minds of other developers. It will not arbitrarily choose one set of changes over another. Instead, it pauses the merge process and marks the conflicting areas, requiring manual intervention to resolve the discrepancies. Your repository is now in a "merging" state, and you must address these conflicts before the merge can be completed.
 
 ## Why It Happens
 
-Git merges branches by comparing their commit histories to find a common ancestor. From that ancestor, it identifies changes unique to each branch. When these unique changes are applied to the *same content* within the *same file*, Git hits a wall.
+Merge conflicts are a fundamental aspect of collaborative software development. They occur because Git's default merge strategy, a "three-way merge," needs a clear path to integrate changes.
 
-Imagine two branches, `main` and `feature-A`. Both started from the same point.
-1.  On `main`, a developer changes line 10 of `config.js` to `PORT = 8080`.
-2.  On `feature-A`, a different developer (or even the same one working on a separate task) changes line 10 of `config.js` to `PORT = 3000`.
+Here's the core mechanism:
+1.  **Common Ancestor:** Git identifies the most recent common commit that both branches share.
+2.  **Divergent Changes:** It then looks at the changes made on each branch since that common ancestor.
+3.  **Integration:** Git attempts to combine these divergent changes.
 
-When you try to merge `feature-A` into `main` (or vice versa), Git sees two different changes to the exact same line. It doesn't know whether you want `8080` or `3000`. This ambiguity is why the automatic merge fails. Git needs you to inspect these conflicting sections and explicitly tell it which version to keep, or how to combine them.
+A conflict arises when Git cannot unambiguously integrate these changes. Specifically, if two developers modify the *same lines* in the *same file* in different ways, or one developer deletes a file while another modifies it, Git flags this as a conflict. It doesn't know which version to keep, which to discard, or how to combine them, because both changes are valid in their respective contexts. I've seen this in production when two developers are working on closely related features touching the same configuration file or API endpoint definitions.
 
 ## Common Causes
 
-In my experience, merge conflicts often boil down to a few key scenarios:
+Understanding the common scenarios that lead to merge conflicts can help you anticipate and sometimes even prevent them.
 
-*   **Parallel Development on the Same Files:** This is the most frequent cause. Multiple developers working independently on different features might inadvertently modify the same lines or sections of a shared file. For instance, two developers might refactor different functions in the same utility file, but their changes overlap on a common import statement or a global configuration block.
-*   **Divergent Branches Over Time:** If a feature branch lives for a long time without being regularly updated from the `main` branch, the `main` branch can accumulate many changes. When the feature branch is finally merged, the accumulated differences increase the likelihood of conflicts, especially in frequently modified files like build configurations, API endpoints, or core utilities.
-*   **Refactoring Overlaps:** Sometimes, one developer renames a variable or refactors a function, while another developer modifies the content of that same variable/function. Git might struggle to reconcile a content change with a rename if the rename isn't perfectly clean, leading to a content conflict.
-*   **Differing Line Endings:** While Git has `core.autocrlf` and `core.safecrlf` settings to handle line ending differences between operating systems (Windows uses CR-LF, Linux/macOS uses LF), misconfigurations or legacy files can sometimes lead to entire files being marked as conflicted due to whitespace changes, even if the actual code content is the same. I've seen this in production when developers with different OSes touched the same file without proper Git configuration.
-*   **Accidental Inclusion of Generated Files:** If `*.log`, `*.DS_Store`, or other generated files are committed to the repository (when they should be in `.gitignore`), and different developers generate these files with slightly different content, they will frequently cause conflicts. This is a configuration issue more than a merge issue, but it manifests as merge conflicts.
+*   **Simultaneous Edits to the Same Lines:** This is the most frequent cause. Two or more developers independently modify the exact same lines of code in a file. For example, Developer A changes line 50 of `index.js`, and Developer B also changes line 50 of `index.js` in a different way.
+*   **Conflicting File Operations:**
+    *   **Modify/Delete Conflict:** One branch modifies a file, while another branch deletes it entirely.
+    *   **Rename/Modify Conflict:** One branch renames a file, while another branch modifies the original file's content (before the rename).
+    *   **Rename/Rename Conflict:** Two branches rename the same file to different names.
+*   **Divergent Feature Branches:** Long-lived feature branches that diverge significantly from the main branch (e.g., `main` or `develop`) often lead to conflicts. The longer the branches live independently, the higher the chance of overlapping changes. In my experience, frequently merging `main` into your feature branch can help minimize these surprises.
+*   **Conflicting Changes in Different Sections, Same File:** While Git is usually good at merging changes to different sections of a file, sometimes context-sensitive changes (e.g., reordering functions, adding imports that clash with existing ones) can still trigger conflicts if the changes are too close or structural.
+*   **Rebases:** When using `git rebase` to integrate changes, conflicts can occur as Git attempts to reapply your branch's commits one by one on top of the target branch. While rebasing aims for a cleaner history, it often surfaces conflicts earlier and for each conflicting commit, rather than a single merge conflict.
 
 ## Step-by-Step Fix
 
-Resolving a merge conflict can seem daunting at first, but it's a systematic process.
+Resolving a Git merge conflict involves a clear, methodical approach. Follow these steps to navigate the process:
 
-1.  **Identify the Conflicted Files:**
-    After a failed merge, `git status` is your best friend. It will clearly list all files that have "unmerged paths."
+1.  **Identify the Conflict:**
+    After running `git merge <branch-name>`, Git will explicitly tell you which files have conflicts.
+    You can also use `git status` at any point during a merge operation to see the conflicted files, typically listed under "Unmerged paths".
 
     ```bash
     git status
     ```
+    Example output:
+    ```
+    On branch main
+    You have unmerged paths.
+    (fix conflicts and run "git commit")
+    (use "git merge --abort" to abandon an unsuccessful merge)
 
-2.  **Open the Conflicted Files:**
-    Open each file listed by `git status` in your preferred text editor or IDE. Inside these files, Git inserts special markers to delineate the conflicting sections:
+    Unmerged paths:
+      (use "git add <file>..." to mark resolution)
+            both modified:      src/components/Button.js
+    ```
+
+2.  **Open Conflicted Files and Locate Markers:**
+    Open each file listed as "both modified" (or similar status) in your text editor or IDE. Git inserts special markers into the file to highlight the conflicting sections:
 
     ```
     <<<<<<< HEAD
-    // This is the version from your current branch (HEAD).
-    console.log("Feature A is active.");
-    function calculatePrice(item, quantity) {
-        return item.price * quantity * 1.05; // 5% tax
+    // Code from your current branch (HEAD)
+    function saveUser() {
+        console.log("Saving user data with new API.");
     }
     =======
-    // This is the version from the branch you're merging from.
-    console.log("Feature B is active.");
-    function calculatePrice(item, quantity) {
-        return item.price * quantity * 1.08; // 8% tax
+    // Code from the incoming branch (e.g., feature/api-update)
+    function saveUser() {
+        console.log("Saving user data with old API.");
     }
-    >>>>>>> feature/new-tax-rate
+    >>>>>>> feature/api-update
     ```
-    *   `<<<<<<< HEAD`: Marks the beginning of the changes from your current branch (often referred to as "ours").
-    *   `=======`: Separates the changes from your current branch (`HEAD`) and the incoming branch.
-    *   `>>>>>>> <branch-name>`: Marks the end of the changes from the branch you're merging into your current branch (often referred to as "theirs"). The `<branch-name>` will be the name of the branch you are merging from.
 
-3.  **Manually Resolve the Conflicts:**
-    Edit the file to remove the conflict markers and keep only the code you want. You have a few options for each conflict block:
-    *   **Keep "ours":** Delete the `=======` line, the `>>>>>>>` line, and all the content between them.
-    *   **Keep "theirs":** Delete the `<<<<<<<` line, the `=======` line, and all the content between them.
-    *   **Combine both:** Manually edit the section to integrate changes from both sides. This is often necessary when both branches added valid, but different, code that needs to coexist.
-    *   **Keep neither:** If both changes are obsolete, simply delete the entire block, including the markers.
+    *   `<<<<<<< HEAD`: Marks the beginning of the changes from your current branch (`HEAD`).
+    *   `=======`: Separates the changes from the two branches.
+    *   `>>>>>>> <branch-name>`: Marks the end of the changes from the incoming branch (e.g., `feature/api-update`).
 
-    Continuing the example above, if you decide you need the 8% tax from the `feature/new-tax-rate` branch, and the console log message from `HEAD`, you'd edit it to:
+3.  **Resolve the Conflict Manually:**
+    This is the crucial step. You must edit the file to incorporate the desired changes. Decide which version of the code you want to keep:
+    *   **Keep your changes:** Delete the incoming changes and all conflict markers.
+    *   **Keep incoming changes:** Delete your changes and all conflict markers.
+    *   **Combine both:** Manually integrate parts of both changes, then delete the markers.
+    *   **Write entirely new code:** If neither version is correct, write the correct code, then delete the markers.
 
+    After resolution, the example above might look like this:
     ```javascript
-    console.log("Feature A is active.");
-    function calculatePrice(item, quantity) {
-        return item.price * quantity * 1.08; // 8% tax
+    function saveUser() {
+        console.log("Saving user data with the correct merged API logic.");
     }
     ```
-    Save the file after resolution.
+    **Crucially, ensure you remove all `<<<<<<<`, `=======`, and `>>>>>>>` markers.** The file must be valid code after you're done.
 
-4.  **Add the Resolved File to the Staging Area:**
-    After resolving conflicts in a file, you must tell Git that the file is ready by adding it to the staging area.
+4.  **Add the Resolved File to Staging:**
+    Once you've resolved a file and saved it, you need to tell Git that it's ready.
 
     ```bash
-    git add src/feature.js
-    git add docs/README.md # Repeat for all resolved files
+    git add src/components/Button.js
     ```
-    You can use `git add .` to stage all modified files, but be careful that you haven't introduced any unintended changes elsewhere.
+    Repeat this step for every conflicted file until `git status` shows all conflicts resolved and files staged.
 
 5.  **Commit the Merge:**
-    Once all conflicts are resolved and all conflicted files are added to the staging area, you can commit the merge. Git will pre-populate a commit message for you, usually starting with "Merge branch 'feature/new-tax-rate' into main". It's good practice to review this message and add a brief explanation of how you resolved the conflicts, especially if it was a complex resolution.
+    After all conflicts are resolved and staged, you can complete the merge by creating a new merge commit. Git will often pre-populate a commit message for you, which you can modify.
 
     ```bash
-    git commit -m "Merge branch 'feature/new-tax-rate' into main, resolved tax rate conflict"
+    git commit
     ```
+    The default message usually looks like:
+    ```
+    Merge branch 'feature/api-update' into main
 
-    Git will create a new "merge commit" that ties the histories of both branches together.
+    # Conflicts:
+    #       src/components/Button.js
+    #
+    # It looks like you may be merging a commit that has already been merged.
+    # If this is not desired, please revert the merge first.
+    ```
+    Save and exit the commit message editor to finalize the merge.
 
-6.  **Test Your Code (Crucial!):**
-    After resolving conflicts and committing the merge, it is absolutely critical to test your application thoroughly. Merging different code paths can introduce subtle bugs that aren't immediately obvious. Run your unit tests, integration tests, and perform manual smoke testing.
-
-7.  **Aborting a Merge:**
-    If you get overwhelmed or realize you've made a mess, you can always abort the merge and return to the state before you started merging.
+6.  **Abort the Merge (if needed):**
+    If you get completely stuck or decide you want to restart the merge process, you can abort it. This will revert your repository to the state it was in before you started the merge.
 
     ```bash
     git merge --abort
     ```
-    This command will stop the merge process, revert your repository to the state it was in before the merge attempt, and remove any conflict markers.
+
+7.  **Utilize Merge Tools:**
+    For complex conflicts, especially across many files, command-line editing can be cumbersome. Git integrates with external merge tools (like VS Code's built-in merge editor, Meld, KDiff3, Beyond Compare).
+    You can configure Git to use a preferred tool:
+    ```bash
+    git config --global merge.tool <tool-name>
+    ```
+    Then, to launch the tool for a conflicted file:
+    ```bash
+    git mergetool
+    ```
+    This often provides a much more visual and intuitive way to resolve conflicts.
 
 ## Code Examples
 
-Here are some concise, copy-paste ready examples for common conflict scenarios:
+Here are some concise, copy-paste ready examples for typical conflict resolution workflow.
 
-**1. Simple Conflict Resolution:**
-Assume `foo.js` has a conflict:
+**1. Initial Merge Attempt and Status Check:**
+
+```bash
+# Attempt to merge a feature branch into main
+git merge feature/my-new-feature
+
+# Output indicating conflicts
+# Auto-merging src/components/Header.js
+# CONFLICT (content): Merge conflict in src/components/Header.js
+# Automatic merge failed; fix conflicts and then commit the result.
+
+# Check status to see conflicted files
+git status
+```
+
+**2. Example of a Conflicted File (`src/components/Header.js`):**
 
 ```javascript
-// Before resolution
+import React from 'react';
+
+function Header() {
+    return (
+        <header>
 <<<<<<< HEAD
-const VERSION = "1.0.0";
-function init() { console.log("Init v1"); }
+            <h1>Welcome to my App!</h1>
+            <nav>
+                <a href="/dashboard">Dashboard</a>
+            </nav>
 =======
-const VERSION = "1.0.1";
-function init() { console.log("Init v2"); }
->>>>>>> feature/update-version
+            <h2>App Title</h2>
+            <p>A description of the app.</p>
+>>>>>>> feature/my-new-feature
+        </header>
+    );
+}
+
+export default Header;
 ```
 
-To keep `VERSION = "1.0.1"` and `init() { console.log("Init v2"); }`:
+**3. Example of a Resolved File (`src/components/Header.js`):**
 
 ```javascript
-// After resolution
-const VERSION = "1.0.1";
-function init() { console.log("Init v2"); }
+import React from 'react';
+
+function Header() {
+    return (
+        <header>
+            <h1>Welcome to my App!</h1>
+            <nav>
+                <a href="/dashboard">Dashboard</a>
+            </nav>
+            <p>A description of the app.</p>
+        </header>
+    );
+}
+
+export default Header;
+```
+*Self-note: In this resolution, I've chosen to combine aspects of both, keeping the H1 from `HEAD` and adding the `p` tag from `feature/my-new-feature`.*
+
+**4. Staging and Committing the Resolution:**
+
+```bash
+# After manually editing and saving all conflicted files:
+
+# Stage the resolved file
+git add src/components/Header.js
+
+# If there were more conflicted files, add them too
+# git add another-conflicted-file.js
+
+# Commit the merge
+git commit -m "Merge feature/my-new-feature into main, resolved conflicts in Header.js"
 ```
 
-Then:
+**5. Aborting a Merge:**
+
 ```bash
-git add foo.js
-git commit -m "Resolved conflict in foo.js, updated version"
+# If the merge is too complex or you made a mistake, abort it.
+git merge --abort
 ```
 
-**2. Keeping "Our" or "Their" Version of a File:**
-Sometimes, for a specific file, you simply want to discard all changes from one side and keep the entire file from the other.
+**6. Using Git Mergetool (Example with VS Code):**
 
-To keep your current branch's version of `config.json` entirely:
 ```bash
-git checkout --ours config.json
-git add config.json
-git commit -m "Resolved conflict in config.json, kept our version"
-```
-
-To keep the incoming branch's version of `config.json` entirely:
-```bash
-git checkout --theirs config.json
-git add config.json
-git commit -m "Resolved conflict in config.json, kept their version"
-```
-Remember `HEAD` refers to "ours" (your current branch), and the merging branch refers to "theirs".
-
-**3. Using a Merge Tool:**
-For more complex conflicts, or when dealing with many files, a visual merge tool can be invaluable. Git can be configured to use external tools like VS Code's merge editor, KDiff3, Meld, Beyond Compare, etc.
-
-First, configure your merge tool (example for VS Code):
-```bash
+# Configure VS Code as your merge tool (if not already done)
 git config --global merge.tool vscode
-git config --global mergetool.vscode.cmd 'code --wait --merge $LOCAL $REMOTE $BASE $MERGED'
-git config --global mergetool.vscode.trustExitCode true
-```
+git config --global mergetool.vscode.cmd 'code --wait $MERGED'
+git config --global mergetool.vscode.trustExitCode false
 
-Then, when you have conflicts:
-```bash
+# Launch the merge tool for conflicted files
 git mergetool
 ```
-This will launch your configured merge tool, allowing you to visually compare the three versions (base, local, remote) and select changes. After saving and closing the tool, Git will automatically stage the file.
 
 ## Environment-Specific Notes
 
-Merge conflicts are fundamentally about file changes in your repository, so the core resolution process remains the same regardless of your environment. However, how you *interact* with those files and how conflicts impact your workflow can differ.
+While the core process of resolving merge conflicts remains consistent, how you encounter and manage them can vary slightly across different development environments.
 
-*   **Local Development:** This is where 99% of merge conflict resolution happens. Your IDE (like VS Code, IntelliJ IDEA, Sublime Text) usually offers excellent built-in merge conflict resolution tools, often showing the base, "ours," and "theirs" versions side-by-side with buttons to accept changes. Using these integrated tools can significantly streamline the process compared to manual editing in a plain text editor. Always resolve locally *before* pushing to a remote.
-
-*   **CI/CD (Cloud Services like GitHub Actions, GitLab CI, Jenkins):** Merge conflicts typically *prevent* a merge from being completed in a pull request (PR) or merge request (MR) workflow. Your CI/CD pipeline will not even kick off on the combined (unresolved) code because the merge simply won't happen. The resolution *must* occur on a local machine, then the resolved merge commit (or rebased branch) is pushed. If you use "squash and merge" on platforms like GitHub, the conflict resolution still happens locally on your branch (e.g., merging `main` into your feature branch to resolve conflicts), and then the squashed commit is applied cleanly to `main`. The "squash" itself doesn't resolve conflicts, it just consolidates commits.
-
-*   **Docker/Containerized Environments:** Docker containers run your application, but they don't directly manage your source code's Git history. Conflicts arise in your *host machine's* local Git repository, where your source code resides. Any resolution you perform is on your host machine's filesystem. Once resolved and committed, your Docker build process will simply pick up the updated, merged code. Docker itself neither causes nor helps resolve Git merge conflicts.
-
-*   **Monorepos:** In large monorepos with many teams, the chances of conflicts increase due to the sheer volume of changes across a shared codebase. Establishing clear code ownership, using feature flags to decouple deployments from merges, and maintaining small, frequent merges (e.g., rebasing frequently from `main`) are strategies I've found helpful to mitigate conflict frequency.
+*   **Local Development:** This is where you'll most frequently resolve conflicts. The process described above—identifying files, editing locally, `git add`, `git commit`—is standard. Your IDE (e.g., VS Code, IntelliJ, Sublime Text) will often provide excellent built-in merge conflict resolution tools, visually highlighting changes and allowing you to accept current, incoming, or combined changes with a click. I personally find VS Code's three-way merge editor extremely helpful for this.
+*   **Cloud (CI/CD Platforms like GitHub, GitLab, Bitbucket):** These platforms are designed to prevent merging branches with conflicts directly through their web UIs. If you try to create a Pull Request (PR) or Merge Request (MR) with conflicts, the platform will explicitly tell you that the branches cannot be automatically merged. You'll typically need to pull the changes from the target branch (e.g., `main`) into your feature branch locally, resolve the conflicts on your local machine, and then push the resolved feature branch back to the remote. Once the conflicts are resolved and pushed, the PR/MR will usually update to show a "clean merge" state, allowing you to proceed with code review and merge.
+*   **Docker:** Docker containers themselves don't *cause* merge conflicts. Conflicts arise from your source code changes in the Git repository. When you build a Docker image or run a container, you're usually doing so with a specific version of your code. If that code contains unresolved merge conflicts (i.e., the conflict markers `<<<<<<<`, `=======`, `>>>>>>>` are still present), your application will likely fail to build or run correctly inside the container because the source files are syntactically incorrect. Always resolve conflicts *before* building new Docker images or deploying code to a Dockerized environment. The conflict resolution happens outside the container, in your development environment.
+*   **Remote Repositories:** Git merge conflicts are inherently a local problem that you resolve on your local copy of the repository. You can't directly resolve a conflict on a remote (e.g., GitHub). Instead, you pull the remote's changes to your local machine, perform the merge and conflict resolution steps locally, and then push your *resolved* merge commit back to the remote. This updated history then becomes the new state of the branch on the remote.
 
 ## Frequently Asked Questions
 
-**Q: What's the difference between `git merge --abort` and `git reset --hard HEAD`?**
-**A:** `git merge --abort` is specifically designed to stop an in-progress merge and reset your branch to its state *before* the merge attempt. It's safe when you're in a merge conflict state. `git reset --hard HEAD`, on the other hand, discards *all* local changes (staged and unstaged) and resets your branch to the last commit, potentially losing work if you had uncommitted changes *before* the merge attempt. Use `git merge --abort` when resolving merge conflicts; use `git reset --hard HEAD` with caution.
+**Q: Can I avoid merge conflicts entirely?**
+**A:** Not entirely, especially in collaborative environments. However, you can significantly minimize their frequency and complexity by:
+*   Pulling from the target branch (e.g., `main`) frequently into your feature branches.
+*   Keeping feature branches small and short-lived.
+*   Communicating with teammates about who is working on which files/sections.
 
-**Q: Can I avoid merge conflicts altogether?**
-**A:** Not entirely, especially in collaborative environments. However, you can significantly reduce their frequency and complexity by:
-*   **Pulling `main` frequently:** Regularly update your feature branches with changes from the main development branch.
-*   **Keeping feature branches small and short-lived:** Smaller changesets are easier to merge.
-*   **Good communication:** Coordinate with teammates about who is working on which files.
-*   **Clear code ownership:** If certain modules or files have clear owners, conflicts within those areas can be minimized.
+**Q: What's the difference between `git merge` and `git rebase` regarding conflicts?**
+**A:** With `git merge`, conflicts are resolved once, resulting in a new merge commit. With `git rebase`, Git reapplies each of your branch's commits one by one onto the target branch. If a conflict occurs, you resolve it for that specific commit, then continue the rebase (`git rebase --continue`). This means you might resolve the *same* conflict multiple times if it appears in several of your commits, but it results in a cleaner, linear history.
 
-**Q: What do "ours" and "theirs" mean in a merge conflict?**
-**A:** "Ours" refers to the changes on your current branch (`HEAD`), the branch you are currently on and into which you are merging. "Theirs" refers to the changes on the branch you are attempting to merge *from*.
+**Q: What if I make a mistake while resolving a conflict?**
+**A:** The safest option is `git merge --abort`. This command will stop the merge process and revert your repository to the state it was in before you initiated the merge, allowing you to start over. If you've already added files (`git add`) but not yet committed, you can also use `git reset HEAD` to unstage changes, or `git checkout -- <file>` to revert specific files to their pre-merge state if you haven't added them yet.
 
-**Q: Should I use `git merge` or `git rebase` to avoid conflicts?**
-**A:** Neither `merge` nor `rebase` truly *avoids* conflicts; they just handle them differently.
-*   **`git merge`** creates a merge commit and integrates the branches. Conflicts are resolved once in this merge commit.
-*   **`git rebase`** reapplies your branch's commits one-by-one onto the target branch's tip. If conflicts occur, you resolve them *per commit* as Git reapplies them. This results in a cleaner linear history but can lead to more frequent conflict resolution if your branch has many commits that conflict. The choice often depends on team preference and workflow. I generally prefer `merge` for integrating feature branches into `main` and `rebase` for keeping a feature branch up-to-date with `main` *before* merging.
+**Q: Should I use a GUI-based merge tool or the command line for resolving conflicts?**
+**A:** This is largely a matter of personal preference and the complexity of the conflict. GUI tools (like those in VS Code, IntelliJ, or dedicated tools like Meld/KDiff3) offer a visual representation of the changes, often showing three panes (ancestor, your changes, incoming changes), which can be very helpful for complex scenarios. The command line allows precise manual editing and is quicker for simple conflicts. Many engineers, including myself, use a combination, opting for the command line for quick fixes and a GUI tool for more intricate conflicts.
 
-**Q: My IDE is showing different merge markers, what gives?**
-**A:** Many modern IDEs (like VS Code, IntelliJ) provide their own visual merge editors that interpret the raw Git conflict markers (`<<<<<<<`, `=======`, `>>>>>>>`) and present them in a more user-friendly way. These tools often show three panes: one for the base version (common ancestor), one for "ours," and one for "theirs," with options to accept current, incoming, or combine changes. While the visual representation differs, the underlying conflict is the same.
+**Q: Why do I sometimes get conflicts when updating a dependency file (e.g., `package-lock.json`)?**
+**A:** Lock files (`package-lock.json`, `yarn.lock`, `Gemfile.lock`) automatically record the exact versions of all your project's dependencies. When two branches update different dependencies (or even the same dependency in a different way), the lock file changes can conflict. Often, the best way to resolve these is to manually resolve simpler conflicts, or in more complex cases, accept one branch's lock file and then run `npm install`, `yarn install`, or `bundle install` again to regenerate it based on the `package.json` or `Gemfile` after the merge.
 
 ## Related Errors
