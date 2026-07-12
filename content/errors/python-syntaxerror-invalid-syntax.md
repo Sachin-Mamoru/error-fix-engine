@@ -1,190 +1,182 @@
 # SyntaxError: invalid syntax
-> Encountering `SyntaxError: invalid syntax` means the Python interpreter found a grammatical mistake in your code; this guide explains how to identify and fix it efficiently.
+> Encountering a SyntaxError: invalid syntax in Python means the interpreter found a grammatical mistake in your code; this guide explains how to fix it efficiently.
 
 ## What This Error Means
 
-As a Systems Engineer working with Python for automation, data processing, and backend services, `SyntaxError: invalid syntax` is a familiar sight, especially during initial development or after a quick refactor. This error indicates that the Python interpreter has encountered code that doesn't conform to Python's grammatical rules. Unlike runtime exceptions (like `TypeError` or `NameError`) which occur after the code has successfully been parsed and execution has begun, a `SyntaxError` is a parser error. It means the interpreter couldn't even understand *what* you were trying to tell it to do. It stops dead in its tracks and refuses to execute any further.
+When you encounter a `SyntaxError: invalid syntax`, it means the Python interpreter has failed to understand a specific part of your code because it violates the language's grammatical rules. This isn't a runtime error, where your code starts executing and then hits an unexpected condition or faulty logic. Instead, `SyntaxError` is a parse-time error; the interpreter cannot even *begin* execution because it cannot construct a valid Abstract Syntax Tree (AST) from your source code.
 
-The traceback for a `SyntaxError` is particularly helpful because it typically points to the exact line and character where the interpreter first *noticed* the problem. However, in my experience, the actual bug might sometimes be on an earlier line, with the error only becoming evident later when the interpreter couldn't recover. It's Python's way of saying, "I simply don't speak this dialect of Python."
+Typically, the error message will include the file name, the line number, and often a caret (`^`) pointing to where the interpreter *thinks* the error lies. It's crucial to understand that this caret is an indicator of the *first point of confusion* for the interpreter, not always the precise location of your mistake. Sometimes, the actual error might be on the preceding line, or even several lines before, but the interpreter only fully realizes the syntax is malformed at the point it reports.
 
 ## Why It Happens
 
-Python's parsing mechanism is strict. It processes your code line by line, character by character, ensuring that every element adheres to its defined grammar. If it finds anything out of place – a missing colon, an unmatched parenthesis, an incorrect keyword usage – it flags it as a `SyntaxError`.
+Python, like any programming language, has a defined grammar. This grammar dictates how keywords, operators, identifiers, and literals must be arranged to form valid statements and expressions. When you write code, the Python interpreter first performs a process called "parsing." During parsing, it tokenizes your code (breaks it into meaningful units like keywords, names, operators) and then attempts to build a hierarchical structure (the AST) that represents the program's logic according to the grammar.
 
-This error typically arises from:
-
-*   **Human Error:** Most commonly, it's a simple typo, a forgotten character, or a mismatch in pairing symbols.
-*   **Language Evolution:** Sometimes, code written for an older Python version (like Python 2) might be run with a Python 3 interpreter, or vice-versa, leading to syntax that is valid in one version but not the other.
-*   **Copy-Paste Issues:** Occasionally, invisible characters or formatting quirks from external sources can introduce syntax problems when pasted into a Python file.
-*   **Misunderstanding Python's Grammar:** For newcomers, or when learning a new language feature, misinterpreting how certain constructs should be written can lead to this error.
-
-It's important to understand that `SyntaxError` means your code isn't even "compilable" (in an interpreted sense); it's fundamentally malformed from Python's perspective. You need to correct the grammar before any logic can be tested or executed.
+A `SyntaxError` occurs when the sequence of tokens does not conform to any valid grammatical rule. The parser hits a sequence of tokens that it simply doesn't know how to interpret as a correct Python construct. This can happen for a multitude of reasons, from a simple typo to a fundamental misunderstanding of a language feature. It fundamentally boils down to the code not being "legal" in Python's eyes, preventing it from ever being run. In my experience, these errors are often the result of human oversight, easily fixed once identified, but can be frustrating due to their cryptic nature if you don't know where to look.
 
 ## Common Causes
 
-Based on years of debugging my own code and reviewing others', here are the most frequent culprits behind `SyntaxError: invalid syntax`:
+Identifying the root cause of a `SyntaxError: invalid syntax` often involves checking a few common culprits. Here are the issues I've most frequently seen lead to this error:
 
-*   **Missing Colons:** In Python, many control flow and definition statements require a colon (`:`) at the end. This includes `if`, `for`, `while`, `def`, `class`, `with`, and `try/except` blocks. Forgetting this is a very common oversight.
-*   **Unmatched Parentheses, Brackets, or Braces:** Every opening `(`, `[`, or `{` must have a corresponding closing `)`, `]`, or `}`. This is crucial for function calls, list/tuple/dictionary definitions, and other expressions. An unclosed one on a previous line can lead to a `SyntaxError` further down or at the end of the file.
-*   **Incorrect Operators or Assignment:** Using a single equals sign (`=`) for comparison instead of the double equals sign (`==`) inside an `if` statement or `while` loop condition is a classic. Similarly, using an invalid operator can trigger this.
-*   **Reserved Keywords as Variable Names:** Python has a set of keywords (e.g., `if`, `else`, `for`, `while`, `class`, `def`, `import`, `print` (in Python 3), `async`, `await`). Attempting to use these as variable, function, or class names will result in a `SyntaxError`.
-*   **Unclosed String Literals:** Forgetting to close a string with a matching quote (`'` or `"`) will cause the interpreter to think the string continues onto subsequent lines, often resulting in an error when it hits the next line's valid code or the end of the file.
-*   **Python Version Mismatches:** This is particularly common. If you write code with Python 3 syntax (e.g., `print("Hello")`, f-strings, `async/await`) and try to run it with a Python 2 interpreter, or vice-versa, you'll encounter `SyntaxError`. The `print` statement change is the most famous example.
-*   **Invalid Characters:** Occasionally, non-ASCII characters without proper encoding declarations, or even invisible Unicode characters (like a zero-width space) introduced by careless copy-pasting, can confuse the interpreter.
-*   **Misplaced Commas:** Commas are used to separate elements in lists, tuples, function arguments, etc. A stray comma or one in an unexpected place can trigger a syntax error.
-*   **Invalid f-string Syntax:** When using f-strings (f"text {variable}"), forgetting the `f` prefix or having unclosed braces inside the string will cause issues.
+*   **Missing or Mismatched Punctuation:** This is probably the most common. Forgetting a colon (`:`) after `if`, `for`, `while`, `def`, or `class` statements is a frequent mistake. Unclosed parentheses `(`, brackets `[`, or braces `{` will also trigger this. Forgetting a comma in a tuple or list definition can sometimes manifest this way, especially if it leads to invalid concatenation.
+    *   *Example:* `if x > 5` instead of `if x > 5:`
+*   **Incorrect Indentation:** While Python has a specific error type `IndentationError` (which is a subclass of `SyntaxError`), general incorrect indentation can sometimes lead to a broader `SyntaxError` if the interpreter cannot resolve the block structure. Mixing tabs and spaces, or incorrect nesting, often falls into this category.
+*   **Typos in Keywords:** Misspelling reserved keywords like `def`, `class`, `import`, `return`, `while`, `for`, `if`, `elif`, `else`, `try`, `except`, `finally`, `with`, or `as` will certainly cause a syntax error. For example, `funtion` instead of `function`.
+*   **Unclosed String Literals:** Forgetting to close a string with the correct matching quote (`'`, `"`, `'''`, or `"""`) can lead to the interpreter expecting the rest of the file to be part of the string.
+    *   *Example:* `message = "Hello, world!`
+*   **Invalid Operator Usage or Placement:** Using operators incorrectly, such as `x = y ==` instead of `x == y` for comparison, or having an operator with no operand like `if (x > 5 and)` can confuse the parser.
+*   **Python Version Incompatibilities:** This is a big one, especially when migrating code or working in mixed environments. Code written for Python 2 (e.g., `print "hello"`) will raise `SyntaxError` in Python 3, which requires `print("hello")` as a function call. Conversely, using f-strings (introduced in Python 3.6) in an older Python 3 version (like 3.5) will also result in this error. I've seen this catch many teams off guard during deployment.
+*   **Invalid Character:** Occasionally, a hidden non-ASCII character or a Unicode character not properly encoded can cause issues, especially if it appears in a context where it's not expected as valid Python syntax.
 
 ## Step-by-Step Fix
 
-When `SyntaxError: invalid syntax` rears its head, don't panic. Follow this systematic approach to pinpoint and resolve the issue.
+Addressing a `SyntaxError: invalid syntax` systematically is key to a quick resolution. Here’s my approach:
 
-1.  **Read the Traceback Carefully:** Python's traceback is your best friend. It will tell you the file name, the line number, and often, an arrow (`^`) pointing to the specific character or token where the error was detected.
+1.  **Read the Error Message *Carefully*:**
+    The most crucial step. Note the `File "filename.py", line X` part. This directs you to the exact file and line number. The `^` below the line indicates where Python gave up trying to parse. Remember, the actual mistake might be *before* the caret.
+
     ```
     File "my_script.py", line 7
-        if x > 5
-               ^
+        print("Final message"
+                              ^
     SyntaxError: invalid syntax
     ```
-    In this example, the `^` points to the end of `5`, indicating a missing colon.
+    In this example, the error is on line 7, and the caret suggests the end of the line. This immediately tells me to look for an unclosed parenthesis.
 
-2.  **Focus on the Indicated Line and Its Immediate Surroundings:** Go directly to the line specified in the traceback.
-    *   **Is there a missing colon (`:`)?** Check `if`, `for`, `while`, `def`, `class`, `with`, `try`, `except`, `finally` statements.
-    *   **Are parentheses, brackets, or braces balanced?** Count your `(` and `)`, `[` and `]`, `{` and `}`. An unclosed one from a *previous* line often manifests the error on the *current* line or even `EOF` (End Of File). I've spent too much time chasing `EOF` errors, only to find a missing closing parenthesis on line 3 of a 100-line script.
-    *   **Is a string unclosed?** Look for an opening `'` or `"` without a matching closing one. Multi-line strings can be tricky here.
+2.  **Inspect the Indicated Line and Surrounding Code:**
+    Go to the line Python points to. Examine it for obvious typos, missing punctuation, or incorrect structure. Then, critically, check the line *above* it and the beginning of the block. A missing colon on a `def` or `if` statement will often point to the first line *inside* that block.
 
-3.  **Check for Python Version Compatibility:** If you're working in an environment where Python versions might vary (e.g., local development vs. a remote server, or different virtual environments), verify that the interpreter running your code is the one you intend.
+3.  **Check for Missing Punctuation:**
+    Look for:
+    *   Missing colons (`:`) after `if`, `else`, `elif`, `for`, `while`, `def`, `class`, `with`, `try`, `except`, `finally`.
+    *   Unmatched parentheses `()`, brackets `[]`, or braces `{}`.
+    *   Unclosed quotes (`'`, `"`).
+    *   Missing commas in lists, tuples, or function arguments.
+
+4.  **Verify Indentation:**
+    While `IndentationError` is specific, sometimes complex indentation issues can bubble up as `SyntaxError`. Ensure consistent indentation (spaces vs. tabs) and correct nesting levels. Modern IDEs help immensely here, but if debugging without one, enabling whitespace visibility can be invaluable.
+    You can use a linter to help:
     ```bash
-    # Check your local default Python version
+    pip install flake8
+    flake8 your_script.py
+    ```
+
+5.  **Look for Typos in Keywords:**
+    Double-check keywords. `def` not `define`, `class` not `clas`, `import` not `imprt`. This is a common typo-induced error.
+
+6.  **Review String Literals:**
+    Ensure all strings are properly opened and closed with matching quotes. Be mindful of multi-line strings using triple quotes (`'''` or `"""`).
+
+7.  **Consider Python Version:**
+    If the code works elsewhere or was copied, confirm the Python interpreter version matches the syntax.
+    ```bash
     python --version
     python3 --version
-
-    # Check version within a virtual environment
-    source .venv/bin/activate
-    python --version
     ```
-    A common scenario is writing `print("hello")` (Python 3) and running it with `python` which might be aliased to Python 2, leading to `SyntaxError`.
+    If you're using Python 3.6+ features (like f-strings) but running with Python 3.5, you'll get a `SyntaxError`.
 
-4.  **Examine Keywords and Variable Names:** Ensure you're not using any of Python's reserved keywords as variable, function, or class names. If your code highlights `class` or `def` in an unexpected way, that's often a clue.
+8.  **Simplify and Isolate:**
+    If you're still stuck, comment out sections of your code, or break down a complex line into simpler statements. This helps isolate the exact problematic piece. Start by commenting out the line that triggered the error, then the line above, until the script can run (even if it does nothing useful).
 
-5.  **Look for Invisible Characters or Encoding Issues:** If the code *looks* perfectly fine but still errors, try re-typing the problematic line from scratch. Copy-pasting from web pages or PDFs can sometimes introduce non-standard characters that Python doesn't recognize. Ensuring your file is saved with UTF-8 encoding is also a good practice, especially if you deal with non-ASCII characters in strings or comments.
-
-6.  **Simplify and Isolate:** If you're still stuck, comment out parts of the code around the error. Gradually uncomment until the error reappears. This helps narrow down the exact problematic statement.
-
-7.  **Utilize Your IDE/Linter:** Modern IDEs like VS Code or PyCharm, along with linters such as Pylint or Flake8, often highlight syntax errors in real-time *before* you even try to run the code. They are invaluable tools for catching these issues proactively. I always make sure my development environment has robust linting enabled; it saves countless hours.
+9.  **Use an IDE or Editor with Syntax Highlighting/Linting:**
+    A good development environment (like VS Code, PyCharm, Sublime Text) will highlight syntax errors in real-time, often before you even try to run the code. This is a massive time-saver.
 
 ## Code Examples
 
-Here are some common `SyntaxError` scenarios and their fixes:
+Here are some common `SyntaxError: invalid syntax` scenarios and their fixes. These are copy-paste ready for testing.
 
 **1. Missing Colon**
-*   **Incorrect:**
-    ```python
-    x = 10
-    if x > 5
-        print("x is greater than 5")
-    ```
-*   **Correct:**
-    ```python
-    x = 10
-    if x > 5:  # Added colon
-        print("x is greater than 5")
-    ```
+```python
+# Error: Missing colon after 'if'
+if True
+    print("This will fail")
 
-**2. Unmatched Parentheses**
-*   **Incorrect:**
-    ```python
-    my_list = [1, 2, 3
-    print("List:", my_list)
-    ```
-    This would likely error on the `print` line or even `EOF`.
-*   **Correct:**
-    ```python
-    my_list = [1, 2, 3]  # Added closing bracket
-    print("List:", my_list)
-    ```
+# Fix
+if True:
+    print("This works")
+```
 
-**3. Keyword as Variable Name**
-*   **Incorrect:**
-    ```python
-    def = "my_function" # 'def' is a reserved keyword
-    print(def)
-    ```
-*   **Correct:**
-    ```python
-    function_name = "my_function"
-    print(function_name)
-    ```
+**2. Unclosed Parenthesis**
+```python
+# Error: Unclosed parenthesis
+my_list = [1, 2, 3]
+print("List items:", my_list[0], my_list[1] # Missing closing parenthesis
 
-**4. Python 2 `print` in Python 3 Environment**
-*   **Incorrect:**
-    ```python
-    # Running with python3 interpreter
-    print "Hello, Python!"
-    ```
-*   **Correct:**
-    ```python
-    # Running with python3 interpreter
-    print("Hello, Python!") # 'print' is a function in Python 3
-    ```
+# Fix
+my_list = [1, 2, 3]
+print("List items:", my_list[0], my_list[1])
+```
 
-**5. Unclosed String Literal**
-*   **Incorrect:**
-    ```python
-    message = "This is a test message.
-    print(message)
-    ```
-*   **Correct:**
-    ```python
-    message = "This is a test message." # Added closing quote
-    print(message)
-    ```
+**3. Python 2 `print` Statement in Python 3**
+```python
+# Error: Python 2 print statement in a Python 3 environment
+print "Hello, Python 2 style!"
 
-**6. Invalid f-string usage**
-*   **Incorrect:**
-    ```python
-    name = "Ingrid"
-    age = 30
-    greeting = "Hello, {name} you are {age} years old." # Missing 'f'
-    print(greeting)
-    ```
-*   **Correct:**
-    ```python
-    name = "Ingrid"
-    age = 30
-    greeting = f"Hello, {name} you are {age} years old." # Added 'f' prefix
-    print(greeting)
-    ```
+# Fix (for Python 3)
+print("Hello, Python 3 style!")
+```
+
+**4. Invalid Assignment Operator**
+```python
+# Error: Double assignment operator
+x = = 5
+
+# Fix
+x = 5
+```
+
+**5. Malformed f-string (or other string formatting)**
+```python
+# Error: An unclosed brace in an f-string or complex expression
+name = "Ingrid"
+message = f"Hello, {name" # Missing closing brace
+
+# Fix
+name = "Ingrid"
+message = f"Hello, {name}"
+```
+
+**6. Keyword Typos**
+```python
+# Error: Typo in 'class' keyword
+clas MyData:
+    def __init__(self, value):
+        self.value = value
+
+# Fix
+class MyData:
+    def __init__(self, value):
+        self.value = value
+```
 
 ## Environment-Specific Notes
 
-The context in which you encounter `SyntaxError` can influence how you debug it.
+The context in which you encounter `SyntaxError: invalid syntax` can influence your troubleshooting approach.
 
-*   **Local Development:** This is generally the easiest environment. Your IDE's integrated linter will often highlight syntax errors as you type, providing immediate feedback. If you run from the command line, `python my_script.py` will give you a clear traceback. Take advantage of interactive debuggers and linters here.
+*   **Local Development:** This is where you have the most control. Your IDE's syntax highlighting and integrated linters (like Pylint or Flake8) will often catch these errors before you even run your script. Make sure your local Python interpreter version aligns with the intended target environment if you're developing for deployment. I've often seen junior engineers frustrated by this until they configured their IDE correctly.
 
-*   **Cloud Environments (AWS Lambda, Azure Functions, GCP Cloud Functions):** In serverless or managed cloud environments, `SyntaxError` typically manifests in the service's logs (e.g., AWS CloudWatch, Azure Application Insights, GCP Stackdriver Logging). The challenge here is that you often can't interactively debug. You'll get the traceback in the logs, but you must fix the code locally, repackage it, and redeploy. I've seen this frequently when deploying a new function version or updating dependencies; a subtle Python version mismatch (e.g., local `Python 3.9` script deployed to a `Python 3.7` Lambda runtime) is a common cause, leading to `SyntaxError` for features like dictionary merge operators (`|`) or new syntax.
+*   **Docker Containers:**
+    *   **Python Version Mismatch:** The most common culprit I've seen in Docker. Your `Dockerfile` might use a base image (e.g., `python:2.7-slim` or an older `python:3.6-alpine`) that doesn't support the Python features you've used in your code (e.g., f-strings). Always explicitly define the Python version in your base image, e.g., `FROM python:3.9-slim-buster`.
+    *   **File Transfer Issues:** Ensure your `COPY` commands in the `Dockerfile` are correctly transferring your source code to the container. If a file is partially copied or corrupted, it could lead to `SyntaxError`.
+    *   **`CMD` or `ENTRYPOINT` Problems:** Verify that your `CMD` or `ENTRYPOINT` is correctly invoking your Python script using the correct Python executable (`python` vs. `python3`).
 
-*   **Docker Containers:** When building or running Python applications within Docker, a `SyntaxError` means your code failed during the container's build phase (if running `python` in a `RUN` command) or at runtime (if it's part of the `CMD` or `ENTRYPOINT`).
-    *   During build: The `docker build` output will show the Python traceback. Check your `Dockerfile` for the correct base image's Python version (e.g., `FROM python:3.9-slim-buster`).
-    *   During runtime: Use `docker logs <container_id>` to retrieve the full traceback. Again, Python version mismatch between your development machine and the container's base image is a prime suspect. Verify the `python` or `python3` command inside the container points to the expected interpreter.
-
-*   **CLI Tools/Entrypoints:** If you're developing a command-line tool, `SyntaxError` might appear when the tool is invoked. This could be in the main script, or even in a `setup.py` file if it has syntax issues. Ensure your shebang line (`#!/usr/bin/env python3`) correctly points to the desired Python interpreter, especially if your system has multiple Python versions installed.
+*   **Cloud Environments (AWS Lambda, Azure Functions, Google Cloud Run, Kubernetes):**
+    *   **Logs, Logs, Logs:** The error message will appear in your cloud provider's logging service (e.g., AWS CloudWatch, Google Cloud Stackdriver, Azure Monitor). This is your primary source of information.
+    *   **Runtime Mismatch:** Just like Docker, the configured runtime environment for your function or service (e.g., Python 3.7, Python 3.9) might not match the syntax version of your deployed code. Double-check your service configuration. I've had production incidents where a new feature used a 3.8 feature, but the Lambda was still on 3.7.
+    *   **Deployment Package Integrity:** For serverless functions, ensure your deployment package (ZIP file, container image) contains all necessary files and hasn't been corrupted during upload. The `SyntaxError` can sometimes be misleading if it occurs in an auto-generated wrapper file due to an underlying issue in your deployment.
+    *   **Build Pipeline Verification:** Implement checks in your CI/CD pipeline to run linting and basic syntax checks using the *target* Python version before deployment. This catches `SyntaxError` before it reaches production.
 
 ## Frequently Asked Questions
 
-**Q: The traceback points to a blank line or `EOF` (End Of File). What does that mean?**
-**A:** This is a common and often frustrating scenario. It usually indicates that the `SyntaxError` originates from an unclosed multi-line construct on a *previous* line. The interpreter expected more code (like a closing parenthesis, bracket, brace, or string quote) but instead reached the end of the file. Go back and check function definitions, list/dictionary initializations, or multi-line strings above the indicated `EOF` line.
+**Q: Why does the error sometimes point to the line *after* my actual mistake?**
+A: The Python interpreter tries to parse your code from left to right, top to bottom. It only realizes there's a grammatical issue when it encounters something it cannot interpret given the context established so far. For example, if you miss a closing parenthesis, the interpreter might only realize the statement is malformed when it hits the next line, which it expects to be a new statement but still sees as part of the previous, incomplete one.
 
-**Q: My code looks correct, but I still get the error. What should I do?**
-**A:** First, double-check for invisible characters by re-typing the problematic line. Sometimes, copy-pasting from a web page can introduce zero-width spaces or other non-printable characters. Also, confirm your file encoding is set to UTF-8. If all else fails, try isolating the line and running it in a fresh Python interpreter or an online tool to see if it yields a more specific error message.
+**Q: Can a `SyntaxError` be caught with `try...except`?**
+A: No, `SyntaxError` cannot be caught with a `try...except` block. This is because `SyntaxError` occurs during the parsing phase, *before* your code ever gets a chance to execute. `try...except` blocks are designed to handle exceptions that arise *during runtime* (e.g., `NameError`, `TypeError`, `ValueError`). If a `SyntaxError` is present, the program cannot even start running.
 
-**Q: Can this error be caused by a Python version difference?**
-**A:** Absolutely, this is one of the most frequent causes in professional environments. Features like f-strings, `async/await` syntax, or the `print()` function (vs. `print` statement) are Python 3 specific. Trying to run them with a Python 2 interpreter (or an older Python 3 version that doesn't support the specific feature) will result in a `SyntaxError`. Always verify your interpreter version (`python --version` or `python3 --version`).
+**Q: My code runs fine on my machine but gives `SyntaxError` in production/CI. Why?**
+A: The most common reason for this discrepancy is a Python version mismatch. Your local environment might be running a newer (or older) Python version that supports (or doesn't support) the specific syntax you've used, while your production or CI environment uses a different version. Another less common reason can be character encoding issues if source files are created on different operating systems or with different default encodings. Always ensure environment parity.
 
-**Q: Why does my IDE not catch this, but the CLI does?**
-**A:** Your IDE's linter or syntax checker might be configured to use a different Python interpreter or a less strict set of rules than the actual environment where your code is being executed. Ensure your IDE's interpreter settings match the one you're using for execution (e.g., within your virtual environment or Docker container). Sometimes, a linter might be temporarily disabled or misconfigured.
-
-**Q: Is `IndentationError` the same as `SyntaxError`?**
-**A:** No, they are distinct types of errors. `SyntaxError` refers to violations of Python's grammar rules (like missing colons, incorrect keywords). `IndentationError` specifically relates to incorrect or inconsistent use of whitespace (spaces and tabs) for defining code blocks, which is critical in Python. While both prevent code from running, they point to different categories of structural problems.
+**Q: Is `IndentationError` a `SyntaxError`?**
+A: Yes, `IndentationError` is a specific type of `SyntaxError`. In Python, indentation is not merely stylistic but is a fundamental part of the language's grammar, defining code blocks. Therefore, incorrect or inconsistent indentation is considered a grammatical error by the parser, leading to an `IndentationError`, which inherits from `SyntaxError`.
 
 ## Related Errors
-*(none)*
