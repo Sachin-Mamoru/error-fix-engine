@@ -229,20 +229,20 @@ Run these tools against your application locally or in a test environment to ide
 <p>Here are common ways to set memory limits for Docker containers:</p>
 <p><strong>1. Running a container with a specific memory limit (Docker CLI):</strong></p>
 <p>This command starts a Nginx container with a memory limit of 256 megabytes.</p>
-<div class="highlight"><pre><span></span><code>docker<span class="w"> </span>run<span class="w"> </span>-d<span class="w"> </span>--name<span class="w"> </span>my-nginx<span class="w"> </span>-p<span class="w"> </span><span class="m">80</span>:80<span class="w"> </span>--memory<span class="o">=</span><span class="s2">&quot;256m&quot;</span><span class="w"> </span>nginx:latest
+<div class="highlight"><pre><span></span><code>docker<span class="w"> </span>run<span class="w"> </span>-d<span class="w"> </span>--name<span class="w"> </span>my-nginx<span class="w"> </span>-p<span class="w"> </span><span class="m">80</span>:80<span class="w"> </span>--memory<span class="o">=</span><span class="s2">"256m"</span><span class="w"> </span>nginx:latest
 </code></pre></div>
 
 <p><strong>2. Defining memory limits in <code>docker-compose.yml</code>:</strong></p>
 <p>This <code>docker-compose.yml</code> snippet configures a service <code>web</code> to use a maximum of 1 gigabyte of memory.</p>
 <div class="highlight"><pre><span></span><code><span class="c1"># docker-compose.yml</span>
-<span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;3.8&#39;</span>
+<span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="s">'3.8'</span>
 <span class="nt">services</span><span class="p">:</span>
 <span class="w">  </span><span class="nt">web</span><span class="p">:</span>
 <span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">my-backend-app:latest</span>
 <span class="w">    </span><span class="nt">ports</span><span class="p">:</span>
-<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;8080:8080&quot;</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">"8080:8080"</span>
 <span class="w">    </span><span class="nt">environment</span><span class="p">:</span>
-<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">JAVA_OPTS=&quot;-Xmx768m&quot;</span><span class="w"> </span><span class="c1"># Example for Java apps, ensure this is less than Docker limit</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">JAVA_OPTS="-Xmx768m"</span><span class="w"> </span><span class="c1"># Example for Java apps, ensure this is less than Docker limit</span>
 <span class="w">    </span><span class="nt">deploy</span><span class="p">:</span>
 <span class="w">      </span><span class="nt">resources</span><span class="p">:</span>
 <span class="w">        </span><span class="nt">limits</span><span class="p">:</span>
@@ -255,15 +255,15 @@ Run these tools against your application locally or in a test environment to ide
 <p>This example demonstrates a Python application that could consume a lot of memory if not handled carefully, potentially leading to OOMKilled.</p>
 <div class="highlight"><pre><span></span><code><span class="c1"># app.py</span>
 <span class="k">def</span><span class="w"> </span><span class="nf">create_large_list</span><span class="p">(</span><span class="n">size</span><span class="p">):</span>
-    <span class="c1"># This will consume &#39;size&#39; * (size_of_int + overhead) bytes</span>
+    <span class="c1"># This will consume 'size' * (size_of_int + overhead) bytes</span>
     <span class="k">return</span> <span class="nb">list</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="n">size</span><span class="p">))</span>
 
-<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
-    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Starting memory-intensive task...&quot;</span><span class="p">)</span>
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">"__main__"</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"Starting memory-intensive task..."</span><span class="p">)</span>
     <span class="c1"># Attempt to create a list of 100 million integers</span>
     <span class="c1"># This might easily exceed typical container memory limits</span>
     <span class="n">large_data</span> <span class="o">=</span> <span class="n">create_large_list</span><span class="p">(</span><span class="mi">100_000_000</span><span class="p">)</span>
-    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Created a list with </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">large_data</span><span class="p">)</span><span class="si">}</span><span class="s2"> elements.&quot;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Created a list with </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">large_data</span><span class="p">)</span><span class="si">}</span><span class="s2"> elements."</span><span class="p">)</span>
     <span class="c1"># Simulate work</span>
     <span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
     <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mi">3600</span><span class="p">)</span> <span class="c1"># Keep running to observe memory</span>
@@ -279,7 +279,7 @@ Run these tools against your application locally or in a test environment to ide
 
 <span class="k">COPY</span><span class="w"> </span>app.py<span class="w"> </span>.
 
-<span class="k">CMD</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;python&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;app.py&quot;</span><span class="p">]</span>
+<span class="k">CMD</span><span class="w"> </span><span class="p">[</span><span class="s2">"python"</span><span class="p">,</span><span class="w"> </span><span class="s2">"app.py"</span><span class="p">]</span>
 </code></pre></div>
 
 <p>To test this, build it (<code>docker build -t my-mem-app .</code>) and run it with a tight memory limit (<code>docker run -m 256m my-mem-app</code>). It will likely get OOMKilled quickly.</p>
@@ -385,7 +385,7 @@ Monitoring in these environments is typically done via cloud-native tools (e.g.,
     <div class="container">
       <p class="footer-logo">⚡ ErrorFix.dev</p>
       <p>Practical, engineer-written guides for real-world software errors.</p>
-      <p style="margin-top:.5rem">Last updated: <time>July 13, 2026</time>.</p>
+      <p style="margin-top:.5rem">Last updated: <time>August 19, 2026</time>.</p>
       <p class="footer-links" style="margin-top:.75rem">
         <!-- ╔══════════════════════════════════════════════════════════════╗ -->
         <!-- ║  AFFILIATE LINKS – replace the href values below            ║ -->

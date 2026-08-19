@@ -217,7 +217,7 @@ aws cloudwatch get-metric-data \
 <span class="kn">import</span><span class="w"> </span><span class="nn">random</span>
 
 <span class="k">def</span><span class="w"> </span><span class="nf">call_aws_api_with_backoff</span><span class="p">(</span><span class="n">api_call_func</span><span class="p">,</span> <span class="n">max_retries</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span> <span class="n">base_delay</span><span class="o">=</span><span class="mf">0.1</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">"""</span>
 <span class="sd">    Calls an AWS API function with exponential backoff and jitter.</span>
 
 <span class="sd">    Args:</span>
@@ -230,45 +230,45 @@ aws cloudwatch get-metric-data \
 
 <span class="sd">    Raises:</span>
 <span class="sd">        ClientError: If the call fails after max_retries.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">max_retries</span><span class="p">):</span>
         <span class="k">try</span><span class="p">:</span>
-            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Attempt </span><span class="si">{</span><span class="n">i</span><span class="o">+</span><span class="mi">1</span><span class="si">}</span><span class="s2">...&quot;</span><span class="p">)</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Attempt </span><span class="si">{</span><span class="n">i</span><span class="o">+</span><span class="mi">1</span><span class="si">}</span><span class="s2">..."</span><span class="p">)</span>
             <span class="n">result</span> <span class="o">=</span> <span class="n">api_call_func</span><span class="p">()</span>
-            <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;API call successful!&quot;</span><span class="p">)</span>
+            <span class="nb">print</span><span class="p">(</span><span class="s2">"API call successful!"</span><span class="p">)</span>
             <span class="k">return</span> <span class="n">result</span>
         <span class="k">except</span> <span class="n">ClientError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
-            <span class="n">error_code</span> <span class="o">=</span> <span class="n">e</span><span class="o">.</span><span class="n">response</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;Error&quot;</span><span class="p">,</span> <span class="p">{})</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;Code&quot;</span><span class="p">)</span>
-            <span class="k">if</span> <span class="n">error_code</span> <span class="o">==</span> <span class="s2">&quot;ThrottlingException&quot;</span> <span class="ow">or</span> <span class="n">error_code</span> <span class="o">==</span> <span class="s2">&quot;RequestLimitExceeded&quot;</span><span class="p">:</span>
+            <span class="n">error_code</span> <span class="o">=</span> <span class="n">e</span><span class="o">.</span><span class="n">response</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"Error"</span><span class="p">,</span> <span class="p">{})</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"Code"</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">error_code</span> <span class="o">==</span> <span class="s2">"ThrottlingException"</span> <span class="ow">or</span> <span class="n">error_code</span> <span class="o">==</span> <span class="s2">"RequestLimitExceeded"</span><span class="p">:</span>
                 <span class="n">delay</span> <span class="o">=</span> <span class="n">base_delay</span> <span class="o">*</span> <span class="p">(</span><span class="mi">2</span> <span class="o">**</span> <span class="n">i</span><span class="p">)</span> <span class="o">+</span> <span class="n">random</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mf">0.1</span> <span class="o">*</span> <span class="p">(</span><span class="mi">2</span> <span class="o">**</span> <span class="n">i</span><span class="p">))</span> <span class="c1"># Exponential backoff + jitter</span>
-                <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;ThrottlingException caught. Retrying in </span><span class="si">{</span><span class="n">delay</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2"> seconds...&quot;</span><span class="p">)</span>
+                <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"ThrottlingException caught. Retrying in </span><span class="si">{</span><span class="n">delay</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2"> seconds..."</span><span class="p">)</span>
                 <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="n">delay</span><span class="p">)</span>
             <span class="k">else</span><span class="p">:</span>
-                <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Non-throttling error: </span><span class="si">{</span><span class="n">error_code</span><span class="si">}</span><span class="s2">. Raising.&quot;</span><span class="p">)</span>
+                <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Non-throttling error: </span><span class="si">{</span><span class="n">error_code</span><span class="si">}</span><span class="s2">. Raising."</span><span class="p">)</span>
                 <span class="k">raise</span> <span class="c1"># Re-raise other ClientErrors</span>
         <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
-            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;An unexpected error occurred: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">. Raising.&quot;</span><span class="p">)</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"An unexpected error occurred: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">. Raising."</span><span class="p">)</span>
             <span class="k">raise</span>
 
-    <span class="k">raise</span> <span class="n">ClientError</span><span class="p">({</span><span class="s2">&quot;Error&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;Code&quot;</span><span class="p">:</span> <span class="s2">&quot;ThrottlingException&quot;</span><span class="p">,</span> <span class="s2">&quot;Message&quot;</span><span class="p">:</span> <span class="s2">&quot;Max retries exceeded&quot;</span><span class="p">}},</span> <span class="s2">&quot;API_CALL_FAILED&quot;</span><span class="p">)</span>
+    <span class="k">raise</span> <span class="n">ClientError</span><span class="p">({</span><span class="s2">"Error"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"Code"</span><span class="p">:</span> <span class="s2">"ThrottlingException"</span><span class="p">,</span> <span class="s2">"Message"</span><span class="p">:</span> <span class="s2">"Max retries exceeded"</span><span class="p">}},</span> <span class="s2">"API_CALL_FAILED"</span><span class="p">)</span>
 
 <span class="c1"># Example usage with a dummy Lambda invocation</span>
-<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
-    <span class="n">lambda_client</span> <span class="o">=</span> <span class="n">boto3</span><span class="o">.</span><span class="n">client</span><span class="p">(</span><span class="s1">&#39;lambda&#39;</span><span class="p">,</span> <span class="n">region_name</span><span class="o">=</span><span class="s1">&#39;us-east-1&#39;</span><span class="p">)</span>
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">"__main__"</span><span class="p">:</span>
+    <span class="n">lambda_client</span> <span class="o">=</span> <span class="n">boto3</span><span class="o">.</span><span class="n">client</span><span class="p">(</span><span class="s1">'lambda'</span><span class="p">,</span> <span class="n">region_name</span><span class="o">=</span><span class="s1">'us-east-1'</span><span class="p">)</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">my_lambda_invoke_call</span><span class="p">():</span>
         <span class="c1"># This function simulates an API call that might get throttled</span>
         <span class="c1"># In a real scenario, replace this with your actual AWS API call</span>
-        <span class="c1"># For demonstration, we&#39;ll manually raise ThrottlingException</span>
+        <span class="c1"># For demonstration, we'll manually raise ThrottlingException</span>
         <span class="k">if</span> <span class="n">random</span><span class="o">.</span><span class="n">random</span><span class="p">()</span> <span class="o">&lt;</span> <span class="mf">0.7</span><span class="p">:</span> <span class="c1"># Simulate 70% chance of throttling initially</span>
-            <span class="k">raise</span> <span class="n">ClientError</span><span class="p">({</span><span class="s2">&quot;Error&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;Code&quot;</span><span class="p">:</span> <span class="s2">&quot;ThrottlingException&quot;</span><span class="p">,</span> <span class="s2">&quot;Message&quot;</span><span class="p">:</span> <span class="s2">&quot;Rate exceeded&quot;</span><span class="p">}},</span> <span class="s2">&quot;Invoke&quot;</span><span class="p">)</span>
-        <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;StatusCode&quot;</span><span class="p">:</span> <span class="mi">200</span><span class="p">,</span> <span class="s2">&quot;Payload&quot;</span><span class="p">:</span> <span class="sa">b</span><span class="s1">&#39;{&quot;message&quot;: &quot;Hello from Lambda!&quot;}&#39;</span><span class="p">}</span>
+            <span class="k">raise</span> <span class="n">ClientError</span><span class="p">({</span><span class="s2">"Error"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"Code"</span><span class="p">:</span> <span class="s2">"ThrottlingException"</span><span class="p">,</span> <span class="s2">"Message"</span><span class="p">:</span> <span class="s2">"Rate exceeded"</span><span class="p">}},</span> <span class="s2">"Invoke"</span><span class="p">)</span>
+        <span class="k">return</span> <span class="p">{</span><span class="s2">"StatusCode"</span><span class="p">:</span> <span class="mi">200</span><span class="p">,</span> <span class="s2">"Payload"</span><span class="p">:</span> <span class="sa">b</span><span class="s1">'{"message": "Hello from Lambda!"}'</span><span class="p">}</span>
 
     <span class="k">try</span><span class="p">:</span>
         <span class="n">response</span> <span class="o">=</span> <span class="n">call_aws_api_with_backoff</span><span class="p">(</span><span class="n">my_lambda_invoke_call</span><span class="p">)</span>
-        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Final API Response:&quot;</span><span class="p">,</span> <span class="n">response</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">"Final API Response:"</span><span class="p">,</span> <span class="n">response</span><span class="p">)</span>
     <span class="k">except</span> <span class="n">ClientError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
-        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Failed after multiple retries:&quot;</span><span class="p">,</span> <span class="n">e</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">"Failed after multiple retries:"</span><span class="p">,</span> <span class="n">e</span><span class="p">)</span>
 </code></pre></div>
 
 <h2 id="environment-specific-notes">Environment-Specific Notes</h2>
@@ -386,7 +386,7 @@ aws cloudwatch get-metric-data \
     <div class="container">
       <p class="footer-logo">⚡ ErrorFix.dev</p>
       <p>Practical, engineer-written guides for real-world software errors.</p>
-      <p style="margin-top:.5rem">Last updated: <time>July 13, 2026</time>.</p>
+      <p style="margin-top:.5rem">Last updated: <time>August 19, 2026</time>.</p>
       <p class="footer-links" style="margin-top:.75rem">
         <!-- ╔══════════════════════════════════════════════════════════════╗ -->
         <!-- ║  AFFILIATE LINKS – replace the href values below            ║ -->

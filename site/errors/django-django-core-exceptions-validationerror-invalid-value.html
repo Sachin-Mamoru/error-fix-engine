@@ -254,31 +254,31 @@ if not serializer.is_valid():<br />
     <span class="n">new_stock</span> <span class="o">=</span> <span class="n">forms</span><span class="o">.</span><span class="n">IntegerField</span><span class="p">()</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">clean_new_stock</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="n">stock</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">cleaned_data</span><span class="p">[</span><span class="s1">&#39;new_stock&#39;</span><span class="p">]</span>
+        <span class="n">stock</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">cleaned_data</span><span class="p">[</span><span class="s1">'new_stock'</span><span class="p">]</span>
         <span class="k">if</span> <span class="n">stock</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">:</span>
             <span class="c1"># Bad practice: generic ValidationError</span>
-            <span class="c1"># raise forms.ValidationError() # This would result in [&#39;Invalid value.&#39;]</span>
+            <span class="c1"># raise forms.ValidationError() # This would result in ['Invalid value.']</span>
 
             <span class="c1"># Good practice: specific ValidationError message</span>
-            <span class="k">raise</span> <span class="n">forms</span><span class="o">.</span><span class="n">ValidationError</span><span class="p">(</span><span class="s2">&quot;Stock quantity cannot be negative.&quot;</span><span class="p">)</span>
+            <span class="k">raise</span> <span class="n">forms</span><span class="o">.</span><span class="n">ValidationError</span><span class="p">(</span><span class="s2">"Stock quantity cannot be negative."</span><span class="p">)</span>
         <span class="k">return</span> <span class="n">stock</span>
 
 <span class="c1"># views.py (or a test script)</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">django.core.exceptions</span><span class="w"> </span><span class="kn">import</span> <span class="n">ValidationError</span>
 
 <span class="c1"># Scenario 1: Will raise a specific error</span>
-<span class="n">data_specific_error</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;product_id&#39;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span> <span class="s1">&#39;new_stock&#39;</span><span class="p">:</span> <span class="o">-</span><span class="mi">5</span><span class="p">}</span>
+<span class="n">data_specific_error</span> <span class="o">=</span> <span class="p">{</span><span class="s1">'product_id'</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span> <span class="s1">'new_stock'</span><span class="p">:</span> <span class="o">-</span><span class="mi">5</span><span class="p">}</span>
 <span class="n">form_specific</span> <span class="o">=</span> <span class="n">ProductUpdateForm</span><span class="p">(</span><span class="n">data_specific_error</span><span class="p">)</span>
 <span class="k">if</span> <span class="ow">not</span> <span class="n">form_specific</span><span class="o">.</span><span class="n">is_valid</span><span class="p">():</span>
-    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Scenario 1 Errors:&quot;</span><span class="p">,</span> <span class="n">form_specific</span><span class="o">.</span><span class="n">errors</span><span class="p">)</span> 
-    <span class="c1"># Output: Scenario 1 Errors: {&#39;new_stock&#39;: [&#39;Stock quantity cannot be negative.&#39;]}</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"Scenario 1 Errors:"</span><span class="p">,</span> <span class="n">form_specific</span><span class="o">.</span><span class="n">errors</span><span class="p">)</span> 
+    <span class="c1"># Output: Scenario 1 Errors: {'new_stock': ['Stock quantity cannot be negative.']}</span>
 
 <span class="c1"># Scenario 2: If the clean_new_stock method had raised a generic ValidationError()</span>
-<span class="c1"># data_generic_error = {&#39;product_id&#39;: 1, &#39;new_stock&#39;: -5}</span>
+<span class="c1"># data_generic_error = {'product_id': 1, 'new_stock': -5}</span>
 <span class="c1"># form_generic = ProductUpdateForm(data_generic_error)</span>
 <span class="c1"># if not form_generic.is_valid():</span>
-<span class="c1">#     print(&quot;Scenario 2 Errors:&quot;, form_generic.errors) </span>
-<span class="c1">#     # Output: Scenario 2 Errors: {&#39;new_stock&#39;: [&#39;Invalid value.&#39;]}</span>
+<span class="c1">#     print("Scenario 2 Errors:", form_generic.errors) </span>
+<span class="c1">#     # Output: Scenario 2 Errors: {'new_stock': ['Invalid value.']}</span>
 </code></pre></div>
 
 <p><strong>Example 2: Django REST Framework Serializer with a Custom <code>validate</code> Method</strong></p>
@@ -292,11 +292,11 @@ if not serializer.is_valid():<br />
     <span class="n">price_per_unit</span> <span class="o">=</span> <span class="n">serializers</span><span class="o">.</span><span class="n">DecimalField</span><span class="p">(</span><span class="n">max_digits</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span> <span class="n">decimal_places</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">validate</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">"""</span>
 <span class="sd">        Check that quantity is reasonable given the price.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
-        <span class="n">quantity</span> <span class="o">=</span> <span class="n">data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;quantity&#39;</span><span class="p">)</span>
-        <span class="n">price</span> <span class="o">=</span> <span class="n">data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;price_per_unit&#39;</span><span class="p">)</span>
+<span class="sd">        """</span>
+        <span class="n">quantity</span> <span class="o">=</span> <span class="n">data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">'quantity'</span><span class="p">)</span>
+        <span class="n">price</span> <span class="o">=</span> <span class="n">data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">'price_per_unit'</span><span class="p">)</span>
 
         <span class="k">if</span> <span class="n">quantity</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">price</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
             <span class="c1"># Let field-level validators handle missing data for clarity.</span>
@@ -304,11 +304,11 @@ if not serializer.is_valid():<br />
 
         <span class="k">if</span> <span class="n">quantity</span> <span class="o">&gt;</span> <span class="mi">100</span> <span class="ow">and</span> <span class="n">price</span> <span class="o">&lt;</span> <span class="mf">5.00</span><span class="p">:</span>
             <span class="c1"># Bad practice: generic ValidationError</span>
-            <span class="c1"># raise serializers.ValidationError({&#39;non_field_errors&#39;: &#39;Invalid value.&#39;}) </span>
+            <span class="c1"># raise serializers.ValidationError({'non_field_errors': 'Invalid value.'}) </span>
 
             <span class="c1"># Good practice: specific ValidationError message</span>
             <span class="k">raise</span> <span class="n">serializers</span><span class="o">.</span><span class="n">ValidationError</span><span class="p">(</span>
-                <span class="p">{</span><span class="s1">&#39;non_field_errors&#39;</span><span class="p">:</span> <span class="s1">&#39;Bulk orders of low-priced items require special approval.&#39;</span><span class="p">}</span>
+                <span class="p">{</span><span class="s1">'non_field_errors'</span><span class="p">:</span> <span class="s1">'Bulk orders of low-priced items require special approval.'</span><span class="p">}</span>
             <span class="p">)</span>
         <span class="k">return</span> <span class="n">data</span>
 
@@ -317,25 +317,25 @@ if not serializer.is_valid():<br />
 
 <span class="c1"># Scenario 1: Will raise a specific error in validate()</span>
 <span class="n">invalid_data_specific</span> <span class="o">=</span> <span class="p">{</span>
-    <span class="s1">&#39;item_id&#39;</span><span class="p">:</span> <span class="mi">101</span><span class="p">,</span>
-    <span class="s1">&#39;quantity&#39;</span><span class="p">:</span> <span class="mi">150</span><span class="p">,</span>
-    <span class="s1">&#39;price_per_unit&#39;</span><span class="p">:</span> <span class="mf">4.50</span>
+    <span class="s1">'item_id'</span><span class="p">:</span> <span class="mi">101</span><span class="p">,</span>
+    <span class="s1">'quantity'</span><span class="p">:</span> <span class="mi">150</span><span class="p">,</span>
+    <span class="s1">'price_per_unit'</span><span class="p">:</span> <span class="mf">4.50</span>
 <span class="p">}</span>
 <span class="n">serializer_specific</span> <span class="o">=</span> <span class="n">OrderItemSerializer</span><span class="p">(</span><span class="n">data</span><span class="o">=</span><span class="n">invalid_data_specific</span><span class="p">)</span>
 <span class="k">try</span><span class="p">:</span>
     <span class="n">serializer_specific</span><span class="o">.</span><span class="n">is_valid</span><span class="p">(</span><span class="n">raise_exception</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 <span class="k">except</span> <span class="n">ValidationError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
-    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Scenario 1 Errors:&quot;</span><span class="p">,</span> <span class="n">e</span><span class="o">.</span><span class="n">detail</span><span class="p">)</span>
-    <span class="c1"># Output: Scenario 1 Errors: {&#39;non_field_errors&#39;: [&#39;Bulk orders of low-priced items require special approval.&#39;]}</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"Scenario 1 Errors:"</span><span class="p">,</span> <span class="n">e</span><span class="o">.</span><span class="n">detail</span><span class="p">)</span>
+    <span class="c1"># Output: Scenario 1 Errors: {'non_field_errors': ['Bulk orders of low-priced items require special approval.']}</span>
 
 <span class="c1"># Scenario 2: If the validate method had raised a generic ValidationError</span>
-<span class="c1"># invalid_data_generic = {&#39;item_id&#39;: 101, &#39;quantity&#39;: 150, &#39;price_per_unit&#39;: 4.50}</span>
+<span class="c1"># invalid_data_generic = {'item_id': 101, 'quantity': 150, 'price_per_unit': 4.50}</span>
 <span class="c1"># serializer_generic = OrderItemSerializer(data=invalid_data_generic)</span>
 <span class="c1"># try:</span>
 <span class="c1">#     serializer_generic.is_valid(raise_exception=True)</span>
 <span class="c1"># except ValidationError as e:</span>
-<span class="c1">#     print(&quot;Scenario 2 Errors:&quot;, e.detail)</span>
-<span class="c1">#     # Output: Scenario 2 Errors: {&#39;non_field_errors&#39;: [&#39;Invalid value.&#39;]}</span>
+<span class="c1">#     print("Scenario 2 Errors:", e.detail)</span>
+<span class="c1">#     # Output: Scenario 2 Errors: {'non_field_errors': ['Invalid value.']}</span>
 </code></pre></div>
 
 <h2 id="environment-specific-notes">Environment-Specific Notes</h2>
@@ -430,7 +430,7 @@ A: This often happens with <code>ModelForm</code> or <code>ModelSerializer</code
     <div class="container">
       <p class="footer-logo">⚡ ErrorFix.dev</p>
       <p>Practical, engineer-written guides for real-world software errors.</p>
-      <p style="margin-top:.5rem">Last updated: <time>July 13, 2026</time>.</p>
+      <p style="margin-top:.5rem">Last updated: <time>August 19, 2026</time>.</p>
       <p class="footer-links" style="margin-top:.75rem">
         <!-- ╔══════════════════════════════════════════════════════════════╗ -->
         <!-- ║  AFFILIATE LINKS – replace the href values below            ║ -->

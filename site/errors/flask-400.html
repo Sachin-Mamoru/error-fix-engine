@@ -178,14 +178,14 @@ def receive_data():<br />
     app.logger.info(f"Incoming Request Data (raw body): {request.data}") # Raw body</p>
 <div class="highlight"><pre><span></span><code>try:
     json_data = request.get_json(force=True, silent=False) # force=True will ignore Content-Type
-    app.logger.info(f&quot;Parsed JSON Data: {json_data}&quot;)
+    app.logger.info(f"Parsed JSON Data: {json_data}")
 except Exception as e:
-    app.logger.error(f&quot;Failed to parse JSON: {e}&quot;)
+    app.logger.error(f"Failed to parse JSON: {e}")
     # Consider raising a more specific error or returning a custom 400 response here
-    # For now, let Flask&#39;s default BadRequest handle it if the JSON is truly malformed
+    # For now, let Flask's default BadRequest handle it if the JSON is truly malformed
 
 # ... rest of your API logic ...
-return {&quot;message&quot;: &quot;Data received successfully&quot;}, 200
+return {"message": "Data received successfully"}, 200
 </code></pre></div>
 
 <p>if <strong>name</strong> == '<strong>main</strong>':<br />
@@ -222,13 +222,13 @@ return {&quot;message&quot;: &quot;Data received successfully&quot;}, 200
 <h2 id="code-examples">Code Examples</h2>
 <h3 id="example-1-client-sending-malformed-json-causes-400">Example 1: Client Sending Malformed JSON (Causes 400)</h3>
 <p>Here's how a client might send a bad request using <code>curl</code>, causing the Flask server to return a <code>400 Bad Request</code> if it expects valid JSON.</p>
-<div class="highlight"><pre><span></span><code><span class="c1"># This JSON is malformed due to a trailing comma after &quot;value2&quot;:</span>
+<div class="highlight"><pre><span></span><code><span class="c1"># This JSON is malformed due to a trailing comma after "value2":</span>
 curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span><span class="se">\</span>
-<span class="w">  </span>-H<span class="w"> </span><span class="s2">&quot;Content-Type: application/json&quot;</span><span class="w"> </span><span class="se">\</span>
-<span class="w">  </span>-d<span class="w"> </span><span class="s1">&#39;{</span>
-<span class="s1">    &quot;key1&quot;: &quot;value1&quot;,</span>
-<span class="s1">    &quot;key2&quot;: &quot;value2&quot;, # Trailing comma here!</span>
-<span class="s1">  }&#39;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-H<span class="w"> </span><span class="s2">"Content-Type: application/json"</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-d<span class="w"> </span><span class="s1">'{</span>
+<span class="s1">    "key1": "value1",</span>
+<span class="s1">    "key2": "value2", # Trailing comma here!</span>
+<span class="s1">  }'</span><span class="w"> </span><span class="se">\</span>
 <span class="w">  </span>http://127.0.0.1:5000/api/endpoint
 </code></pre></div>
 
@@ -238,25 +238,25 @@ curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </spa
 
 <span class="n">app</span> <span class="o">=</span> <span class="n">Flask</span><span class="p">(</span><span class="vm">__name__</span><span class="p">)</span>
 
-<span class="nd">@app</span><span class="o">.</span><span class="n">route</span><span class="p">(</span><span class="s1">&#39;/api/endpoint&#39;</span><span class="p">,</span> <span class="n">methods</span><span class="o">=</span><span class="p">[</span><span class="s1">&#39;POST&#39;</span><span class="p">])</span>
+<span class="nd">@app</span><span class="o">.</span><span class="n">route</span><span class="p">(</span><span class="s1">'/api/endpoint'</span><span class="p">,</span> <span class="n">methods</span><span class="o">=</span><span class="p">[</span><span class="s1">'POST'</span><span class="p">])</span>
 <span class="k">def</span><span class="w"> </span><span class="nf">handle_data</span><span class="p">():</span>
     <span class="k">try</span><span class="p">:</span>
         <span class="n">data</span> <span class="o">=</span> <span class="n">request</span><span class="o">.</span><span class="n">get_json</span><span class="p">()</span> <span class="c1"># This line will raise BadRequest for malformed JSON</span>
         <span class="k">if</span> <span class="n">data</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="c1"># This case happens if Content-Type is wrong and get_json() isn&#39;t forced,</span>
+            <span class="c1"># This case happens if Content-Type is wrong and get_json() isn't forced,</span>
             <span class="c1"># but usually malformed JSON with correct Content-Type still raises an error.</span>
-            <span class="k">return</span> <span class="n">jsonify</span><span class="p">({</span><span class="s2">&quot;error&quot;</span><span class="p">:</span> <span class="s2">&quot;Request body must be valid JSON&quot;</span><span class="p">}),</span> <span class="mi">400</span>
+            <span class="k">return</span> <span class="n">jsonify</span><span class="p">({</span><span class="s2">"error"</span><span class="p">:</span> <span class="s2">"Request body must be valid JSON"</span><span class="p">}),</span> <span class="mi">400</span>
         <span class="c1"># Process valid JSON data</span>
-        <span class="k">return</span> <span class="n">jsonify</span><span class="p">({</span><span class="s2">&quot;message&quot;</span><span class="p">:</span> <span class="s2">&quot;Data received&quot;</span><span class="p">,</span> <span class="s2">&quot;data&quot;</span><span class="p">:</span> <span class="n">data</span><span class="p">}),</span> <span class="mi">200</span>
+        <span class="k">return</span> <span class="n">jsonify</span><span class="p">({</span><span class="s2">"message"</span><span class="p">:</span> <span class="s2">"Data received"</span><span class="p">,</span> <span class="s2">"data"</span><span class="p">:</span> <span class="n">data</span><span class="p">}),</span> <span class="mi">200</span>
     <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
-        <span class="c1"># Flask&#39;s default handler for werkzeug.exceptions.BadRequest will catch this</span>
+        <span class="c1"># Flask's default handler for werkzeug.exceptions.BadRequest will catch this</span>
         <span class="c1"># and return a 400. You can customize this error handling.</span>
-        <span class="n">app</span><span class="o">.</span><span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Error processing request: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-        <span class="k">raise</span> <span class="c1"># Re-raise to let Flask&#39;s default BadRequest handler take over</span>
+        <span class="n">app</span><span class="o">.</span><span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Error processing request: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+        <span class="k">raise</span> <span class="c1"># Re-raise to let Flask's default BadRequest handler take over</span>
         <span class="c1"># Alternatively, for more custom error messages:</span>
-        <span class="c1"># return jsonify({&quot;error&quot;: f&quot;Invalid JSON or malformed request: {e}&quot;}), 400</span>
+        <span class="c1"># return jsonify({"error": f"Invalid JSON or malformed request: {e}"}), 400</span>
 
-<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s1">&#39;__main__&#39;</span><span class="p">:</span>
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s1">'__main__'</span><span class="p">:</span>
     <span class="n">app</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">debug</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 </code></pre></div>
 
@@ -264,11 +264,11 @@ curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </spa
 <p>To fix the <code>curl</code> request from above, simply remove the trailing comma to make it valid JSON:</p>
 <div class="highlight"><pre><span></span><code><span class="c1"># Corrected cURL request</span>
 curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span><span class="se">\</span>
-<span class="w">  </span>-H<span class="w"> </span><span class="s2">&quot;Content-Type: application/json&quot;</span><span class="w"> </span><span class="se">\</span>
-<span class="w">  </span>-d<span class="w"> </span><span class="s1">&#39;{</span>
-<span class="s1">    &quot;key1&quot;: &quot;value1&quot;,</span>
-<span class="s1">    &quot;key2&quot;: &quot;value2&quot;</span>
-<span class="s1">  }&#39;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-H<span class="w"> </span><span class="s2">"Content-Type: application/json"</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-d<span class="w"> </span><span class="s1">'{</span>
+<span class="s1">    "key1": "value1",</span>
+<span class="s1">    "key2": "value2"</span>
+<span class="s1">  }'</span><span class="w"> </span><span class="se">\</span>
 <span class="w">  </span>http://127.0.0.1:5000/api/endpoint
 </code></pre></div>
 
@@ -302,9 +302,9 @@ curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </spa
 
 <span class="nd">@app</span><span class="o">.</span><span class="n">errorhandler</span><span class="p">(</span><span class="mi">400</span><span class="p">)</span>
 <span class="k">def</span><span class="w"> </span><span class="nf">bad_request_error</span><span class="p">(</span><span class="n">error</span><span class="p">):</span>
-    <span class="c1"># &#39;error&#39; object often contains the original description, e.g., &quot;The browser... understand.&quot;</span>
+    <span class="c1"># 'error' object often contains the original description, e.g., "The browser... understand."</span>
     <span class="c1"># You can also add custom logic based on what you expect to be bad.</span>
-    <span class="k">return</span> <span class="n">jsonify</span><span class="p">({</span><span class="s2">&quot;error&quot;</span><span class="p">:</span> <span class="s2">&quot;Malformed request&quot;</span><span class="p">,</span> <span class="s2">&quot;message&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">error</span><span class="p">)}),</span> <span class="mi">400</span>
+    <span class="k">return</span> <span class="n">jsonify</span><span class="p">({</span><span class="s2">"error"</span><span class="p">:</span> <span class="s2">"Malformed request"</span><span class="p">,</span> <span class="s2">"message"</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">error</span><span class="p">)}),</span> <span class="mi">400</span>
 </code></pre></div>
 
 <p>For more granular control, you'd typically handle specific parsing errors (e.g., <code>request.get_json()</code> returning <code>None</code> or failing) with <code>try...except</code> blocks and return custom <code>400</code> responses from within your route logic.</p>
@@ -364,7 +364,7 @@ curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </spa
     <div class="container">
       <p class="footer-logo">⚡ ErrorFix.dev</p>
       <p>Practical, engineer-written guides for real-world software errors.</p>
-      <p style="margin-top:.5rem">Last updated: <time>July 13, 2026</time>.</p>
+      <p style="margin-top:.5rem">Last updated: <time>August 19, 2026</time>.</p>
       <p class="footer-links" style="margin-top:.75rem">
         <!-- ╔══════════════════════════════════════════════════════════════╗ -->
         <!-- ║  AFFILIATE LINKS – replace the href values below            ║ -->

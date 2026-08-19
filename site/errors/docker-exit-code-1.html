@@ -205,18 +205,18 @@ This is your first line of defense.</p>
 
 <p>Example output (hypothetical Python app error):</p>
 <div class="highlight"><pre><span></span><code>Traceback (most recent call last):
-  File &quot;/app/main.py&quot;, line 5, in &lt;module&gt;
-    raise ValueError(&quot;Failed to load critical configuration&quot;)
+  File "/app/main.py", line 5, in &lt;module&gt;
+    raise ValueError("Failed to load critical configuration")
 ValueError: Failed to load critical configuration
 </code></pre></div>
 
 <p>This clearly indicates an application-level <code>ValueError</code>.</p>
 <p><strong>2. Inspecting Container Details:</strong><br />
 Useful for confirming <code>CMD</code>, <code>ENTRYPOINT</code>, and <code>ExitCode</code>.</p>
-<div class="highlight"><pre><span></span><code>docker<span class="w"> </span>inspect<span class="w"> </span>my_app_container<span class="w"> </span>--format<span class="w"> </span><span class="s2">&quot;{{json .State.ExitCode}}&quot;</span>
-docker<span class="w"> </span>inspect<span class="w"> </span>my_app_container<span class="w"> </span>--format<span class="w"> </span><span class="s2">&quot;{{json .Config.Cmd}}&quot;</span>
-docker<span class="w"> </span>inspect<span class="w"> </span>my_app_container<span class="w"> </span>--format<span class="w"> </span><span class="s2">&quot;{{json .Config.Entrypoint}}&quot;</span>
-docker<span class="w"> </span>inspect<span class="w"> </span>my_app_container<span class="w"> </span>--format<span class="w"> </span><span class="s2">&quot;{{json .Config.Env}}&quot;</span>
+<div class="highlight"><pre><span></span><code>docker<span class="w"> </span>inspect<span class="w"> </span>my_app_container<span class="w"> </span>--format<span class="w"> </span><span class="s2">"{{json .State.ExitCode}}"</span>
+docker<span class="w"> </span>inspect<span class="w"> </span>my_app_container<span class="w"> </span>--format<span class="w"> </span><span class="s2">"{{json .Config.Cmd}}"</span>
+docker<span class="w"> </span>inspect<span class="w"> </span>my_app_container<span class="w"> </span>--format<span class="w"> </span><span class="s2">"{{json .Config.Entrypoint}}"</span>
+docker<span class="w"> </span>inspect<span class="w"> </span>my_app_container<span class="w"> </span>--format<span class="w"> </span><span class="s2">"{{json .Config.Env}}"</span>
 </code></pre></div>
 
 <p>Example output for exit code:</p>
@@ -225,8 +225,8 @@ docker<span class="w"> </span>inspect<span class="w"> </span>my_app_container<sp
 
 <p>Example for <code>CMD</code>:</p>
 <div class="highlight"><pre><span></span><code><span class="p">[</span>
-<span class="w">    </span><span class="s2">&quot;python&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="s2">&quot;main.py&quot;</span>
+<span class="w">    </span><span class="s2">"python"</span><span class="p">,</span>
+<span class="w">    </span><span class="s2">"main.py"</span>
 <span class="p">]</span>
 </code></pre></div>
 
@@ -242,7 +242,7 @@ To explore the environment inside the container.</p>
 ls<span class="w"> </span>-la
 <span class="c1"># Try running the application command manually</span>
 python<span class="w"> </span>main.py
-<span class="c1"># If that works, exit and rethink. If it fails, you&#39;ll see the error directly.</span>
+<span class="c1"># If that works, exit and rethink. If it fails, you'll see the error directly.</span>
 <span class="nb">exit</span>
 </code></pre></div>
 
@@ -255,21 +255,21 @@ If <code>app.py</code> expects arguments, but none are provided, or <code>python
 <span class="k">RUN</span><span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>-r<span class="w"> </span>requirements.txt
 <span class="k">COPY</span><span class="w"> </span>app.py<span class="w"> </span>.
 <span class="c"># This CMD might be missing arguments that app.py expects, or app.py itself has an error</span>
-<span class="k">CMD</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;python&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;app.py&quot;</span><span class="p">]</span>
+<span class="k">CMD</span><span class="w"> </span><span class="p">[</span><span class="s2">"python"</span><span class="p">,</span><span class="w"> </span><span class="s2">"app.py"</span><span class="p">]</span>
 </code></pre></div>
 
 <p><strong>5. Example <code>docker-compose.yml</code> with missing environment variable:</strong><br />
 If <code>my_service</code> expects <code>API_KEY</code> but it's not set.</p>
 <div class="highlight"><pre><span></span><code><span class="c1"># docker-compose.yml</span>
-<span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;3.8&#39;</span>
+<span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="s">'3.8'</span>
 <span class="nt">services</span><span class="p">:</span>
 <span class="w">  </span><span class="nt">my_service</span><span class="p">:</span>
 <span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">my_app_image</span>
 <span class="w">    </span><span class="nt">environment</span><span class="p">:</span>
-<span class="w">      </span><span class="c1"># API_KEY: &quot;your_secret_key&quot; # Missing this line, if app.py expects it</span>
-<span class="w">      </span><span class="nt">DATABASE_URL</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;postgresql://user:password@db:5432/mydb&quot;</span>
+<span class="w">      </span><span class="c1"># API_KEY: "your_secret_key" # Missing this line, if app.py expects it</span>
+<span class="w">      </span><span class="nt">DATABASE_URL</span><span class="p">:</span><span class="w"> </span><span class="s">"postgresql://user:password@db:5432/mydb"</span>
 <span class="w">    </span><span class="nt">ports</span><span class="p">:</span>
-<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;8000:8000&quot;</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">"8000:8000"</span>
 </code></pre></div>
 
 <h2 id="environment-specific-notes">Environment-Specific Notes</h2>
@@ -369,7 +369,7 @@ If <code>my_service</code> expects <code>API_KEY</code> but it's not set.</p>
     <div class="container">
       <p class="footer-logo">⚡ ErrorFix.dev</p>
       <p>Practical, engineer-written guides for real-world software errors.</p>
-      <p style="margin-top:.5rem">Last updated: <time>July 13, 2026</time>.</p>
+      <p style="margin-top:.5rem">Last updated: <time>August 19, 2026</time>.</p>
       <p class="footer-links" style="margin-top:.75rem">
         <!-- ╔══════════════════════════════════════════════════════════════╗ -->
         <!-- ║  AFFILIATE LINKS – replace the href values below            ║ -->

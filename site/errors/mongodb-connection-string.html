@@ -199,29 +199,29 @@ If a simpler URI works, gradually add back components until you pinpoint the pro
 <h3 id="nodejs-with-mongoose">Node.js (with Mongoose)</h3>
 <div class="highlight"><pre><span></span><code><span class="c1">// --- INCORRECT EXAMPLES (will likely cause MongoParseError) ---</span>
 <span class="c1">// Missing scheme</span>
-<span class="kd">const</span><span class="w"> </span><span class="nx">badUri1</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;myuser:mypass@mycluster.mongodb.net/mydb?retryWrites=true&amp;w=majority&quot;</span><span class="p">;</span>
+<span class="kd">const</span><span class="w"> </span><span class="nx">badUri1</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"myuser:mypass@mycluster.mongodb.net/mydb?retryWrites=true&amp;w=majority"</span><span class="p">;</span>
 
 <span class="c1">// Unencoded special character in password</span>
-<span class="kd">const</span><span class="w"> </span><span class="nx">badUri2</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;mongodb+srv://myuser:P@ssword!@mycluster.mongodb.net/mydb?retryWrites=true&amp;w=majority&quot;</span><span class="p">;</span>
+<span class="kd">const</span><span class="w"> </span><span class="nx">badUri2</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"mongodb+srv://myuser:P@ssword!@mycluster.mongodb.net/mydb?retryWrites=true&amp;w=majority"</span><span class="p">;</span>
 
 <span class="c1">// Typo in hostname/port</span>
-<span class="kd">const</span><span class="w"> </span><span class="nx">badUri3</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;mongodb://localhohst:27017/mydb&quot;</span><span class="p">;</span>
+<span class="kd">const</span><span class="w"> </span><span class="nx">badUri3</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"mongodb://localhohst:27017/mydb"</span><span class="p">;</span>
 
 <span class="c1">// --- CORRECT EXAMPLES ---</span>
 
 <span class="c1">// Standard local connection</span>
-<span class="kd">const</span><span class="w"> </span><span class="nx">correctUriLocal</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;mongodb://localhost:27017/mydatabase&quot;</span><span class="p">;</span>
+<span class="kd">const</span><span class="w"> </span><span class="nx">correctUriLocal</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"mongodb://localhost:27017/mydatabase"</span><span class="p">;</span>
 
 <span class="c1">// MongoDB Atlas SRV connection with URL-encoded password</span>
 <span class="c1">// Example password: P@ssword!  -&gt;  P%40ssword%21</span>
-<span class="kd">const</span><span class="w"> </span><span class="nx">username</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">encodeURIComponent</span><span class="p">(</span><span class="s2">&quot;myuser&quot;</span><span class="p">);</span><span class="w"> </span><span class="c1">// If username has special chars too</span>
-<span class="kd">const</span><span class="w"> </span><span class="nx">password</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">encodeURIComponent</span><span class="p">(</span><span class="s2">&quot;P@ssword!&quot;</span><span class="p">);</span>
-<span class="kd">const</span><span class="w"> </span><span class="nx">clusterUrl</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;cluster0.abcde.mongodb.net&quot;</span><span class="p">;</span>
-<span class="kd">const</span><span class="w"> </span><span class="nx">dbName</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;mydatabase&quot;</span><span class="p">;</span>
+<span class="kd">const</span><span class="w"> </span><span class="nx">username</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">encodeURIComponent</span><span class="p">(</span><span class="s2">"myuser"</span><span class="p">);</span><span class="w"> </span><span class="c1">// If username has special chars too</span>
+<span class="kd">const</span><span class="w"> </span><span class="nx">password</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">encodeURIComponent</span><span class="p">(</span><span class="s2">"P@ssword!"</span><span class="p">);</span>
+<span class="kd">const</span><span class="w"> </span><span class="nx">clusterUrl</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"cluster0.abcde.mongodb.net"</span><span class="p">;</span>
+<span class="kd">const</span><span class="w"> </span><span class="nx">dbName</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"mydatabase"</span><span class="p">;</span>
 <span class="kd">const</span><span class="w"> </span><span class="nx">correctUriAtlas</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="sb">`mongodb+srv://</span><span class="si">${</span><span class="nx">username</span><span class="si">}</span><span class="sb">:</span><span class="si">${</span><span class="nx">password</span><span class="si">}</span><span class="sb">@</span><span class="si">${</span><span class="nx">clusterUrl</span><span class="si">}</span><span class="sb">/</span><span class="si">${</span><span class="nx">dbName</span><span class="si">}</span><span class="sb">?retryWrites=true&amp;w=majority`</span><span class="p">;</span>
 
 <span class="c1">// Usage (Node.js/Mongoose)</span>
-<span class="kd">const</span><span class="w"> </span><span class="nx">mongoose</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">require</span><span class="p">(</span><span class="s1">&#39;mongoose&#39;</span><span class="p">);</span>
+<span class="kd">const</span><span class="w"> </span><span class="nx">mongoose</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">require</span><span class="p">(</span><span class="s1">'mongoose'</span><span class="p">);</span>
 
 <span class="k">async</span><span class="w"> </span><span class="kd">function</span><span class="w"> </span><span class="nx">connectToMongo</span><span class="p">(</span><span class="nx">uri</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
 <span class="w">  </span><span class="k">try</span><span class="w"> </span><span class="p">{</span>
@@ -229,12 +229,12 @@ If a simpler URI works, gradually add back components until you pinpoint the pro
 <span class="w">      </span><span class="nx">useNewUrlParser</span><span class="o">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
 <span class="w">      </span><span class="nx">useUnifiedTopology</span><span class="o">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
 <span class="w">    </span><span class="p">});</span>
-<span class="w">    </span><span class="nx">console</span><span class="p">.</span><span class="nx">log</span><span class="p">(</span><span class="s2">&quot;MongoDB connected successfully!&quot;</span><span class="p">);</span>
+<span class="w">    </span><span class="nx">console</span><span class="p">.</span><span class="nx">log</span><span class="p">(</span><span class="s2">"MongoDB connected successfully!"</span><span class="p">);</span>
 <span class="w">  </span><span class="p">}</span><span class="w"> </span><span class="k">catch</span><span class="w"> </span><span class="p">(</span><span class="nx">error</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="nx">console</span><span class="p">.</span><span class="nx">error</span><span class="p">(</span><span class="s2">&quot;MongoDB connection error:&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">error</span><span class="p">.</span><span class="nx">message</span><span class="p">);</span>
+<span class="w">    </span><span class="nx">console</span><span class="p">.</span><span class="nx">error</span><span class="p">(</span><span class="s2">"MongoDB connection error:"</span><span class="p">,</span><span class="w"> </span><span class="nx">error</span><span class="p">.</span><span class="nx">message</span><span class="p">);</span>
 <span class="w">    </span><span class="c1">// Specifically check for MongoParseError</span>
-<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nx">error</span><span class="p">.</span><span class="nx">name</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="s1">&#39;MongoParseError&#39;</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
-<span class="w">      </span><span class="nx">console</span><span class="p">.</span><span class="nx">error</span><span class="p">(</span><span class="s2">&quot;This is likely due to an invalid connection string.&quot;</span><span class="p">);</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nx">error</span><span class="p">.</span><span class="nx">name</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="s1">'MongoParseError'</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="nx">console</span><span class="p">.</span><span class="nx">error</span><span class="p">(</span><span class="s2">"This is likely due to an invalid connection string."</span><span class="p">);</span>
 <span class="w">    </span><span class="p">}</span>
 <span class="w">    </span><span class="nx">process</span><span class="p">.</span><span class="nx">exit</span><span class="p">(</span><span class="mf">1</span><span class="p">);</span>
 <span class="w">  </span><span class="p">}</span>
@@ -251,40 +251,40 @@ If a simpler URI works, gradually add back components until you pinpoint the pro
 
 <span class="c1"># --- INCORRECT EXAMPLES (will likely cause MongoParseError) ---</span>
 <span class="c1"># Missing scheme</span>
-<span class="n">bad_uri_1</span> <span class="o">=</span> <span class="s2">&quot;myuser:mypass@mycluster.mongodb.net/mydb?retryWrites=true&amp;w=majority&quot;</span>
+<span class="n">bad_uri_1</span> <span class="o">=</span> <span class="s2">"myuser:mypass@mycluster.mongodb.net/mydb?retryWrites=true&amp;w=majority"</span>
 
 <span class="c1"># Unencoded special character in password</span>
-<span class="n">bad_uri_2</span> <span class="o">=</span> <span class="s2">&quot;mongodb+srv://myuser:P@ssword!@mycluster.mongodb.net/mydb?retryWrites=true&amp;w=majority&quot;</span>
+<span class="n">bad_uri_2</span> <span class="o">=</span> <span class="s2">"mongodb+srv://myuser:P@ssword!@mycluster.mongodb.net/mydb?retryWrites=true&amp;w=majority"</span>
 
 <span class="c1"># Typo in hostname</span>
-<span class="n">bad_uri_3</span> <span class="o">=</span> <span class="s2">&quot;mongodb://localhohst:27017/mydb&quot;</span>
+<span class="n">bad_uri_3</span> <span class="o">=</span> <span class="s2">"mongodb://localhohst:27017/mydb"</span>
 
 
 <span class="c1"># --- CORRECT EXAMPLES ---</span>
 
 <span class="c1"># Standard local connection</span>
-<span class="n">correct_uri_local</span> <span class="o">=</span> <span class="s2">&quot;mongodb://localhost:27017/mydatabase&quot;</span>
+<span class="n">correct_uri_local</span> <span class="o">=</span> <span class="s2">"mongodb://localhost:27017/mydatabase"</span>
 
 <span class="c1"># MongoDB Atlas SRV connection with URL-encoded password</span>
 <span class="c1"># Example password: P@ssword!  -&gt;  P%40ssword%21</span>
-<span class="n">username</span> <span class="o">=</span> <span class="n">quote_plus</span><span class="p">(</span><span class="s2">&quot;myuser&quot;</span><span class="p">)</span> <span class="c1"># Use quote_plus if username has special chars</span>
-<span class="n">password</span> <span class="o">=</span> <span class="n">quote_plus</span><span class="p">(</span><span class="s2">&quot;P@ssword!&quot;</span><span class="p">)</span>
-<span class="n">cluster_url</span> <span class="o">=</span> <span class="s2">&quot;cluster0.abcde.mongodb.net&quot;</span>
-<span class="n">db_name</span> <span class="o">=</span> <span class="s2">&quot;mydatabase&quot;</span>
-<span class="n">correct_uri_atlas</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;mongodb+srv://</span><span class="si">{</span><span class="n">username</span><span class="si">}</span><span class="s2">:</span><span class="si">{</span><span class="n">password</span><span class="si">}</span><span class="s2">@</span><span class="si">{</span><span class="n">cluster_url</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">db_name</span><span class="si">}</span><span class="s2">?retryWrites=true&amp;w=majority&quot;</span>
+<span class="n">username</span> <span class="o">=</span> <span class="n">quote_plus</span><span class="p">(</span><span class="s2">"myuser"</span><span class="p">)</span> <span class="c1"># Use quote_plus if username has special chars</span>
+<span class="n">password</span> <span class="o">=</span> <span class="n">quote_plus</span><span class="p">(</span><span class="s2">"P@ssword!"</span><span class="p">)</span>
+<span class="n">cluster_url</span> <span class="o">=</span> <span class="s2">"cluster0.abcde.mongodb.net"</span>
+<span class="n">db_name</span> <span class="o">=</span> <span class="s2">"mydatabase"</span>
+<span class="n">correct_uri_atlas</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"mongodb+srv://</span><span class="si">{</span><span class="n">username</span><span class="si">}</span><span class="s2">:</span><span class="si">{</span><span class="n">password</span><span class="si">}</span><span class="s2">@</span><span class="si">{</span><span class="n">cluster_url</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">db_name</span><span class="si">}</span><span class="s2">?retryWrites=true&amp;w=majority"</span>
 
 <span class="c1"># Usage (Python/PyMongo)</span>
 <span class="k">try</span><span class="p">:</span>
     <span class="n">client</span> <span class="o">=</span> <span class="n">pymongo</span><span class="o">.</span><span class="n">MongoClient</span><span class="p">(</span><span class="n">correct_uri_atlas</span><span class="p">)</span>
     <span class="c1"># The actual connection test usually happens on the first operation</span>
-    <span class="n">client</span><span class="o">.</span><span class="n">admin</span><span class="o">.</span><span class="n">command</span><span class="p">(</span><span class="s1">&#39;ping&#39;</span><span class="p">)</span>
-    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;MongoDB connected successfully!&quot;</span><span class="p">)</span>
+    <span class="n">client</span><span class="o">.</span><span class="n">admin</span><span class="o">.</span><span class="n">command</span><span class="p">(</span><span class="s1">'ping'</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"MongoDB connected successfully!"</span><span class="p">)</span>
 <span class="k">except</span> <span class="n">pymongo</span><span class="o">.</span><span class="n">errors</span><span class="o">.</span><span class="n">ConfigurationError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
     <span class="c1"># PyMongo specifically raises ConfigurationError for parsing issues</span>
-    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;MongoDB connection configuration error: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;This is likely due to an invalid connection string.&quot;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"MongoDB connection configuration error: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"This is likely due to an invalid connection string."</span><span class="p">)</span>
 <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
-    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;An unexpected error occurred: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"An unexpected error occurred: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
 
 <span class="c1"># Example usage:</span>
 <span class="c1"># client = pymongo.MongoClient(bad_uri_2) # Uncomment to test an error</span>
@@ -407,7 +407,7 @@ If a simpler URI works, gradually add back components until you pinpoint the pro
     <div class="container">
       <p class="footer-logo">⚡ ErrorFix.dev</p>
       <p>Practical, engineer-written guides for real-world software errors.</p>
-      <p style="margin-top:.5rem">Last updated: <time>July 13, 2026</time>.</p>
+      <p style="margin-top:.5rem">Last updated: <time>August 19, 2026</time>.</p>
       <p class="footer-links" style="margin-top:.75rem">
         <!-- ╔══════════════════════════════════════════════════════════════╗ -->
         <!-- ║  AFFILIATE LINKS – replace the href values below            ║ -->

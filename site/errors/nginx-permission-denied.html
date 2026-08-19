@@ -259,30 +259,30 @@ sudo tail -f /var/log/nginx/error.log</code></p>
 <h2 id="code-examples">Code Examples</h2>
 <p>Here are some concise, copy-paste ready commands for common fixes. Always adjust paths and usernames/groups to your specific setup.</p>
 <p><strong>1. Checking Nginx User and Socket Path:</strong></p>
-<div class="highlight"><pre><span></span><code><span class="c1"># Find Nginx user (default is &#39;nginx&#39; or &#39;www-data&#39;)</span>
-grep<span class="w"> </span>-E<span class="w"> </span><span class="s1">&#39;^user&#39;</span><span class="w"> </span>/etc/nginx/nginx.conf
+<div class="highlight"><pre><span></span><code><span class="c1"># Find Nginx user (default is 'nginx' or 'www-data')</span>
+grep<span class="w"> </span>-E<span class="w"> </span><span class="s1">'^user'</span><span class="w"> </span>/etc/nginx/nginx.conf
 
 <span class="c1"># Example: Inspect an Nginx server block for proxy_pass</span>
-grep<span class="w"> </span>-A<span class="w"> </span><span class="m">5</span><span class="w"> </span><span class="s2">&quot;location /&quot;</span><span class="w"> </span>/etc/nginx/conf.d/your-app.conf
+grep<span class="w"> </span>-A<span class="w"> </span><span class="m">5</span><span class="w"> </span><span class="s2">"location /"</span><span class="w"> </span>/etc/nginx/conf.d/your-app.conf
 </code></pre></div>
 
 <p><strong>2. Verifying Socket and Directory Permissions:</strong></p>
 <div class="highlight"><pre><span></span><code><span class="c1"># Assume socket path is /var/run/gunicorn.sock</span>
-<span class="nv">SOCKET_PATH</span><span class="o">=</span><span class="s2">&quot;/var/run/gunicorn.sock&quot;</span>
+<span class="nv">SOCKET_PATH</span><span class="o">=</span><span class="s2">"/var/run/gunicorn.sock"</span>
 
 <span class="c1"># Check socket file permissions (s = socket)</span>
-ls<span class="w"> </span>-l<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$SOCKET_PATH</span><span class="s2">&quot;</span>
+ls<span class="w"> </span>-l<span class="w"> </span><span class="s2">"</span><span class="nv">$SOCKET_PATH</span><span class="s2">"</span>
 
 <span class="c1"># Check parent directory permissions</span>
-ls<span class="w"> </span>-ld<span class="w"> </span><span class="s2">&quot;</span><span class="k">$(</span>dirname<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$SOCKET_PATH</span><span class="s2">&quot;</span><span class="k">)</span><span class="s2">&quot;</span>
+ls<span class="w"> </span>-ld<span class="w"> </span><span class="s2">"</span><span class="k">$(</span>dirname<span class="w"> </span><span class="s2">"</span><span class="nv">$SOCKET_PATH</span><span class="s2">"</span><span class="k">)</span><span class="s2">"</span>
 </code></pre></div>
 
 <p><strong>3. Fixing Filesystem Permissions (Best done in upstream config, but manual for testing):</strong></p>
-<div class="highlight"><pre><span></span><code><span class="c1"># Change socket ownership to Nginx user&#39;s group (e.g., if upstream runs as &#39;webuser&#39;, Nginx as &#39;nginx&#39;)</span>
-sudo<span class="w"> </span>chown<span class="w"> </span>webuser:nginx<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$SOCKET_PATH</span><span class="s2">&quot;</span>
+<div class="highlight"><pre><span></span><code><span class="c1"># Change socket ownership to Nginx user's group (e.g., if upstream runs as 'webuser', Nginx as 'nginx')</span>
+sudo<span class="w"> </span>chown<span class="w"> </span>webuser:nginx<span class="w"> </span><span class="s2">"</span><span class="nv">$SOCKET_PATH</span><span class="s2">"</span>
 
-<span class="c1"># Set read/write for owner and group (assuming Nginx is in the &#39;nginx&#39; group)</span>
-sudo<span class="w"> </span>chmod<span class="w"> </span><span class="m">660</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$SOCKET_PATH</span><span class="s2">&quot;</span>
+<span class="c1"># Set read/write for owner and group (assuming Nginx is in the 'nginx' group)</span>
+sudo<span class="w"> </span>chmod<span class="w"> </span><span class="m">660</span><span class="w"> </span><span class="s2">"</span><span class="nv">$SOCKET_PATH</span><span class="s2">"</span>
 
 <span class="c1"># Restart upstream and Nginx after changes</span>
 sudo<span class="w"> </span>systemctl<span class="w"> </span>restart<span class="w"> </span>gunicorn<span class="w"> </span><span class="c1"># or php-fpm, etc.</span>
@@ -294,7 +294,7 @@ sudo<span class="w"> </span>systemctl<span class="w"> </span>restart<span class=
 sudo<span class="w"> </span>ausearch<span class="w"> </span>-c<span class="w"> </span>nginx<span class="w"> </span>-m<span class="w"> </span>AVC<span class="w"> </span>-ts<span class="w"> </span>today
 
 <span class="c1"># Get SELinux context of the socket file</span>
-ls<span class="w"> </span>-Z<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$SOCKET_PATH</span><span class="s2">&quot;</span>
+ls<span class="w"> </span>-Z<span class="w"> </span><span class="s2">"</span><span class="nv">$SOCKET_PATH</span><span class="s2">"</span>
 
 <span class="c1"># Temporarily disable SELinux (for testing ONLY, not recommended for prod)</span>
 sudo<span class="w"> </span>setenforce<span class="w"> </span><span class="m">0</span>
@@ -304,11 +304,11 @@ sudo<span class="w"> </span>setenforce<span class="w"> </span><span class="m">1<
 
 <p><strong>5. Fixing SELinux Policies (Persistent):</strong></p>
 <div class="highlight"><pre><span></span><code><span class="c1"># Assume socket path is /var/run/gunicorn.sock</span>
-<span class="nv">SOCKET_PATH</span><span class="o">=</span><span class="s2">&quot;/var/run/gunicorn.sock&quot;</span>
+<span class="nv">SOCKET_PATH</span><span class="o">=</span><span class="s2">"/var/run/gunicorn.sock"</span>
 
 <span class="c1"># Add a file context rule for the socket and apply it</span>
-sudo<span class="w"> </span>semanage<span class="w"> </span>fcontext<span class="w"> </span>-a<span class="w"> </span>-t<span class="w"> </span>httpd_var_run_t<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$SOCKET_PATH</span><span class="s2">&quot;</span>
-sudo<span class="w"> </span>restorecon<span class="w"> </span>-v<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$SOCKET_PATH</span><span class="s2">&quot;</span>
+sudo<span class="w"> </span>semanage<span class="w"> </span>fcontext<span class="w"> </span>-a<span class="w"> </span>-t<span class="w"> </span>httpd_var_run_t<span class="w"> </span><span class="s2">"</span><span class="nv">$SOCKET_PATH</span><span class="s2">"</span>
+sudo<span class="w"> </span>restorecon<span class="w"> </span>-v<span class="w"> </span><span class="s2">"</span><span class="nv">$SOCKET_PATH</span><span class="s2">"</span>
 
 <span class="c1"># Allow Nginx (httpd_t) to connect to network sockets (if using TCP upstream)</span>
 sudo<span class="w"> </span>setsebool<span class="w"> </span>-P<span class="w"> </span>httpd_can_network_connect<span class="w"> </span><span class="m">1</span>
@@ -421,7 +421,7 @@ sudo<span class="w"> </span>systemctl<span class="w"> </span>restart<span class=
     <div class="container">
       <p class="footer-logo">⚡ ErrorFix.dev</p>
       <p>Practical, engineer-written guides for real-world software errors.</p>
-      <p style="margin-top:.5rem">Last updated: <time>July 13, 2026</time>.</p>
+      <p style="margin-top:.5rem">Last updated: <time>August 19, 2026</time>.</p>
       <p class="footer-links" style="margin-top:.75rem">
         <!-- ╔══════════════════════════════════════════════════════════════╗ -->
         <!-- ║  AFFILIATE LINKS – replace the href values below            ║ -->

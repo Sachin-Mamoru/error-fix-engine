@@ -238,17 +238,17 @@ Again, look for <code>Deny</code> statements or missing <code>Allow</code> state
 <div class="highlight"><pre><span></span><code><span class="c1"># 1. Create a policy file (e.g., my-s3-read-policy.json)</span>
 cat<span class="w"> </span><span class="s">&lt;&lt;EOF &gt; my-s3-read-policy.json</span>
 <span class="s">{</span>
-<span class="s">    &quot;Version&quot;: &quot;2012-10-17&quot;,</span>
-<span class="s">    &quot;Statement&quot;: [</span>
+<span class="s">    "Version": "2012-10-17",</span>
+<span class="s">    "Statement": [</span>
 <span class="s">        {</span>
-<span class="s">            &quot;Effect&quot;: &quot;Allow&quot;,</span>
-<span class="s">            &quot;Action&quot;: [</span>
-<span class="s">                &quot;s3:GetObject&quot;,</span>
-<span class="s">                &quot;s3:ListBucket&quot;</span>
+<span class="s">            "Effect": "Allow",</span>
+<span class="s">            "Action": [</span>
+<span class="s">                "s3:GetObject",</span>
+<span class="s">                "s3:ListBucket"</span>
 <span class="s">            ],</span>
-<span class="s">            &quot;Resource&quot;: [</span>
-<span class="s">                &quot;arn:aws:s3:::my-data-bucket&quot;,</span>
-<span class="s">                &quot;arn:aws:s3:::my-data-bucket/*&quot;</span>
+<span class="s">            "Resource": [</span>
+<span class="s">                "arn:aws:s3:::my-data-bucket",</span>
+<span class="s">                "arn:aws:s3:::my-data-bucket/*"</span>
 <span class="s">            ]</span>
 <span class="s">        }</span>
 <span class="s">    ]</span>
@@ -261,14 +261,14 @@ aws<span class="w"> </span>iam<span class="w"> </span>create-policy<span class="
 <span class="w">    </span>--policy-document<span class="w"> </span>file://my-s3-read-policy.json
 
 <span class="c1"># 3. Get the ARN of the created policy</span>
-<span class="nv">POLICY_ARN</span><span class="o">=</span><span class="k">$(</span>aws<span class="w"> </span>iam<span class="w"> </span>list-policies<span class="w"> </span>--query<span class="w"> </span><span class="s2">&quot;Policies[?PolicyName==&#39;MyS3ReadAccessPolicy&#39;].Arn&quot;</span><span class="w"> </span>--output<span class="w"> </span>text<span class="k">)</span>
+<span class="nv">POLICY_ARN</span><span class="o">=</span><span class="k">$(</span>aws<span class="w"> </span>iam<span class="w"> </span>list-policies<span class="w"> </span>--query<span class="w"> </span><span class="s2">"Policies[?PolicyName=='MyS3ReadAccessPolicy'].Arn"</span><span class="w"> </span>--output<span class="w"> </span>text<span class="k">)</span>
 
-<span class="c1"># 4. Attach the policy to an IAM user or role (e.g., &#39;MyCLIUser&#39;)</span>
+<span class="c1"># 4. Attach the policy to an IAM user or role (e.g., 'MyCLIUser')</span>
 aws<span class="w"> </span>iam<span class="w"> </span>attach-user-policy<span class="w"> </span><span class="se">\</span>
 <span class="w">    </span>--user-name<span class="w"> </span>MyCLIUser<span class="w"> </span><span class="se">\</span>
 <span class="w">    </span>--policy-arn<span class="w"> </span><span class="nv">$POLICY_ARN</span>
 
-<span class="c1"># Or to a role (e.g., &#39;MyEC2Role&#39;)</span>
+<span class="c1"># Or to a role (e.g., 'MyEC2Role')</span>
 <span class="c1"># aws iam attach-role-policy \</span>
 <span class="c1">#     --role-name MyEC2Role \</span>
 <span class="c1">#     --policy-arn $POLICY_ARN</span>
@@ -282,31 +282,31 @@ aws<span class="w"> </span>iam<span class="w"> </span>attach-user-policy<span cl
 <div class="highlight"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">boto3</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">botocore.exceptions</span><span class="w"> </span><span class="kn">import</span> <span class="n">ClientError</span>
 
-<span class="n">s3</span> <span class="o">=</span> <span class="n">boto3</span><span class="o">.</span><span class="n">client</span><span class="p">(</span><span class="s1">&#39;s3&#39;</span><span class="p">)</span>
-<span class="n">bucket_name</span> <span class="o">=</span> <span class="s1">&#39;my-inaccessible-bucket-12345&#39;</span>
-<span class="n">object_key</span> <span class="o">=</span> <span class="s1">&#39;test-file.txt&#39;</span>
+<span class="n">s3</span> <span class="o">=</span> <span class="n">boto3</span><span class="o">.</span><span class="n">client</span><span class="p">(</span><span class="s1">'s3'</span><span class="p">)</span>
+<span class="n">bucket_name</span> <span class="o">=</span> <span class="s1">'my-inaccessible-bucket-12345'</span>
+<span class="n">object_key</span> <span class="o">=</span> <span class="s1">'test-file.txt'</span>
 
 <span class="k">try</span><span class="p">:</span>
     <span class="c1"># Attempt to list objects in a bucket</span>
     <span class="n">s3</span><span class="o">.</span><span class="n">list_objects_v2</span><span class="p">(</span><span class="n">Bucket</span><span class="o">=</span><span class="n">bucket_name</span><span class="p">)</span>
-    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Successfully listed objects in </span><span class="si">{</span><span class="n">bucket_name</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Successfully listed objects in </span><span class="si">{</span><span class="n">bucket_name</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
 
     <span class="c1"># Attempt to get an object</span>
     <span class="n">response</span> <span class="o">=</span> <span class="n">s3</span><span class="o">.</span><span class="n">get_object</span><span class="p">(</span><span class="n">Bucket</span><span class="o">=</span><span class="n">bucket_name</span><span class="p">,</span> <span class="n">Key</span><span class="o">=</span><span class="n">object_key</span><span class="p">)</span>
-    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Successfully retrieved </span><span class="si">{</span><span class="n">object_key</span><span class="si">}</span><span class="s2"> from </span><span class="si">{</span><span class="n">bucket_name</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-    <span class="nb">print</span><span class="p">(</span><span class="n">response</span><span class="p">[</span><span class="s1">&#39;Body&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">read</span><span class="p">()</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s1">&#39;utf-8&#39;</span><span class="p">))</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Successfully retrieved </span><span class="si">{</span><span class="n">object_key</span><span class="si">}</span><span class="s2"> from </span><span class="si">{</span><span class="n">bucket_name</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">response</span><span class="p">[</span><span class="s1">'Body'</span><span class="p">]</span><span class="o">.</span><span class="n">read</span><span class="p">()</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s1">'utf-8'</span><span class="p">))</span>
 
 <span class="k">except</span> <span class="n">ClientError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
-    <span class="k">if</span> <span class="n">e</span><span class="o">.</span><span class="n">response</span><span class="p">[</span><span class="s1">&#39;Error&#39;</span><span class="p">][</span><span class="s1">&#39;Code&#39;</span><span class="p">]</span> <span class="o">==</span> <span class="s1">&#39;AccessDenied&#39;</span><span class="p">:</span>
-        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;ERROR: Access Denied to bucket &#39;</span><span class="si">{</span><span class="n">bucket_name</span><span class="si">}</span><span class="s2">&#39;.&quot;</span><span class="p">)</span>
-        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Please check IAM permissions for the current principal.&quot;</span><span class="p">)</span>
-        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Details: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-    <span class="k">elif</span> <span class="n">e</span><span class="o">.</span><span class="n">response</span><span class="p">[</span><span class="s1">&#39;Error&#39;</span><span class="p">][</span><span class="s1">&#39;Code&#39;</span><span class="p">]</span> <span class="o">==</span> <span class="s1">&#39;NoSuchBucket&#39;</span><span class="p">:</span>
-        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;ERROR: Bucket &#39;</span><span class="si">{</span><span class="n">bucket_name</span><span class="si">}</span><span class="s2">&#39; does not exist.&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">e</span><span class="o">.</span><span class="n">response</span><span class="p">[</span><span class="s1">'Error'</span><span class="p">][</span><span class="s1">'Code'</span><span class="p">]</span> <span class="o">==</span> <span class="s1">'AccessDenied'</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"ERROR: Access Denied to bucket '</span><span class="si">{</span><span class="n">bucket_name</span><span class="si">}</span><span class="s2">'."</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">"Please check IAM permissions for the current principal."</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Details: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">e</span><span class="o">.</span><span class="n">response</span><span class="p">[</span><span class="s1">'Error'</span><span class="p">][</span><span class="s1">'Code'</span><span class="p">]</span> <span class="o">==</span> <span class="s1">'NoSuchBucket'</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"ERROR: Bucket '</span><span class="si">{</span><span class="n">bucket_name</span><span class="si">}</span><span class="s2">' does not exist."</span><span class="p">)</span>
     <span class="k">else</span><span class="p">:</span>
-        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;An unexpected error occurred: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"An unexpected error occurred: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
 <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
-    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;A general error occurred: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"A general error occurred: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
 </code></pre></div>
 
 <h2 id="environment-specific-notes">Environment-Specific Notes</h2>
@@ -395,7 +395,7 @@ aws<span class="w"> </span>iam<span class="w"> </span>attach-user-policy<span cl
     <div class="container">
       <p class="footer-logo">⚡ ErrorFix.dev</p>
       <p>Practical, engineer-written guides for real-world software errors.</p>
-      <p style="margin-top:.5rem">Last updated: <time>July 13, 2026</time>.</p>
+      <p style="margin-top:.5rem">Last updated: <time>August 19, 2026</time>.</p>
       <p class="footer-links" style="margin-top:.75rem">
         <!-- ╔══════════════════════════════════════════════════════════════╗ -->
         <!-- ║  AFFILIATE LINKS – replace the href values below            ║ -->

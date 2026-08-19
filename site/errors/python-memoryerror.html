@@ -226,28 +226,28 @@ for i, chunk in enumerate(pd.read_csv('very_large_file.csv', chunksize=chunk_siz
 <h3 id="pitfall-loading-entire-file-into-memory">Pitfall: Loading Entire File into Memory</h3>
 <div class="highlight"><pre><span></span><code><span class="c1"># BAD: Reading a huge file into a list of lines</span>
 <span class="k">def</span><span class="w"> </span><span class="nf">read_large_file_bad</span><span class="p">(</span><span class="n">filepath</span><span class="p">):</span>
-    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">filepath</span><span class="p">,</span> <span class="s1">&#39;r&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">filepath</span><span class="p">,</span> <span class="s1">'r'</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
         <span class="n">lines</span> <span class="o">=</span> <span class="n">f</span><span class="o">.</span><span class="n">readlines</span><span class="p">()</span> <span class="c1"># This reads the entire file into memory</span>
     <span class="k">return</span> <span class="n">lines</span>
 
-<span class="c1"># Assuming &#39;large_data.txt&#39; is multi-gigabyte</span>
-<span class="c1"># all_lines = read_large_file_bad(&#39;large_data.txt&#39;) # &lt;-- Potential MemoryError</span>
-<span class="c1"># print(f&quot;Loaded {len(all_lines)} lines.&quot;)</span>
+<span class="c1"># Assuming 'large_data.txt' is multi-gigabyte</span>
+<span class="c1"># all_lines = read_large_file_bad('large_data.txt') # &lt;-- Potential MemoryError</span>
+<span class="c1"># print(f"Loaded {len(all_lines)} lines.")</span>
 </code></pre></div>
 
 <h3 id="solution-using-generators-for-streaming-data">Solution: Using Generators for Streaming Data</h3>
 <div class="highlight"><pre><span></span><code><span class="c1"># GOOD: Using a generator to process line by line</span>
 <span class="k">def</span><span class="w"> </span><span class="nf">read_large_file_good</span><span class="p">(</span><span class="n">filepath</span><span class="p">):</span>
-    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">filepath</span><span class="p">,</span> <span class="s1">&#39;r&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">filepath</span><span class="p">,</span> <span class="s1">'r'</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
         <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">f</span><span class="p">:</span> <span class="c1"># Iterates line by line without loading all at once</span>
             <span class="k">yield</span> <span class="n">line</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
 
 <span class="c1"># Process data without holding all lines in memory</span>
 <span class="n">line_count</span> <span class="o">=</span> <span class="mi">0</span>
-<span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">read_large_file_good</span><span class="p">(</span><span class="s1">&#39;large_data.txt&#39;</span><span class="p">):</span>
-    <span class="c1"># print(f&quot;Processing line: {line[:50]}...&quot;)</span>
+<span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">read_large_file_good</span><span class="p">(</span><span class="s1">'large_data.txt'</span><span class="p">):</span>
+    <span class="c1"># print(f"Processing line: {line[:50]}...")</span>
     <span class="n">line_count</span> <span class="o">+=</span> <span class="mi">1</span>
-<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Processed </span><span class="si">{</span><span class="n">line_count</span><span class="si">}</span><span class="s2"> lines.&quot;</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Processed </span><span class="si">{</span><span class="n">line_count</span><span class="si">}</span><span class="s2"> lines."</span><span class="p">)</span>
 </code></pre></div>
 
 <h3 id="pitfall-inefficient-numerical-data-storage">Pitfall: Inefficient Numerical Data Storage</h3>
@@ -255,7 +255,7 @@ for i, chunk in enumerate(pd.read_csv('very_large_file.csv', chunksize=chunk_siz
 <span class="kn">import</span><span class="w"> </span><span class="nn">sys</span>
 
 <span class="n">large_list</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="mi">10</span><span class="o">**</span><span class="mi">7</span><span class="p">))</span> <span class="c1"># A list of 10 million Python integer objects</span>
-<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Size of large_list: </span><span class="si">{</span><span class="n">sys</span><span class="o">.</span><span class="n">getsizeof</span><span class="p">(</span><span class="n">large_list</span><span class="p">)</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="p">(</span><span class="mi">1024</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2"> MB&quot;</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Size of large_list: </span><span class="si">{</span><span class="n">sys</span><span class="o">.</span><span class="n">getsizeof</span><span class="p">(</span><span class="n">large_list</span><span class="p">)</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="p">(</span><span class="mi">1024</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2"> MB"</span><span class="p">)</span>
 <span class="c1"># Each int object takes more memory than just the value</span>
 </code></pre></div>
 
@@ -265,7 +265,7 @@ for i, chunk in enumerate(pd.read_csv('very_large_file.csv', chunksize=chunk_siz
 <span class="kn">import</span><span class="w"> </span><span class="nn">sys</span>
 
 <span class="n">large_numpy_array</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="mi">10</span><span class="o">**</span><span class="mi">7</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">)</span> <span class="c1"># Compact C-like array</span>
-<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Size of large_numpy_array: </span><span class="si">{</span><span class="n">sys</span><span class="o">.</span><span class="n">getsizeof</span><span class="p">(</span><span class="n">large_numpy_array</span><span class="p">)</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="p">(</span><span class="mi">1024</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2"> MB&quot;</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Size of large_numpy_array: </span><span class="si">{</span><span class="n">sys</span><span class="o">.</span><span class="n">getsizeof</span><span class="p">(</span><span class="n">large_numpy_array</span><span class="p">)</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="p">(</span><span class="mi">1024</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2"> MB"</span><span class="p">)</span>
 <span class="c1"># This is significantly more memory efficient</span>
 </code></pre></div>
 
@@ -337,7 +337,7 @@ for i, chunk in enumerate(pd.read_csv('very_large_file.csv', chunksize=chunk_siz
     <div class="container">
       <p class="footer-logo">⚡ ErrorFix.dev</p>
       <p>Practical, engineer-written guides for real-world software errors.</p>
-      <p style="margin-top:.5rem">Last updated: <time>July 13, 2026</time>.</p>
+      <p style="margin-top:.5rem">Last updated: <time>August 19, 2026</time>.</p>
       <p class="footer-links" style="margin-top:.75rem">
         <!-- ╔══════════════════════════════════════════════════════════════╗ -->
         <!-- ║  AFFILIATE LINKS – replace the href values below            ║ -->
