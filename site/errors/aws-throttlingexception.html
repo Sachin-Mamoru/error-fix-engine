@@ -124,201 +124,226 @@
     <div class="article-content">
       <h1 id="aws-throttlingexception-rate-exceeded">AWS ThrottlingException: Rate exceeded</h1>
 <blockquote>
-<p>Encountering AWS ThrottlingException: Rate exceeded means your AWS API calls have exceeded the allowed request rate; this guide explains how to fix it.</p>
+<p>Encountering AWS ThrottlingException: Rate exceeded means your AWS API calls have exceeded the service's allowed request rate; this guide explains how to fix it.</p>
 </blockquote>
 <h2 id="what-this-error-means">What This Error Means</h2>
-<p>When you encounter an <code>AWS ThrottlingException: Rate exceeded</code>, it signifies that your application, script, or service has made too many API calls to a specific AWS service within a short period, surpassing the allowed request rate for your account. AWS services impose these limits, often referred to as "quotas" or "throttling limits," to protect their infrastructure, ensure fair usage across all customers, and maintain the stability and responsiveness of their APIs. Essentially, AWS is telling you to slow down. It's a temporary rejection, not a permanent failure, but it indicates a need to adjust your application's interaction patterns with the AWS API.</p>
+<p>The <code>AWS ThrottlingException: Rate exceeded</code> error indicates that your application or service has sent too many requests to an AWS API within a short period, surpassing the service's configured request rate limits. This isn't necessarily a "bad" error in the traditional sense; it's AWS's way of protecting its services from abuse, ensuring fair usage across all tenants, and maintaining stability. When you hit this error, AWS temporarily rejects your requests for that specific API call until your request rate falls back below the acceptable threshold.</p>
 <h2 id="why-it-happens">Why It Happens</h2>
-<p>AWS throttling is a fundamental part of how AWS manages its multi-tenant environment. It's not a bug; it's a designed feature to prevent any single customer from monopolizing service resources, which could degrade performance for others. These limits apply at various levels: per account, per region, per API operation, and sometimes per resource.</p>
-<p>In my experience, <code>ThrottlingException</code> typically happens for a few core reasons:</p>
-<ol>
-<li><strong>Resource Protection:</strong> AWS services need to prevent runaway processes or malicious attacks from overwhelming their backend. Throttling acts as a crucial first line of defense.</li>
-<li><strong>Fair Usage:</strong> To ensure all AWS customers receive a consistent service experience, throttling prevents one high-demand user from consuming disproportionate resources.</li>
-<li><strong>Cost Control (indirectly):</strong> While not its primary purpose, by limiting API calls, it can sometimes prevent unexpected cost spikes if your application were to make an unconstrained number of requests.</li>
-<li><strong>Scalability Boundaries:</strong> Every service has a finite capacity. Throttling helps manage load and gracefully degrade rather than outright fail during peak demand.</li>
-</ol>
-<h2 id="common-causes">Common Causes</h2>
-<p>Understanding the root cause is the first step to a lasting fix. I've seen <code>ThrottlingException</code> arise from several common scenarios in production environments:</p>
+<p>AWS services operate with predefined quotas, often referred to as "limits." These limits are typically set per-account, per-region, and per-service. They govern the maximum number of API calls you can make within a specific time window (e.g., requests per second).</p>
+<p>Several factors contribute to these limits and why you might encounter throttling:</p>
 <ul>
-<li><strong>Missing or Inadequate Exponential Backoff and Retry Logic:</strong> This is, by far, the most frequent culprit. Applications making direct API calls without a robust retry mechanism will continuously hit the limit when under load, exacerbating the problem.</li>
-<li><strong>Sudden Bursts in Traffic:</strong> A new feature launch, a marketing campaign, or an unexpected spike in user activity can lead to a sudden increase in API requests that exceed existing limits.</li>
-<li><strong>Misconfigured Monitoring or Automation Tools:</strong> I've personally debugged issues where monitoring scripts or automated processes were polling AWS APIs too aggressively or in an infinite loop due to an error, leading to widespread throttling.</li>
-<li><strong>High Concurrency Without Coordination:</strong> Multiple instances of an application (e.g., Lambda functions, EC2 instances, or Docker containers) all simultaneously making requests to the same AWS API endpoint without any rate limiting or coordination.</li>
-<li><strong>Initial Development or Testing:</strong> During development or initial deployment, developers might not account for the default AWS service limits, especially on new accounts or with services they are less familiar with.</li>
-<li><strong>Inefficient Data Access Patterns:</strong> Forgetting to use batch operations (e.g., <code>DynamoDB.BatchGetItem</code>, <code>SQS.SendMessageBatch</code>) and instead making individual API calls in a loop.</li>
-<li><strong>Default Service Limits:</strong> Many AWS services have "soft limits" that are relatively low by default. If your workload grows, these default limits can quickly be hit.</li>
+<li><strong>Service Protection:</strong> AWS needs to prevent a single customer from monopolizing resources and impacting the performance for others. Throttling acts as a circuit breaker.</li>
+<li><strong>Cost Management:</strong> While throttling itself doesn't directly incur costs, unchecked API calls can lead to higher bills if they successfully execute.</li>
+<li><strong>Burst vs. Steady-State Limits:</strong> Many AWS services have burst limits (a temporary higher rate) and steady-state limits (a sustained lower rate). If you exceed the steady-state rate for too long, even if within the burst, you can still be throttled.</li>
+<li><strong>Distributed Systems:</strong> AWS is a massive distributed system. While scaling is a core tenet, each service component has finite capacity, and throttling helps manage that.</li>
+<li><strong>Unintended Usage Patterns:</strong> Sometimes, an application might inadvertently enter a loop or rapidly retry failed operations without appropriate delays, leading to a sudden surge in API calls.</li>
+</ul>
+<h2 id="common-causes">Common Causes</h2>
+<p>In my experience, encountering <code>ThrottlingException</code> often boils down to a few typical scenarios:</p>
+<ul>
+<li><strong>Missing or Incorrect Exponential Backoff:</strong> This is by far the most frequent culprit. When an API call fails, immediately retrying it in a tight loop almost guarantees throttling.</li>
+<li><strong>Sudden Spikes in Demand:</strong> A new feature launch, a marketing campaign, or a critical incident can cause a rapid increase in user traffic, leading to more backend API calls than the current limits allow.</li>
+<li><strong>Batch Operations Without Pacing:</strong> If you're processing a large number of items in a batch and making an API call for each item without introducing delays, you can quickly hit limits. For instance, processing 10,000 S3 objects and calling <code>GetObjectTagging</code> for each without proper pacing.</li>
+<li><strong>Aggressive Polling:</strong> Monitoring tools, auditors, or custom scripts frequently polling AWS APIs (e.g., <code>DescribeInstances</code>, <code>ListBuckets</code>) at very short intervals can lead to throttling, especially across multiple resources or regions.</li>
+<li><strong>New Deployments/Scalability Events:</strong> A new Auto Scaling group launching many instances simultaneously, all attempting to register with a load balancer or fetch parameters from Systems Manager Parameter Store, can cause a sudden burst of API requests.</li>
+<li><strong>Shared Account Activity:</strong> Multiple teams or applications within the same AWS account and region independently making calls to the same service can collectively exceed a shared quota. I've seen this in production when a developer's local script, a CI/CD pipeline, and a production service are all hitting the same S3 API for list operations.</li>
 </ul>
 <h2 id="step-by-step-fix">Step-by-Step Fix</h2>
-<p>Solving <code>ThrottlingException</code> requires a methodical approach, often involving a combination of strategies.</p>
-<h3 id="1-identify-the-throttled-service-and-api-operation">1. Identify the Throttled Service and API Operation</h3>
-<p>Before you can fix it, you need to know <em>what</em> is being throttled.</p>
-<ul>
-<li><strong>Check Application Logs:</strong> Your application logs should directly show the <code>ThrottlingException</code> and the specific AWS service/API call that failed.</li>
+<p>Addressing throttling involves a combination of preventative measures and reactive adjustments.</p>
+<ol>
 <li>
-<p><strong>CloudWatch Metrics:</strong> AWS services publish metrics related to throttling. For example:</p>
+<p><strong>Identify the Throttled Service and API:</strong></p>
 <ul>
-<li><strong>API Gateway:</strong> <code>ThrottledRequests</code></li>
-<li><strong>DynamoDB:</strong> <code>ReadThrottleEvents</code>, <code>WriteThrottleEvents</code></li>
-<li><strong>Lambda:</strong> <code>ThrottledRequests</code></li>
-<li><strong>SQS:</strong> <code>NumberOfMessagesReceived</code> (if consumers are throttled)</li>
-<li><strong>CloudTrail:</strong> Can show denied API calls, though it's more for audit than real-time monitoring.</li>
+<li><strong>CloudTrail:</strong> This is your primary source. Look for <code>ThrottlingException</code> errors in your CloudTrail logs. It will tell you the exact service and API operation that was throttled, the source IP, and the user/role.</li>
+<li><strong>Application Logs:</strong> Your application logs should also show the specific API call that failed with the <code>ThrottlingException</code>.</li>
+<li><strong>AWS Service Quotas Dashboard:</strong> Check the dashboard for the service in question to understand its current limits.</li>
 </ul>
-<p>You can query these metrics in the CloudWatch console or via the AWS CLI:<br />
-<code>bash
-aws cloudwatch get-metric-data \
-    --metric-data-queries '[
-        {
-            "Id": "m1",
-            "MetricStat": {
-                "Metric": {
-                    "Namespace": "AWS/DynamoDB",
-                    "MetricName": "ReadThrottleEvents",
-                    "Dimensions": [{"Name": "TableName", "Value": "YourTableName"}]
-                },
-                "Period": 300,
-                "Stat": "Sum"
-            }
-        }
-    ]' \
-    --start-time $(date -v-1H +%Y-%m-%dT%H:%M:%SZ) \
-    --end-time $(date +%Y-%m-%dT%H:%M:%SZ)</code></p>
 </li>
-</ul>
-<h3 id="2-implement-exponential-backoff-and-jitter-with-retry-logic">2. Implement Exponential Backoff and Jitter with Retry Logic</h3>
-<p>This is the most critical and generally applicable solution. When an API call fails with a throttling error, your application should not immediately retry the call. Instead, it should wait for an exponentially increasing period before retrying, potentially adding a random "jitter" to the wait time to prevent a "thundering herd" problem if multiple clients retry simultaneously.</p>
-<p>Most AWS SDKs (like Boto3 for Python) have built-in retry mechanisms, but you might need to ensure they are enabled and configured appropriately.</p>
-<h3 id="3-review-and-adjust-concurrency">3. Review and Adjust Concurrency</h3>
-<p>If you have multiple parallel processes or instances hitting the same AWS API, their combined requests might exceed the limit.</p>
+<li>
+<p><strong>Implement Exponential Backoff with Jitter:</strong></p>
 <ul>
-<li><strong>Distribute Workloads:</strong> Can you spread the API calls over a longer duration?</li>
-<li><strong>Batch Processing:</strong> Instead of processing items one by one in a tight loop, collect them and use batch operations if available for the service (e.g., <code>PutItem</code> vs. <code>BatchWriteItem</code> for DynamoDB).</li>
-<li><strong>Rate Limiting in Your Application:</strong> Implement client-side rate limiting to ensure your application doesn't exceed a defined request per second (RPS) threshold for a given API.</li>
+<li>This is fundamental for any production-grade application interacting with AWS APIs. When an API call fails with a <code>ThrottlingException</code> (or other transient errors), don't retry immediately.</li>
+<li><strong>Exponential Backoff:</strong> Gradually increase the delay between retries. For example, wait 1 second, then 2, then 4, then 8, etc.</li>
+<li><strong>Jitter:</strong> Add a small, random delay to the backoff period. This prevents all throttled requests from retrying simultaneously at the same exponential interval, potentially causing a "thundering herd" effect. Most AWS SDKs have built-in retry mechanisms with exponential backoff and jitter; ensure they are enabled and configured appropriately.</li>
 </ul>
-<h3 id="4-request-service-limit-increases">4. Request Service Limit Increases</h3>
-<p>For many AWS services, the initial limits are "soft limits" which can be increased upon request. If you've optimized your code and are still hitting limits due to legitimate high-volume usage, open a support ticket with AWS.</p>
+</li>
+<li>
+<p><strong>Client-Side Caching:</strong></p>
 <ul>
-<li><strong>Be Specific:</strong> Clearly state the service, region, API operation, the current limit you're hitting, and the desired new limit.</li>
-<li><strong>Provide Justification:</strong> Explain your use case and why you need the increase (e.g., "We anticipate N requests/second due to a growing user base").</li>
-<li><strong>Monitor After Increase:</strong> Keep an eye on CloudWatch metrics after the limit is raised to ensure the issue is resolved and to anticipate future needs.</li>
+<li>If your application frequently requests the same immutable or slowly changing data (e.g., EC2 instance tags, S3 bucket policy), consider caching this information locally for a period. This reduces the number of API calls significantly.</li>
+<li>Use a suitable cache invalidation strategy to ensure data freshness.</li>
 </ul>
-<h3 id="5-optimize-resource-usage">5. Optimize Resource Usage</h3>
-<p>Sometimes throttling points to inefficient use of an AWS service itself.</p>
+</li>
+<li>
+<p><strong>Batching API Calls (Where Applicable):</strong></p>
 <ul>
-<li><strong>DynamoDB:</strong> If you're constantly getting <code>ReadThrottleEvents</code>, consider increasing the provisioned read capacity units (RCUs) or write capacity units (WCUs), or ensure your application is using eventually consistent reads where appropriate.</li>
-<li><strong>S3:</strong> If you're frequently calling <code>ListObjects</code> on buckets with millions of objects, consider using S3 inventory reports instead.</li>
+<li>Some AWS services offer batch operations (e.g., <code>GetParametersByPath</code> for SSM Parameter Store, <code>BatchGetItem</code> for DynamoDB). Leverage these to consolidate multiple individual requests into a single, more efficient API call, reducing the overall request count.</li>
+<li>If no explicit batch API exists, consider grouping items and processing them with deliberate delays.</li>
 </ul>
-<h3 id="6-implement-client-side-caching">6. Implement Client-Side Caching</h3>
-<p>If your application frequently requests data that doesn't change often, cache it on the client side (e.g., in application memory, Redis, or an ElasticCache instance). This reduces the number of direct API calls to AWS services.</p>
+</li>
+<li>
+<p><strong>Service Quota Review and Increase:</strong></p>
+<ul>
+<li>If your legitimate workload consistently hits a service quota, you can request an increase.</li>
+<li>Go to the AWS Management Console, search for "Service Quotas," find the relevant service, and request a quota increase. Provide a clear justification for why you need the higher limit (e.g., "Expected 1000 items/sec processing through S3 <code>GetObject</code>"). AWS support will review your request. Be aware that not all quotas can be increased indefinitely.</li>
+</ul>
+</li>
+<li>
+<p><strong>Distribute Workload and Requests:</strong></p>
+<ul>
+<li>If possible, spread out API calls over time rather than making them all at once. This might involve using queues (SQS) to buffer requests, staggering processing jobs, or distributing work across multiple regions if your architecture supports it.</li>
+<li>For event-driven architectures, ensure your Lambda concurrency doesn't cause a bottleneck downstream by hitting a throttled API.</li>
+</ul>
+</li>
+<li>
+<p><strong>Optimize Polling Intervals:</strong></p>
+<ul>
+<li>For monitoring or auditing scripts, re-evaluate how often you need to poll AWS APIs. Can you increase the interval from 30 seconds to 5 minutes? Can you use event-driven mechanisms (e.g., CloudWatch Events, S3 Event Notifications) instead of polling?</li>
+</ul>
+</li>
+</ol>
 <h2 id="code-examples">Code Examples</h2>
-<p>Here’s a basic Python example demonstrating exponential backoff and retry logic using <code>boto3</code>. While <code>boto3</code> has built-in retries, understanding how to implement it manually provides more control and is useful for custom scenarios or other languages.</p>
-<div class="highlight"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">boto3</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">botocore.exceptions</span><span class="w"> </span><span class="kn">import</span> <span class="n">ClientError</span>
+<p>Here's a Python example demonstrating exponential backoff with jitter using the <code>tenacity</code> library, which is highly recommended for robustness. If <code>tenacity</code> isn't an option, I'll show a manual basic implementation too.</p>
+<h3 id="python-with-tenacity-recommended">Python with <code>tenacity</code> (Recommended)</h3>
+<div class="highlight"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">random</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
-<span class="kn">import</span><span class="w"> </span><span class="nn">random</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">logging</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">botocore.exceptions</span><span class="w"> </span><span class="kn">import</span> <span class="n">ClientError</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">tenacity</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">retry</span><span class="p">,</span>
+    <span class="n">stop_after_attempt</span><span class="p">,</span>
+    <span class="n">wait_exponential</span><span class="p">,</span>
+    <span class="n">retry_if_exception_type</span><span class="p">,</span>
+    <span class="n">before_sleep_log</span><span class="p">,</span>
+<span class="p">)</span>
 
-<span class="k">def</span><span class="w"> </span><span class="nf">call_aws_api_with_backoff</span><span class="p">(</span><span class="n">api_call_func</span><span class="p">,</span> <span class="n">max_retries</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span> <span class="n">base_delay</span><span class="o">=</span><span class="mf">0.1</span><span class="p">):</span>
+<span class="c1"># Configure basic logging for visibility</span>
+<span class="n">logging</span><span class="o">.</span><span class="n">basicConfig</span><span class="p">(</span><span class="n">level</span><span class="o">=</span><span class="n">logging</span><span class="o">.</span><span class="n">INFO</span><span class="p">)</span>
+<span class="n">logger</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="vm">__name__</span><span class="p">)</span>
+
+<span class="c1"># Mock AWS client for demonstration</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">MockAWSClient</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fail_count</span><span class="o">=</span><span class="mi">3</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">call_count</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">fail_count</span> <span class="o">=</span> <span class="n">fail_count</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_resource_details</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">resource_id</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">call_count</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">call_count</span> <span class="o">&lt;=</span> <span class="bp">self</span><span class="o">.</span><span class="n">fail_count</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Attempt </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">call_count</span><span class="si">}</span><span class="s2">: Simulating ThrottlingException for </span><span class="si">{</span><span class="n">resource_id</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+            <span class="c1"># Simulate AWS ThrottlingException</span>
+            <span class="k">raise</span> <span class="n">ClientError</span><span class="p">({</span><span class="s1">'Error'</span><span class="p">:</span> <span class="p">{</span><span class="s1">'Code'</span><span class="p">:</span> <span class="s1">'ThrottlingException'</span><span class="p">,</span> <span class="s1">'Message'</span><span class="p">:</span> <span class="s1">'Rate exceeded'</span><span class="p">}},</span> <span class="s1">'GetResourceDetails'</span><span class="p">)</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Attempt </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">call_count</span><span class="si">}</span><span class="s2">: Successfully got details for </span><span class="si">{</span><span class="n">resource_id</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+        <span class="k">return</span> <span class="p">{</span><span class="s2">"id"</span><span class="p">:</span> <span class="n">resource_id</span><span class="p">,</span> <span class="s2">"status"</span><span class="p">:</span> <span class="s2">"active"</span><span class="p">}</span>
+
+<span class="c1"># Initialize a mock client that will fail 3 times</span>
+<span class="n">mock_client</span> <span class="o">=</span> <span class="n">MockAWSClient</span><span class="p">(</span><span class="n">fail_count</span><span class="o">=</span><span class="mi">3</span><span class="p">)</span>
+
+<span class="nd">@retry</span><span class="p">(</span>
+    <span class="n">wait</span><span class="o">=</span><span class="n">wait_exponential</span><span class="p">(</span><span class="n">multiplier</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="nb">min</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="nb">max</span><span class="o">=</span><span class="mi">10</span><span class="p">),</span> <span class="c1"># Start with 1s, max 10s wait</span>
+    <span class="n">stop</span><span class="o">=</span><span class="n">stop_after_attempt</span><span class="p">(</span><span class="mi">5</span><span class="p">),</span>                       <span class="c1"># Try up to 5 times</span>
+    <span class="n">retry</span><span class="o">=</span><span class="n">retry_if_exception_type</span><span class="p">(</span><span class="n">ClientError</span><span class="p">),</span>       <span class="c1"># Retry specifically for ClientError</span>
+    <span class="n">before_sleep</span><span class="o">=</span><span class="n">before_sleep_log</span><span class="p">(</span><span class="n">logger</span><span class="p">,</span> <span class="n">logging</span><span class="o">.</span><span class="n">INFO</span><span class="p">),</span> <span class="c1"># Log before sleeping</span>
+    <span class="n">reraise</span><span class="o">=</span><span class="kc">True</span> <span class="c1"># Re-raise exception if all retries fail</span>
+<span class="p">)</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_resource_with_retry</span><span class="p">(</span><span class="n">resource_id</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""</span>
-<span class="sd">    Calls an AWS API function with exponential backoff and jitter.</span>
-
-<span class="sd">    Args:</span>
-<span class="sd">        api_call_func (callable): The AWS API call function (e.g., lambda_client.invoke).</span>
-<span class="sd">        max_retries (int): Maximum number of retries.</span>
-<span class="sd">        base_delay (float): Initial delay in seconds.</span>
-
-<span class="sd">    Returns:</span>
-<span class="sd">        Any: The result of the successful API call.</span>
-
-<span class="sd">    Raises:</span>
-<span class="sd">        ClientError: If the call fails after max_retries.</span>
+<span class="sd">    Function to get resource details with retry logic for ThrottlingException.</span>
 <span class="sd">    """</span>
-    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">max_retries</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">mock_client</span><span class="o">.</span><span class="n">get_resource_details</span><span class="p">(</span><span class="n">resource_id</span><span class="p">)</span>
+
+<span class="k">try</span><span class="p">:</span>
+    <span class="n">details</span> <span class="o">=</span> <span class="n">get_resource_with_retry</span><span class="p">(</span><span class="s2">"my-important-resource"</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="se">\n</span><span class="s2">Final result: </span><span class="si">{</span><span class="n">details</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+<span class="k">except</span> <span class="n">ClientError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="se">\n</span><span class="s2">Failed after multiple retries: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+
+<span class="c1"># Reset and try with a different resource that always succeeds on first try (to show no retries)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"</span><span class="se">\n</span><span class="s2">--- Testing without throttling ---"</span><span class="p">)</span>
+<span class="n">mock_client</span> <span class="o">=</span> <span class="n">MockAWSClient</span><span class="p">(</span><span class="n">fail_count</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span> <span class="c1"># Will not fail</span>
+<span class="k">try</span><span class="p">:</span>
+    <span class="n">details</span> <span class="o">=</span> <span class="n">get_resource_with_retry</span><span class="p">(</span><span class="s2">"another-resource"</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="se">\n</span><span class="s2">Final result: </span><span class="si">{</span><span class="n">details</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+<span class="k">except</span> <span class="n">ClientError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="se">\n</span><span class="s2">Failed after multiple retries: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+</code></pre></div>
+
+<h3 id="basic-manual-exponential-backoff-if-tenacity-is-not-feasible">Basic Manual Exponential Backoff (if <code>tenacity</code> is not feasible)</h3>
+<div class="highlight"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">random</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">botocore.exceptions</span><span class="w"> </span><span class="kn">import</span> <span class="n">ClientError</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">logging</span>
+
+<span class="n">logging</span><span class="o">.</span><span class="n">basicConfig</span><span class="p">(</span><span class="n">level</span><span class="o">=</span><span class="n">logging</span><span class="o">.</span><span class="n">INFO</span><span class="p">)</span>
+<span class="n">logger</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="vm">__name__</span><span class="p">)</span>
+
+<span class="c1"># Basic client mock</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">MockAWSClient</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fail_count</span><span class="o">=</span><span class="mi">3</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">call_count</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">fail_count</span> <span class="o">=</span> <span class="n">fail_count</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_user_data</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">user_id</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">call_count</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">call_count</span> <span class="o">&lt;=</span> <span class="bp">self</span><span class="o">.</span><span class="n">fail_count</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Attempt </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">call_count</span><span class="si">}</span><span class="s2">: Simulating ThrottlingException for user </span><span class="si">{</span><span class="n">user_id</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+            <span class="k">raise</span> <span class="n">ClientError</span><span class="p">({</span><span class="s1">'Error'</span><span class="p">:</span> <span class="p">{</span><span class="s1">'Code'</span><span class="p">:</span> <span class="s1">'ThrottlingException'</span><span class="p">,</span> <span class="s1">'Message'</span><span class="p">:</span> <span class="s1">'Rate exceeded'</span><span class="p">}},</span> <span class="s1">'GetUserData'</span><span class="p">)</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Attempt </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">call_count</span><span class="si">}</span><span class="s2">: Successfully got data for user </span><span class="si">{</span><span class="n">user_id</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+        <span class="k">return</span> <span class="p">{</span><span class="s2">"id"</span><span class="p">:</span> <span class="n">user_id</span><span class="p">,</span> <span class="s2">"name"</span><span class="p">:</span> <span class="sa">f</span><span class="s2">"User </span><span class="si">{</span><span class="n">user_id</span><span class="si">}</span><span class="s2">"</span><span class="p">}</span>
+
+<span class="n">mock_client</span> <span class="o">=</span> <span class="n">MockAWSClient</span><span class="p">(</span><span class="n">fail_count</span><span class="o">=</span><span class="mi">3</span><span class="p">)</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">get_user_data_with_backoff</span><span class="p">(</span><span class="n">user_id</span><span class="p">,</span> <span class="n">max_retries</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span> <span class="n">base_delay</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span> <span class="n">max_delay</span><span class="o">=</span><span class="mf">10.0</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""</span>
+<span class="sd">    Retrieves user data with manual exponential backoff and jitter.</span>
+<span class="sd">    """</span>
+    <span class="k">for</span> <span class="n">attempt</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">max_retries</span><span class="p">):</span>
         <span class="k">try</span><span class="p">:</span>
-            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Attempt </span><span class="si">{</span><span class="n">i</span><span class="o">+</span><span class="mi">1</span><span class="si">}</span><span class="s2">..."</span><span class="p">)</span>
-            <span class="n">result</span> <span class="o">=</span> <span class="n">api_call_func</span><span class="p">()</span>
-            <span class="nb">print</span><span class="p">(</span><span class="s2">"API call successful!"</span><span class="p">)</span>
-            <span class="k">return</span> <span class="n">result</span>
+            <span class="k">return</span> <span class="n">mock_client</span><span class="o">.</span><span class="n">get_user_data</span><span class="p">(</span><span class="n">user_id</span><span class="p">)</span>
         <span class="k">except</span> <span class="n">ClientError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
-            <span class="n">error_code</span> <span class="o">=</span> <span class="n">e</span><span class="o">.</span><span class="n">response</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"Error"</span><span class="p">,</span> <span class="p">{})</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"Code"</span><span class="p">)</span>
-            <span class="k">if</span> <span class="n">error_code</span> <span class="o">==</span> <span class="s2">"ThrottlingException"</span> <span class="ow">or</span> <span class="n">error_code</span> <span class="o">==</span> <span class="s2">"RequestLimitExceeded"</span><span class="p">:</span>
-                <span class="n">delay</span> <span class="o">=</span> <span class="n">base_delay</span> <span class="o">*</span> <span class="p">(</span><span class="mi">2</span> <span class="o">**</span> <span class="n">i</span><span class="p">)</span> <span class="o">+</span> <span class="n">random</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mf">0.1</span> <span class="o">*</span> <span class="p">(</span><span class="mi">2</span> <span class="o">**</span> <span class="n">i</span><span class="p">))</span> <span class="c1"># Exponential backoff + jitter</span>
-                <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"ThrottlingException caught. Retrying in </span><span class="si">{</span><span class="n">delay</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2"> seconds..."</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">e</span><span class="o">.</span><span class="n">response</span><span class="p">[</span><span class="s1">'Error'</span><span class="p">][</span><span class="s1">'Code'</span><span class="p">]</span> <span class="o">==</span> <span class="s1">'ThrottlingException'</span> <span class="ow">and</span> <span class="n">attempt</span> <span class="o">&lt;</span> <span class="n">max_retries</span> <span class="o">-</span> <span class="mi">1</span><span class="p">:</span>
+                <span class="c1"># Calculate exponential delay with jitter</span>
+                <span class="n">delay</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">max_delay</span><span class="p">,</span> <span class="n">base_delay</span> <span class="o">*</span> <span class="p">(</span><span class="mi">2</span> <span class="o">**</span> <span class="n">attempt</span><span class="p">)</span> <span class="o">+</span> <span class="n">random</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mf">0.5</span> <span class="o">*</span> <span class="p">(</span><span class="mi">2</span> <span class="o">**</span> <span class="n">attempt</span><span class="p">)))</span>
+                <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="sa">f</span><span class="s2">"ThrottlingException: Retrying user </span><span class="si">{</span><span class="n">user_id</span><span class="si">}</span><span class="s2"> in </span><span class="si">{</span><span class="n">delay</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2"> seconds (Attempt </span><span class="si">{</span><span class="n">attempt</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mi">1</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">max_retries</span><span class="si">}</span><span class="s2">)"</span><span class="p">)</span>
                 <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="n">delay</span><span class="p">)</span>
             <span class="k">else</span><span class="p">:</span>
-                <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Non-throttling error: </span><span class="si">{</span><span class="n">error_code</span><span class="si">}</span><span class="s2">. Raising."</span><span class="p">)</span>
-                <span class="k">raise</span> <span class="c1"># Re-raise other ClientErrors</span>
-        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
-            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"An unexpected error occurred: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">. Raising."</span><span class="p">)</span>
-            <span class="k">raise</span>
+                <span class="k">raise</span> <span class="c1"># Re-raise if not throttling or max retries reached</span>
+    <span class="k">raise</span> <span class="ne">Exception</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Failed to get user data for </span><span class="si">{</span><span class="n">user_id</span><span class="si">}</span><span class="s2"> after </span><span class="si">{</span><span class="n">max_retries</span><span class="si">}</span><span class="s2"> attempts."</span><span class="p">)</span>
 
-    <span class="k">raise</span> <span class="n">ClientError</span><span class="p">({</span><span class="s2">"Error"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"Code"</span><span class="p">:</span> <span class="s2">"ThrottlingException"</span><span class="p">,</span> <span class="s2">"Message"</span><span class="p">:</span> <span class="s2">"Max retries exceeded"</span><span class="p">}},</span> <span class="s2">"API_CALL_FAILED"</span><span class="p">)</span>
-
-<span class="c1"># Example usage with a dummy Lambda invocation</span>
-<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">"__main__"</span><span class="p">:</span>
-    <span class="n">lambda_client</span> <span class="o">=</span> <span class="n">boto3</span><span class="o">.</span><span class="n">client</span><span class="p">(</span><span class="s1">'lambda'</span><span class="p">,</span> <span class="n">region_name</span><span class="o">=</span><span class="s1">'us-east-1'</span><span class="p">)</span>
-
-    <span class="k">def</span><span class="w"> </span><span class="nf">my_lambda_invoke_call</span><span class="p">():</span>
-        <span class="c1"># This function simulates an API call that might get throttled</span>
-        <span class="c1"># In a real scenario, replace this with your actual AWS API call</span>
-        <span class="c1"># For demonstration, we'll manually raise ThrottlingException</span>
-        <span class="k">if</span> <span class="n">random</span><span class="o">.</span><span class="n">random</span><span class="p">()</span> <span class="o">&lt;</span> <span class="mf">0.7</span><span class="p">:</span> <span class="c1"># Simulate 70% chance of throttling initially</span>
-            <span class="k">raise</span> <span class="n">ClientError</span><span class="p">({</span><span class="s2">"Error"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"Code"</span><span class="p">:</span> <span class="s2">"ThrottlingException"</span><span class="p">,</span> <span class="s2">"Message"</span><span class="p">:</span> <span class="s2">"Rate exceeded"</span><span class="p">}},</span> <span class="s2">"Invoke"</span><span class="p">)</span>
-        <span class="k">return</span> <span class="p">{</span><span class="s2">"StatusCode"</span><span class="p">:</span> <span class="mi">200</span><span class="p">,</span> <span class="s2">"Payload"</span><span class="p">:</span> <span class="sa">b</span><span class="s1">'{"message": "Hello from Lambda!"}'</span><span class="p">}</span>
-
-    <span class="k">try</span><span class="p">:</span>
-        <span class="n">response</span> <span class="o">=</span> <span class="n">call_aws_api_with_backoff</span><span class="p">(</span><span class="n">my_lambda_invoke_call</span><span class="p">)</span>
-        <span class="nb">print</span><span class="p">(</span><span class="s2">"Final API Response:"</span><span class="p">,</span> <span class="n">response</span><span class="p">)</span>
-    <span class="k">except</span> <span class="n">ClientError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
-        <span class="nb">print</span><span class="p">(</span><span class="s2">"Failed after multiple retries:"</span><span class="p">,</span> <span class="n">e</span><span class="p">)</span>
+<span class="k">try</span><span class="p">:</span>
+    <span class="n">user_info</span> <span class="o">=</span> <span class="n">get_user_data_with_backoff</span><span class="p">(</span><span class="s2">"user-123"</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="se">\n</span><span class="s2">Final user info: </span><span class="si">{</span><span class="n">user_info</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+<span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="se">\n</span><span class="s2">Error: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
 </code></pre></div>
 
 <h2 id="environment-specific-notes">Environment-Specific Notes</h2>
-<p>The approach to handling <code>ThrottlingException</code> can vary slightly depending on your deployment environment.</p>
 <ul>
-<li>
-<p><strong>Cloud (AWS Lambda, EC2, ECS):</strong></p>
-<ul>
-<li><strong>Monitoring:</strong> CloudWatch is your best friend here. Set up alarms on <code>ThrottledRequests</code> metrics for critical services.</li>
-<li><strong>Lambda:</strong> Be mindful of your function's concurrency limits. A sudden spike in invocations can hit downstream service limits quickly. Implement <code>async</code>/<code>await</code> patterns for non-blocking I/O if your Lambda is making many external calls.</li>
-<li><strong>EC2/ECS:</strong> Ensure that client-side SDKs are configured with appropriate retry strategies. Distributed applications need careful coordination or service-side rate limiting (e.g., with API Gateway).</li>
-<li><strong>API Gateway:</strong> Utilize API Gateway's built-in throttling and burst limits, both at the account level and per-stage/per-method, to protect your backend services.</li>
+<li><strong>Cloud (Lambda, EC2, ECS/EKS):</strong><ul>
+<li><strong>Lambda:</strong> Be mindful of Lambda concurrency. If you have many concurrent Lambda invocations hitting the same downstream AWS API, you're essentially multiplying your API request rate. Ensure your Lambda function's retry logic is robust. Consider configuring Lambda's asynchronous invocation to use a Dead-Letter Queue (DLQ) if retries are exhausted.</li>
+<li><strong>EC2/ECS/EKS:</strong> When instances or containers scale up rapidly, they might all initialize and make API calls simultaneously (e.g., retrieving secrets from Secrets Manager, pulling parameters from SSM Parameter Store). Stagger startup routines or introduce random delays in your application initialization to smooth out these request bursts. I've personally seen <code>ThrottlingException</code> due to hundreds of new containers all trying to fetch the same configuration from SSM at the same millisecond.</li>
 </ul>
 </li>
-<li>
-<p><strong>Docker/Containers (on-prem or non-AWS cloud):</strong></p>
-<ul>
-<li>While the container orchestration layer doesn't directly cause AWS throttling, multiple containers launching simultaneously and hammering an AWS endpoint can be a source.</li>
-<li>Ensure your containerized applications are properly configured with SDK retry logic.</li>
-<li>Consider implementing a shared rate-limiting mechanism (e.g., a Redis-backed token bucket) if multiple containers need to share a global AWS API quota.</li>
+<li><strong>Docker/Containerized Environments:</strong><ul>
+<li>If multiple containers are running on the same host and making external AWS API calls, these calls might appear to originate from the same source IP address. AWS service quotas are often calculated per-account/per-region, but sometimes IP-based reputation or internal routing can factor in. Ensure your retry logic handles this aggregate load.</li>
 </ul>
 </li>
-<li>
-<p><strong>Local Development:</strong></p>
-<ul>
-<li>Throttling is less common in local development unless you're intentionally stress-testing.</li>
-<li>However, if you're using shared development AWS accounts, it's possible for a runaway script to affect others.</li>
-<li>This is an ideal environment to rigorously test your backoff and retry logic before deployment. Mock AWS services locally (e.g., with LocalStack) to simulate throttling conditions.</li>
+<li><strong>Local Development:</strong><ul>
+<li>While less critical for production stability, developing locally with scripts that interact heavily with AWS can still hit throttling limits. This is particularly true if you're iterating quickly on a script that lists many resources or performs bulk operations. Use your retry logic even in dev to catch potential issues early. This is a good way to test your backoff implementation without impacting production.</li>
 </ul>
 </li>
 </ul>
 <h2 id="frequently-asked-questions">Frequently Asked Questions</h2>
-<ul>
-<li>
-<p><strong>Q: Can throttling cause data loss?</strong><br />
-<strong>A:</strong> Generally, no. Throttling results in a temporary rejection of your API call. With proper retry logic (especially exponential backoff), your request will eventually succeed. The data is usually not lost but merely delayed in processing.</p>
-</li>
-<li>
-<p><strong>Q: How quickly can AWS service limits be increased?</strong><br />
-<strong>A:</strong> For "soft limits," the response time varies by service and region, usually ranging from a few hours to a few business days after submitting a support ticket. It's crucial to plan for these increases well in advance of anticipated high load. "Hard limits" cannot be increased.</p>
-</li>
-<li>
-<p><strong>Q: Is hitting a <code>ThrottlingException</code> always a bad thing?</strong><br />
-<strong>A:</strong> Not necessarily. While it indicates you've hit a boundary, it also means AWS is successfully protecting its service and ensuring fair usage. For some applications, occasional throttling is expected, and robust retry logic is the standard way to handle it gracefully. It only becomes a "bad thing" if it significantly impacts user experience or application performance due to inadequate handling.</p>
-</li>
-<li>
-<p><strong>Q: How can I proactively monitor for throttling before it becomes a critical issue?</strong><br />
-<strong>A:</strong> Set up CloudWatch alarms on key throttling metrics (e.g., <code>ThrottledRequests</code> for API Gateway, <code>ReadThrottleEvents</code> for DynamoDB) for the services your application heavily uses. Monitor these trends and request limit increases preemptively when you see usage approaching 70-80% of your current limits.</p>
-</li>
-</ul>
+<p><strong>Q: Is hitting AWS ThrottlingException a bad thing?</strong><br />
+<strong>A:</strong> Not inherently. It's a normal operational characteristic of AWS services designed to protect the platform. The "bad" part is if your application doesn't handle it gracefully, leading to user-facing errors or service degradation.</p>
+<p><strong>Q: How can I tell which specific AWS API call is being throttled?</strong><br />
+<strong>A:</strong> The most reliable way is to inspect your CloudTrail logs. Filter events by <code>eventName</code> and look for <code>errorCode: ThrottlingException</code>. Your application logs should also capture the specific SDK call that failed.</p>
+<p><strong>Q: Can I completely avoid <code>ThrottlingException</code>?</strong><br />
+<strong>A:</strong> It's difficult to avoid entirely, especially with unpredictable workloads. The goal isn't to prevent it 100% of the time, but to handle it gracefully through robust retry mechanisms (exponential backoff with jitter) and by optimizing your API call patterns.</p>
+<p><strong>Q: What if I legitimately need higher API call limits?</strong><br />
+<strong>A:</strong> If your application's architecture and usage patterns are optimized, but you consistently hit throttling, you can request a service quota increase through the AWS Management Console. Be prepared to provide a detailed justification for your request.</p>
+<p><strong>Q: Does AWS charge for throttled API calls?</strong><br />
+<strong>A:</strong> Generally, no. Throttled calls are rejected by AWS and are not processed, so they do not count towards billable API requests. However, repeatedly attempting throttled calls can indirectly cost you in terms of increased compute usage for retries and potential downtime.</p>
 <h2 id="related-errors">Related Errors</h2>
     </div>
 
@@ -386,7 +411,7 @@ aws cloudwatch get-metric-data \
     <div class="container">
       <p class="footer-logo">⚡ ErrorFix.dev</p>
       <p>Practical, engineer-written guides for real-world software errors.</p>
-      <p style="margin-top:.5rem">Last updated: <time>August 28, 2026</time>.</p>
+      <p style="margin-top:.5rem">Last updated: <time>August 29, 2026</time>.</p>
       <p class="footer-links" style="margin-top:.75rem">
         <!-- ╔══════════════════════════════════════════════════════════════╗ -->
         <!-- ║  AFFILIATE LINKS – replace the href values below            ║ -->
