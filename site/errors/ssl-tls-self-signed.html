@@ -124,40 +124,197 @@
     <div class="article-content">
       <h1 id="ssl-certificate-error-self-signed-certificate-in-certificate-chain">SSL certificate error: self-signed certificate in certificate chain</h1>
 <blockquote>
-<p>Encountering "self-signed certificate in certificate chain" means your system doesn't trust the SSL certificate; this guide explains how to fix it.</p>
+<p>Encountering a "self-signed certificate in certificate chain" error means your system doesn't trust the SSL certificate, and this guide explains how to identify and resolve the underlying trust issues.</p>
 </blockquote>
-<p>As a Cloud &amp; DevOps Engineer, I've run into the "self-signed certificate in certificate chain" error more times than I can count. It's a common snag, especially when dealing with internal services, development environments, or tightly controlled corporate networks. While the message itself points to a security measure doing its job, understanding its root causes and how to properly address it is key to unblocking your work without compromising security.</p>
-<h3 id="what-this-error-means">What This Error Means</h3>
-<p>At its core, this error signifies a breakdown in the chain of trust for an SSL/TLS certificate. When your client (be it a web browser, <code>curl</code> command, Git client, or an application) attempts to establish an HTTPS connection, the server presents its SSL certificate. The client then tries to verify this certificate by tracing its lineage back to a Certificate Authority (CA) that it implicitly trusts.</p>
-<p>The "self-signed certificate in certificate chain" message specifically means that during this verification process, the client encountered a certificate that was signed by itself, rather than by a recognized and trusted third-party CA. Furthermore, this self-signed certificate (or the CA that signed it) is <em>not</em> present in your client's list of trusted root certificates. Without a verifiable path to a trusted root, the client cannot confirm the identity of the server and, by default, assumes the connection is not secure, thus aborting it with this error.</p>
-<p>It’s crucial to understand that not all self-signed certificates are inherently bad or malicious. Many legitimate internal systems use them. The issue arises when your client's system doesn't have prior knowledge or trust in that specific self-signed certificate.</p>
-<h3 id="why-it-happens">Why It Happens</h3>
-<p>This error primarily occurs because the client's system (whether it's an operating system's CA store, a specific application's trust store, or even a browser's built-in list) does not recognize or trust the issuer of the server's SSL certificate.</p>
-<p>Here's the sequence of events that leads to this:<br />
-1.  <strong>Server Presentation:</strong> A server (e.g., a web server, API endpoint, Git repository) presents an SSL certificate during the TLS handshake.<br />
-2.  <strong>Client Verification:</strong> Your client application receives this certificate. It then looks at the "Issuer" field of the certificate to find out who signed it.<br />
-3.  <strong>Chain Building:</strong> If the issuer is an intermediate CA, the client expects the server to also provide the intermediate CA's certificate. This process continues, building a "chain" of certificates, until it reaches a root CA.<br />
-4.  <strong>Trust Check:</strong> The client then checks if this root CA (or any certificate in the chain) is present in its own local store of trusted root CAs.<br />
-5.  <strong>Failure Point:</strong> If the certificate presented by the server is self-signed, and that self-signed certificate is <em>not</em> in the client's trusted store, or if an intermediate certificate in the chain is self-signed and untrusted, the trust verification fails.</p>
-<p>The 'why' is ultimately about security. Operating systems and applications maintain a curated list of well-known and trusted CAs (like DigiCert, Let's Encrypt, GlobalSign, etc.). These CAs undergo rigorous audits and security practices. If a certificate isn't signed by one of these trusted entities, the client cannot guarantee that it's connecting to the legitimate server and not an imposter attempting a Man-in-the-Middle (MITM) attack.</p>
-<h3 id="common-causes">Common Causes</h3>
-<p>Based on my experience in various environments, here are the most common scenarios that lead to the "self-signed certificate in certificate chain" error:</p>
-<ul>
-<li><strong>Development and Testing Environments:</strong> This is perhaps the most frequent culprit. For local development servers, internal APIs, or non-production test environments, developers often generate self-signed certificates to enable HTTPS without the cost or complexity of obtaining publicly trusted certificates. My first thought when I see this error is often "Is this a dev server?"</li>
-<li><strong>Internal Corporate Services:</strong> Many organizations run internal applications, Git repositories (like GitLab or GitHub Enterprise instances), or artifact repositories (like Artifactory or Nexus) that are not exposed to the public internet. These services often use certificates issued by the company's internal Certificate Authority (PKI) or even directly self-signed certificates. If your client machine isn't configured to trust the corporate CA, you'll hit this error.</li>
-<li><strong>SSL Interception Proxies (Man-in-the-Middle by Design):</strong> In enterprise networks, it's common for security appliances (like firewalls or proxies) to perform "SSL inspection." This involves decrypting HTTPS traffic, inspecting it for threats, and then re-encrypting it before sending it to the destination. During re-encryption, the proxy presents its own certificate, often issued by an internal CA that isn't trusted by default by client machines. I've seen this in production when engineers connect to external services via the corporate network.</li>
-<li><strong>Misconfigured Servers or Incomplete Certificate Chains:</strong> Sometimes, the server itself is misconfigured. While it might have a valid certificate issued by a trusted CA, it might fail to send the entire certificate chain (i.e., missing intermediate CA certificates) during the TLS handshake. When the client receives only the server's end-entity certificate and can't build the chain back to a trusted root, it can sometimes present as a self-signed error.</li>
-<li><strong>Outdated Client CA Bundles:</strong> Less common now with modern operating systems and browsers, but possible with older systems or specialized tools. If the client's trusted CA bundle is outdated, it might not recognize newer root CAs, leading to validation failures.</li>
-<li><strong>Containerized Applications:</strong> When working with Docker or Kubernetes, a container might not inherit the host's trusted CA store. If an application inside a container tries to connect to a service using a self-signed or internal corporate certificate, the container itself needs to be explicitly configured to trust that certificate.</li>
-</ul>
-<h3 id="step-by-step-fix">Step-by-Step Fix</h3>
-<p>Addressing this error typically involves one of two main approaches: either configuring the server with a trusted certificate or configuring the client to trust the existing certificate.</p>
+<h2 id="what-this-error-means">What This Error Means</h2>
+<p>When you encounter the error "self-signed certificate in certificate chain," it indicates a fundamental trust issue in the Secure Sockets Layer (SSL) or Transport Layer Security (TLS) connection. At its core, an SSL/TLS certificate is a digital document that verifies the identity of a server and encrypts communication. For a browser or client application to trust a certificate, it must be able to trace its origin back to a Certificate Authority (CA) that it already trusts.</p>
+<p>A "self-signed certificate" is one that is signed by the same entity that it certifies, rather than by a recognized, third-party Certificate Authority (CA). Imagine a passport that you issued to yourself – no government (CA) has vouched for your identity. Similarly, without a trusted CA's endorsement, a self-signed certificate lacks the external validation needed for widespread trust.</p>
+<p>The "certificate chain" refers to the ordered list of certificates that leads back from the end-entity certificate (the one presented by the server) to a trusted root CA certificate. This chain typically looks like: <code>End-Entity Certificate -&gt; Intermediate CA Certificate(s) -&gt; Root CA Certificate</code>. When a self-signed certificate is presented, there is no intermediate or root CA in the chain that the client's operating system or application inherently trusts. The chain effectively ends with itself, hence "self-signed certificate <em>in</em> certificate chain," implying it's the beginning and end of its own trust path from the client's perspective.</p>
+<p>The practical consequence is that your client (whether it's a web browser, a <code>curl</code> command, an API client, or a Git client) cannot verify the authenticity of the server it's trying to connect to. It sees the server saying "Trust me, I am who I say I am," but without external validation, the client refuses to proceed, flagging it as a potential security risk or an outright error.</p>
+<h2 id="why-it-happens">Why It Happens</h2>
+<p>This error occurs because the client system attempting to establish an HTTPS connection cannot validate the presented certificate against its internal list of trusted root Certificate Authorities. Unlike certificates issued by CAs like Let's Encrypt, DigiCert, or GlobalSign, which have their root certificates pre-installed in most operating systems and browsers, a self-signed certificate does not have this inherent trust.</p>
+<p>Here's a deeper dive into the technical reasons:</p>
 <ol>
-<li><strong>Identify the Untrusted Certificate:</strong><br />
-    The first step is always to understand <em>which</em> certificate is causing the problem and who issued it.<br />
-    ```bash<br />
-    openssl s_client -showcerts -connect your.server.com:443 </li>
+<li><strong>Lack of a Trusted Root:</strong> The primary reason is that the root of the certificate chain, which in this case <em>is</em> the self-signed certificate itself (or an intermediate signed by a self-signed root), is not present in the client's trusted certificate store. Without a path to a trusted root, the client's cryptographic library fails the verification process.</li>
+<li><strong>No Public Trust Infrastructure:</strong> Public Key Infrastructure (PKI) relies on a hierarchy of trust. Public CAs are audited and globally trusted to issue certificates securely. Self-signed certificates bypass this entire infrastructure, making them suitable only for environments where you explicitly manage trust.</li>
+<li><strong>Client-Side Validation Logic:</strong> Every SSL/TLS client (browser, <code>curl</code>, <code>openssl</code>, programming language libraries like Python's <code>requests</code> or Java's <code>HttpClient</code>) performs a series of checks during the TLS handshake:<ul>
+<li><strong>Signature Verification:</strong> Is the certificate signed by its issuer?</li>
+<li><strong>Chain Validation:</strong> Can the issuer's certificate be traced back to a trusted root CA?</li>
+<li><strong>Hostname Match:</strong> Does the certificate's <code>Common Name</code> or <code>Subject Alternative Name</code> match the hostname of the server it's connecting to?</li>
+<li><strong>Expiry Date:</strong> Is the certificate still valid (not expired or not yet valid)?<br />
+The "self-signed certificate in certificate chain" error typically means the <em>chain validation</em> step failed because the top-most certificate in the provided chain is not considered trusted.</li>
+</ul>
+</li>
 </ol>
+<p>I've seen this in production when a developer mistakenly deploys an internally generated certificate to a public-facing service, or when an internal tool designed for a tightly controlled network is exposed to a broader audience without proper certificate management.</p>
+<h2 id="common-causes">Common Causes</h2>
+<p>In my experience, this error usually pops up in a few distinct scenarios:</p>
+<ol>
+<li><strong>Development and Testing Environments:</strong> This is arguably the most frequent cause. Developers often generate self-signed certificates for local servers, internal APIs, or test environments because obtaining a publicly trusted certificate for every internal service can be cumbersome and unnecessary. However, when a different client (another dev's machine, a CI/CD pipeline, or a different microservice) tries to connect, it won't trust these certificates by default.</li>
+<li><strong>Internal-Only Services and APIs:</strong> Organizations might deploy internal applications, dashboards, or microservices within their private networks using self-signed or privately issued certificates. While perfectly secure within that controlled environment, any external system or even a corporate desktop not configured to trust the internal CA will hit this error.</li>
+<li><strong>SSL Inspection by Corporate Proxies/Firewalls (MITM):</strong> Many corporate networks deploy security appliances that perform SSL inspection. This "Man-in-the-Middle" (MITM) operation involves the proxy decrypting HTTPS traffic, inspecting it, and then re-encrypting it with its own, internally generated certificate before sending it to the client. If your client machine doesn't have the corporate proxy's root CA certificate installed in its trusted store, it will report a self-signed (or untrusted) certificate error. This is a common pain point for new employees or CI/CD systems.</li>
+<li><strong>Misconfigured Load Balancers or Ingress Controllers:</strong> In cloud environments (AWS ELB/ALB, Azure Application Gateway, GCP Load Balancer) or Kubernetes with Ingress controllers (Nginx Ingress, Traefik), there are often two SSL connections: one from the client to the load balancer and another from the load balancer to the backend service. If the backend services are using self-signed certificates and the load balancer is configured to validate these backend certificates, or if the load balancer itself is presenting a self-signed certificate to the client, you'll see this error.</li>
+<li><strong>Ad-Hoc Tooling or Scripting:</strong> Quick scripts or automation tasks that interact with internal services might encounter this if they use default HTTP client libraries that strictly enforce certificate validation without configuration.</li>
+</ol>
+<h2 id="step-by-step-fix">Step-by-Step Fix</h2>
+<p>Resolving this error depends entirely on the context and your intent. Is the self-signed certificate <em>expected</em> and acceptable, or should it be a publicly trusted certificate?</p>
+<h3 id="scenario-1-the-self-signed-certificate-is-expected-eg-internal-dev-testing"><strong>Scenario 1: The self-signed certificate IS expected (e.g., internal dev, testing)</strong></h3>
+<p>In this case, the goal is to tell your client to trust this specific certificate or the CA that issued it.</p>
+<ol>
+<li>
+<p><strong>Extract the Self-Signed Certificate:</strong><br />
+    If you're accessing a web service, you can often download the certificate from your browser's security information. For command-line access, use <code>openssl</code>:<br />
+<code>bash
+    echo -n | openssl s_client -showcerts -connect example.com:443 2&gt;/dev/null | openssl x509 -outform PEM &gt; selfsigned.crt</code><br />
+    Replace <code>example.com:443</code> with your server's hostname and port. This command extracts the server's certificate into <code>selfsigned.crt</code>.</p>
+</li>
+<li>
+<p><strong>Add to Your Operating System's Trust Store:</strong><br />
+    This makes the certificate trusted system-wide for applications that rely on the OS trust store.</p>
+<ul>
+<li><strong>On Linux (Debian/Ubuntu-based):</strong><br />
+<code>bash
+    sudo cp selfsigned.crt /usr/local/share/ca-certificates/
+    sudo update-ca-certificates</code></li>
+<li><strong>On Linux (RHEL/CentOS-based):</strong><br />
+<code>bash
+    sudo cp selfsigned.crt /etc/pki/ca-trust/source/anchors/
+    sudo update-ca-trust extract</code></li>
+<li><strong>On macOS:</strong><br />
+    Open <code>selfsigned.crt</code> (it should launch Keychain Access), find the certificate, double-click it, expand the "Trust" section, and set "When using this certificate" to "Always Trust."</li>
+<li><strong>On Windows:</strong><br />
+    Double-click <code>selfsigned.crt</code>, click "Install Certificate...", choose "Local Machine," then "Place all certificates in the following store" and select "Trusted Root Certification Authorities."</li>
+</ul>
+</li>
+<li>
+<p><strong>Configure Application-Specific Trust (if applicable):</strong><br />
+    Some applications or libraries (like Java's JVM, Python's <code>requests</code>, Git) might use their own trust stores or offer specific parameters to point to a custom CA bundle. See the "Code Examples" section for specifics.</p>
+</li>
+<li>
+<p><strong>Temporarily Disable SSL Verification (with extreme caution):</strong><br />
+    For quick local development or debugging, you <em>might</em> temporarily disable SSL verification. <strong>This is highly discouraged for production or any environment handling sensitive data</strong>, as it opens you up to MITM attacks. Only use this if you fully understand the risks and are in a completely controlled, isolated environment.</p>
+</li>
+</ol>
+<h3 id="scenario-2-the-service-should-have-a-publicly-trusted-certificate-eg-production-public-website-external-api"><strong>Scenario 2: The service SHOULD have a publicly trusted certificate (e.g., production public website, external API)</strong></h3>
+<p>If you're seeing this error on a service that's meant to be publicly accessible and trusted, then someone has deployed a self-signed certificate where a CA-issued one should be.</p>
+<ol>
+<li><strong>Identify the Server/Service:</strong> Determine which server or load balancer is presenting the self-signed certificate. Use <code>openssl s_client -connect yourdomain.com:443</code> and look at the <code>Issuer</code> and <code>Subject</code> fields. If they are the same or point to an unknown entity, it's self-signed.</li>
+<li><strong>Obtain a Trusted Certificate:</strong><ul>
+<li><strong>Free:</strong> Use Let's Encrypt (via <code>certbot</code> or <code>cert-manager</code> for Kubernetes).</li>
+<li><strong>Paid:</strong> Purchase from a commercial CA (DigiCert, GoDaddy, etc.).</li>
+</ul>
+</li>
+<li><strong>Install and Configure the Trusted Certificate:</strong><ul>
+<li><strong>Web Servers (Nginx/Apache):</strong> Replace the self-signed certificate and key files with the new CA-issued certificate and its corresponding private key. Update your server block/virtual host configuration.<br />
+<code>nginx
+    # Nginx example
+    ssl_certificate /etc/nginx/ssl/yourdomain.com/fullchain.pem; # Your new cert
+    ssl_certificate_key /etc/nginx/ssl/yourdomain.com/privkey.pem; # Your private key</code></li>
+<li><strong>Cloud Load Balancers:</strong> Upload the new certificate to your cloud provider's certificate management service (e.g., AWS Certificate Manager (ACM), Azure Key Vault, Google Secret Manager) and configure the listener to use it.</li>
+<li><strong>Application Servers:</strong> Consult your application server's documentation (e.g., Tomcat, Node.js HTTPS module) for how to configure a new certificate and key.</li>
+</ul>
+</li>
+<li><strong>Restart Services:</strong> After updating configurations, restart the relevant web server, load balancer, or application service to pick up the new certificate.</li>
+</ol>
+<h2 id="code-examples">Code Examples</h2>
+<p>Here are some common ways to interact with services presenting self-signed certificates, showing both insecure and trust-based approaches.</p>
+<h3 id="1-curl-command-line">1. <code>curl</code> (Command-Line)</h3>
+<ul>
+<li><strong>To verify with a specific CA certificate bundle:</strong><br />
+<code>bash
+    curl --cacert /path/to/selfsigned.crt https://your-selfsigned-server.com</code></li>
+<li><strong>To ignore certificate validation (insecure!):</strong><br />
+<code>bash
+    curl -k https://your-selfsigned-server.com</code></li>
+</ul>
+<h3 id="2-python-requests-library">2. Python <code>requests</code> Library</h3>
+<ul>
+<li>
+<p><strong>To specify a trusted CA certificate:</strong><br />
+    ```python<br />
+    import requests</p>
+<p>try:<br />
+    response = requests.get('https://your-selfsigned-server.com', verify='/path/to/selfsigned.crt')<br />
+    print(response.text)<br />
+except requests.exceptions.SSLError as e:<br />
+    print(f"SSL Error: {e}")<br />
+<code>*   **To ignore certificate validation (insecure!):**</code>python<br />
+import requests<br />
+import urllib3<br />
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning) # Suppress warnings</p>
+<p>try:<br />
+    response = requests.get('https://your-selfsigned-server.com', verify=False)<br />
+    print(response.text)<br />
+except requests.exceptions.SSLError as e:<br />
+    print(f"SSL Error: {e}")<br />
+```</p>
+</li>
+</ul>
+<h3 id="3-git">3. <code>git</code></h3>
+<ul>
+<li><strong>To disable SSL verification for a specific repository (insecure!):</strong><br />
+<code>bash
+    git config http.sslVerify false
+    # Or for a specific remote:
+    git config remote.origin.sslVerify false</code></li>
+<li><strong>To specify a custom CA bundle for Git:</strong><br />
+<code>bash
+    git config http.sslCAInfo /path/to/your/custom-ca-bundle.pem</code></li>
+</ul>
+<h2 id="environment-specific-notes">Environment-Specific Notes</h2>
+<p>The context in which you encounter this error often dictates the best solution.</p>
+<h3 id="cloud-environments-aws-azure-gcp">Cloud Environments (AWS, Azure, GCP)</h3>
+<ul>
+<li><strong>Load Balancers:</strong> Cloud load balancers (e.g., AWS ALB/NLB, Azure Application Gateway, GCP HTTP(S) Load Balancing) are frequently configured to terminate SSL at the load balancer. Ensure the certificate uploaded to the load balancer (e.g., in AWS ACM) is publicly trusted. For communication between the load balancer and backend instances, you <em>can</em> use private CAs or self-signed certificates within the VPC, but the load balancer itself needs to be configured to trust these if validation is enabled. This is where I've often seen issues with developers deploying default self-signed certs to instances behind a cloud LB.</li>
+<li><strong>Managed Services:</strong> If you're connecting to managed services like databases (RDS), caches (Redis), or message queues (Kafka), they often provide options for SSL/TLS, sometimes requiring client-side certificates or a specific CA bundle to trust <em>their</em> server certificate. Check the service's documentation carefully.</li>
+<li><strong>API Gateways:</strong> Similar to load balancers, API Gateways (e.g., AWS API Gateway) need proper certificate management for client-facing endpoints.</li>
+</ul>
+<h3 id="docker-and-kubernetes">Docker and Kubernetes</h3>
+<ul>
+<li>
+<p><strong>Container Images:</strong> If your Docker containers need to communicate with internal services using self-signed certificates, the container itself needs to trust those certificates. This often means adding the <code>.crt</code> files to <code>/usr/local/share/ca-certificates/</code> (or similar for other Linux distributions) <em>inside your Dockerfile</em> and then running <code>update-ca-certificates</code>.<br />
+    ```dockerfile<br />
+    # Example Dockerfile for adding a custom CA<br />
+    FROM python:3.9-slim-buster</p>
+<h1 id="copy-custom-ca-certificate">Copy custom CA certificate</h1>
+<p>COPY my_internal_ca.crt /usr/local/share/ca-certificates/my_internal_ca.crt</p>
+<h1 id="update-ca-certificates">Update CA certificates</h1>
+<p>RUN update-ca-certificates</p>
+<h1 id="rest-of-your-dockerfile">... rest of your Dockerfile</h1>
+<p><code>``
+*   **Kubernetes Ingress Controllers:** If your Ingress controller is presenting a self-signed certificate, you need to configure it with a proper</code>Secret<code>containing a CA-issued certificate. Tools like</code>cert-manager` automate the provisioning of Let's Encrypt certificates for Ingress resources.<br />
+*   <strong>Service Mesh (e.g., Istio):</strong> In a service mesh, mutual TLS (mTLS) is often enabled by default, using an internal CA. If you're encountering trust issues, ensure your service mesh configuration for mTLS is correct and that sidecar proxies are properly injecting the trust bundles.</p>
+</li>
+</ul>
+<h3 id="local-development">Local Development</h3>
+<ul>
+<li><strong><code>mkcert</code>:</strong> For local development, <code>mkcert</code> is an excellent tool. It creates locally trusted development certificates. It acts as a local CA and adds its root to your system's trust store, so any certificate it generates will be trusted by your browser and applications. This is a much safer alternative to globally disabling verification.</li>
+<li><strong>Host Files:</strong> Be mindful of <code>/etc/hosts</code> entries if you're mapping hostnames to <code>127.0.0.1</code> or internal IPs. The certificate's <code>Subject Alternative Name</code> (SAN) must match the hostname you're using.</li>
+</ul>
+<h2 id="frequently-asked-questions">Frequently Asked Questions</h2>
+<ul>
+<li>
+<p><strong>Q: Is it ever safe to ignore this error (disable SSL verification)?</strong><br />
+<strong>A:</strong> Generally, no. Ignoring this error (e.g., using <code>-k</code> with <code>curl</code> or <code>verify=False</code> in Python) bypasses a critical security check, making your connection vulnerable to Man-in-the-Middle (MITM) attacks. Only do so in highly controlled, isolated development environments where you explicitly understand and accept the risk, and never in production for public-facing services.</p>
+</li>
+<li>
+<p><strong>Q: How do I know if my corporate firewall/proxy is causing this?</strong><br />
+<strong>A:</strong> Check the certificate details in your browser (click the padlock icon). If the issuer of the certificate is your company's name, a proxy vendor (e.g., Zscaler, Palo Alto Networks), or a name you don't recognize for the website you're visiting, it's likely an SSL inspection proxy. You'll need to install the corporate root CA certificate into your system's trust store.</p>
+</li>
+<li>
+<p><strong>Q: Can I use Let's Encrypt for internal services that aren't publicly accessible?</strong><br />
+<strong>A:</strong> Not directly. Let's Encrypt requires domain validation (proving you own the domain), which typically means your server needs to be publicly reachable on port 80 or 443. For truly internal services that are not exposed to the internet, you'll need to use an internal CA (like HashiCorp Vault's PKI backend) or manage self-signed certificates by distributing their public keys to all clients.</p>
+</li>
+<li>
+<p><strong>Q: What's the difference between "self-signed" and "untrusted"?</strong><br />
+<strong>A:</strong> A self-signed certificate is one specific <em>type</em> of certificate that is almost always "untrusted" by default by client systems because it lacks a verifiable chain back to a pre-installed root CA. However, an "untrusted" error can also occur for certificates that <em>were</em> issued by a CA if, for example, the CA's root certificate is missing from your system, the certificate has expired, or the certificate chain is broken.</p>
+</li>
+<li>
+<p><strong>Q: My browser shows a different error, but my <code>curl</code> command gets "self-signed certificate in certificate chain." Why?</strong><br />
+<strong>A:</strong> Browsers often have more sophisticated heuristics and cached data. They might present a user-friendly "Your connection is not private" or "NET::ERR_CERT_AUTHORITY_INVALID" error. <code>curl</code> and other command-line tools provide more direct, low-level error messages like "self-signed certificate in certificate chain" which pinpoint the exact cryptographic failure. The underlying cause is often the same.</p>
+</li>
+</ul>
+<h2 id="related-errors">Related Errors</h2>
     </div>
 
     <!-- ── AdSense placement 2 – bottom of article ───────────────────────── -->
@@ -224,7 +381,7 @@
     <div class="container">
       <p class="footer-logo">⚡ ErrorFix.dev</p>
       <p>Practical, engineer-written guides for real-world software errors.</p>
-      <p style="margin-top:.5rem">Last updated: <time>August 29, 2026</time>.</p>
+      <p style="margin-top:.5rem">Last updated: <time>August 30, 2026</time>.</p>
       <p class="footer-links" style="margin-top:.75rem">
         <!-- ╔══════════════════════════════════════════════════════════════╗ -->
         <!-- ║  AFFILIATE LINKS – replace the href values below            ║ -->
