@@ -126,228 +126,314 @@
     <div class="article-content">
       <h1 id="fastapiroutingapiroute-path-operation-method-x-not-allowed">fastapi.routing.APIRoute: Path operation method X not allowed</h1>
 <blockquote>
-<p>Encountering "fastapi.routing.APIRoute: Path operation method X not allowed" means the HTTP method used in your request is not defined for the specified path operation; this guide explains how to fix it.</p>
+<p>This error indicates that an endpoint exists, but the HTTP method used in the request (e.g., PUT) is not defined for that path operation; this guide explains how to fix it.</p>
 </blockquote>
 <h2 id="what-this-error-means">What This Error Means</h2>
-<p>When you see the error <code>fastapi.routing.APIRoute: Path operation method X not allowed</code>, it signifies a mismatch between the HTTP method your client (e.g., browser, <code>curl</code>, another service) is attempting to use and the HTTP methods that your FastAPI application has explicitly defined for a specific API endpoint. The "X" in the error message will be replaced by the actual method attempted, such as <code>GET</code>, <code>POST</code>, <code>PUT</code>, <code>DELETE</code>, or <code>PATCH</code>.</p>
-<p>This error is effectively FastAPI's way of returning an HTTP 405 Method Not Allowed status code. It means the requested URL path <em>does</em> exist in your application's routing table, but the specific operation (e.g., a <code>PUT</code> request) is not configured to be handled by that path. The endpoint is there, but you're trying to interact with it in a way it hasn't been designed to accept.</p>
+<p>When you encounter the <code>fastapi.routing.APIRoute: Path operation method X not allowed</code> error, it means your FastAPI application successfully identified the <em>path</em> (the URL segment, like <code>/items/123</code>) you're trying to reach, but it does <em>not</em> have an associated handler for the specific <em>HTTP method</em> (represented by <code>X</code> in the error, e.g., <code>POST</code>, <code>PUT</code>, <code>DELETE</code>) you used in your request.</p>
+<p>Think of it this way: your application knows there's a door at that address, but it only accepts certain ways of interaction. If you try to push a door that's marked "pull only," you'll get this kind of rejection. In web terms, the server recognizes <code>/users</code> but only has a way to <code>GET</code> (read) users, not <code>POST</code> (create) new ones, if you try to <code>POST</code>.</p>
+<p>This error is distinct from a <code>404 Not Found</code> error. A <code>404</code> would mean FastAPI couldn't find <em>any</em> path matching your request URL. Here, the path <em>is</em> found; the problem is with the HTTP verb.</p>
 <h2 id="why-it-happens">Why It Happens</h2>
-<p>FastAPI applications route incoming HTTP requests based on two primary factors: the URL path and the HTTP method. For instance, <code>/items</code> might have a <code>GET</code> operation to retrieve items and a <code>POST</code> operation to create a new item. Each operation is typically defined by a Python function decorated with <code>@app.get("/path")</code>, <code>@app.post("/path")</code>, <code>@app.put("/path")</code>, and so on.</p>
-<p>This error occurs when an incoming request's method does not have a corresponding decorator and function defined for its target path. Here’s a breakdown of the underlying reasons:</p>
+<p>At its core, this error stems from a mismatch between the HTTP method a client sends and the HTTP methods a FastAPI path operation is configured to handle. FastAPI routes requests based on both the URL path and the HTTP method. If a path <code>/api/v1/users</code> is defined only with an <code>@app.get("/api/v1/users")</code> decorator, any client attempting to send a <code>POST</code> or <code>PUT</code> request to that same path will trigger this error.</p>
+<p>In my experience, this usually happens due to:</p>
 <ol>
-<li><strong>Method Mismatch:</strong> The most common reason is simply that the client is sending a request with an HTTP method (e.g., <code>PUT</code>) for a path operation that has only been defined for other methods (e.g., <code>GET</code> and <code>POST</code>).</li>
-<li><strong>Missing Definition:</strong> The FastAPI application lacks the necessary route decorator (<code>@app.put</code>, <code>@router.delete</code>, etc.) for the specific HTTP method on the given path.</li>
-<li><strong>Client-Side Error:</strong> The client code or tool making the request might have a typo in the method, or it might be incorrectly configured to use a method that the API does not support for that specific resource.</li>
-<li><strong>Implicit Method Use:</strong> While less common, sometimes developers might assume a method is implicitly supported or handled by a generic route, but FastAPI requires explicit method decoration.</li>
+<li><strong>Client-Server Method Mismatch:</strong> The most common reason. The client (e.g., a browser, Postman, <code>curl</code>, another service) sends a request with a method (e.g., <code>POST</code>) that the FastAPI application hasn't explicitly defined for that particular URL path.</li>
+<li><strong>Missing or Incorrect Decorator:</strong> On the FastAPI server side, the developer simply forgot to add the appropriate HTTP method decorator (like <code>@app.post</code>, <code>@router.put</code>) to the path operation function. Or, they used the wrong one, such as <code>@app.get</code> when <code>@app.delete</code> was intended.</li>
+<li><strong>Deployment Issues:</strong> Sometimes, the code change defining the new method hasn't been deployed correctly to the server, or the server hasn't been restarted/reloaded to pick up the changes.</li>
+<li><strong>Misunderstanding HTTP Methods:</strong> A newer developer might incorrectly assume that a <code>GET</code> endpoint can also handle <code>POST</code> requests, or vice versa, without explicit definition. Each HTTP method has a specific semantic purpose (GET for retrieval, POST for creation, PUT for complete replacement, PATCH for partial update, DELETE for removal).</li>
 </ol>
-<p>In essence, FastAPI is designed to be explicit about its API contract. If you haven't told it how to handle a <code>DELETE</code> request at <code>/items/{item_id}</code>, it won't allow one, even if a <code>GET</code> or <code>PUT</code> for the same path exists.</p>
 <h2 id="common-causes">Common Causes</h2>
-<p>Based on my experience building and troubleshooting FastAPI applications, these are the most frequent scenarios leading to <code>Path operation method X not allowed</code>:</p>
+<p>Let's break down some practical scenarios that lead to this error:</p>
 <ul>
-<li><strong>Client Sending the Wrong Method:</strong> This is by far the leading cause. A frontend application might be making a <code>POST</code> request to an endpoint intended only for <code>GET</code> (e.g., fetching data), or a <code>PUT</code> request to an endpoint designed only for <code>POST</code> (e.g., creating a resource, not updating). I've seen this many times in single-page applications where a quick refactor on the backend wasn't mirrored on the frontend.</li>
-<li><strong>Missing Decorator in FastAPI Code:</strong> You intended to implement a <code>PUT</code> endpoint for <code>/items/{item_id}</code> but forgot to add the <code>@app.put("/items/{item_id}")</code> decorator above the corresponding Python function. The function might exist, but without the correct decorator, FastAPI won't map it.</li>
-<li><strong>Typos in Method Names (Client or Server):</strong> A simple <code>POST</code> vs. <code>PUT</code> typo in your <code>curl</code> command, Postman request, or even in the Python code itself (e.g., accidentally using <code>@app.get</code> when you meant <code>@app.post</code> for an item creation endpoint).</li>
-<li><strong>API Design Evolution:</strong> As an API evolves, methods for certain paths might change. If clients are not updated, they might continue to send requests with old, now unsupported, methods.</li>
-<li><strong>Router Misconfiguration:</strong> If you're using <code>APIRouter</code> instances, it's possible a router has been included without all the desired methods, or routes are overlapping in unexpected ways, leading to one method 'shadowing' another's intended path.</li>
-<li><strong>Reverse Proxies or Load Balancers:</strong> While rare for this specific error, misconfigured proxies (like Nginx, Traefik, or cloud load balancers) could theoretically alter the HTTP method of an incoming request before it reaches FastAPI. I've only seen this in highly complex setups or with specific, non-standard proxy configurations, but it's worth considering as a last resort.</li>
+<li><strong>Attempting to Create Data with a GET Request:</strong> A client sends a <code>GET</code> request to <code>/items/</code> with a request body, expecting to create a new item. However, the server only has <code>@app.post("/items/")</code> defined for creation. The <code>GET</code> method typically does not process request bodies and is for retrieval. If only <code>POST</code> is defined for creation, a <code>GET</code> will fail.</li>
+<li><strong>Forgetting to Define a <code>POST</code>, <code>PUT</code>, or <code>DELETE</code> Endpoint:</strong> You might have an endpoint <code>GET /users/{user_id}</code> to retrieve user details, but then you try to update a user with <code>PUT /users/{user_id}</code> and haven't actually written or decorated the <code>PUT</code> function in your FastAPI code.</li>
+<li><strong>Typos or Copy-Paste Errors in Decorators:</strong> It's easy to copy a <code>@app.get(...)</code> line and forget to change <code>get</code> to <code>post</code> when creating a new endpoint for a different operation on the same path.</li>
+<li><strong>Front-End Frameworks Misconfiguring API Calls:</strong> In single-page applications (SPAs) built with React, Vue, Angular, etc., the JavaScript code might incorrectly specify the HTTP method when making an API call, perhaps due to a bug in the client-side logic or an outdated API integration.</li>
+<li><strong>Proxy or API Gateway Interference:</strong> In complex architectures, an API Gateway (like AWS API Gateway, Nginx, or an ingress controller in Kubernetes) might be misconfigured to rewrite or proxy requests using a different HTTP method than the client intended, or the backend expects. For example, it might convert all incoming <code>POST</code> requests to <code>GET</code> before forwarding them.</li>
+<li><strong>Outdated Local Client Tools:</strong> If you're using Postman, Insomnia, or a <code>curl</code> script from an old project, it might be configured to send the wrong method to a newly developed endpoint.</li>
 </ul>
 <h2 id="step-by-step-fix">Step-by-Step Fix</h2>
-<p>Rectifying this error involves checking both the client making the request and your FastAPI application's routing definitions. Follow these steps methodically:</p>
-<ol>
-<li>
-<p><strong>Identify the Problematic Endpoint and Method:</strong></p>
-<ul>
-<li>The error message will tell you which method (<code>X</code>) was not allowed.</li>
-<li>Examine your client's request (e.g., browser network tab, Postman/Insomnia logs, <code>curl</code> command) to confirm the exact URL and HTTP method being used.</li>
-<li><em>Example <code>curl</code> command that would trigger a POST error if only GET is allowed:</em><br />
-<code>bash
-    curl -X POST -H "Content-Type: application/json" -d '{"name": "New Item"}' http://localhost:8000/items/</code></li>
-</ul>
-</li>
-<li>
-<p><strong>Inspect Your FastAPI Route Definitions:</strong></p>
-<ul>
-<li>Open your FastAPI application's <code>main.py</code> file or any modules where you've defined your <code>APIRouter</code> instances.</li>
-<li>Locate the path operation function that corresponds to the URL path you are trying to access.</li>
-</ul>
-</li>
-<li>
-<p><strong>Compare Requested Method with Defined Methods:</strong></p>
-<ul>
-<li>Look at the decorators (<code>@app.get</code>, <code>@app.post</code>, <code>@router.put</code>, etc.) above your path operation function.</li>
-<li>Does the list of decorators include the method (<code>X</code>) that the client is trying to use?</li>
-<li><em>Example of a problematic definition:</em><br />
-<code>python
-    # Only GET is defined for /items/
-    @app.get("/items/")
-    async def read_items():
-        return {"message": "List of items"}</code><br />
-    If a client sends a <code>POST</code> to <code>/items/</code>, it will fail.</li>
-</ul>
-</li>
-<li>
-<p><strong>Choose Your Correction Strategy:</strong> You have two main options:</p>
+<p>Addressing this error involves checking both the client (what method is being sent?) and the server (what methods are defined for the path?).</p>
+<h3 id="step-1-identify-the-problematic-request-and-method">Step 1: Identify the Problematic Request and Method</h3>
+<p>First, pinpoint the exact request that's causing the error.</p>
 <ul>
 <li>
-<p><strong>Option A: Correct the Client Request:</strong> If your FastAPI application is correctly defined and you intended to only support specific methods, then update the client to use one of the <em>allowed</em> methods. This is often the case if the client's intent (e.g., "get data") doesn't match the method it's using (e.g., <code>POST</code>).</p>
-</li>
-<li>
-<p><strong>Option B: Add/Modify the FastAPI Route Definition:</strong> If your FastAPI application <em>should</em> support the method <code>X</code> but currently doesn't, you need to add the appropriate decorator.</p>
+<p><strong>Check the Client Request:</strong></p>
 <ul>
-<li>If the function already exists but is missing the method, add the decorator.</li>
-<li>If the logic for that method doesn't exist, create a new function (or extend an existing one) and decorate it.</li>
+<li><strong>Browser Developer Tools:</strong> If the request is from a web browser, open the developer console (F12), go to the "Network" tab, reproduce the error, and examine the failing request. Look at the "Method" column for the request that returns a 405 status code.</li>
+<li><strong>Postman/Insomnia/HTTP Client:</strong> If you're using a dedicated API client, check the selected HTTP method dropdown (GET, POST, PUT, DELETE, etc.) for your request.</li>
+<li><strong><code>curl</code> Command:</strong> Examine your <code>curl</code> command. The <code>-X</code> flag specifies the HTTP method.</li>
 </ul>
+<p>```bash</p>
+<h1 id="example-of-a-curl-command-that-might-cause-the-error-if-only-get-is-allowed">Example of a curl command that might cause the error if only GET is allowed</h1>
+<p>curl -X POST http://localhost:8000/items/123 -H "Content-Type: application/json" -d '{"name": "New Item", "description": "A test item"}'</p>
+<h1 id="example-of-a-curl-command-that-might-be-missing-a-method-specifier-defaults-to-get">Example of a curl command that might be missing a method specifier (defaults to GET)</h1>
+<p>curl http://localhost:8000/users/create -d '{"username": "test"}'</p>
+<h1 id="if-the-endpoint-expects-post-this-get-request-will-fail">If the endpoint expects POST, this GET request will fail</h1>
+<p>```</p>
 </li>
 </ul>
-</li>
-<li>
-<p><strong>Test Your Fix:</strong></p>
-<ul>
-<li>After making changes (either client or server-side), restart your FastAPI application if you changed the code.</li>
-<li>Resend the request from the client and verify that the error no longer occurs and that the API behaves as expected.</li>
-</ul>
-</li>
-</ol>
-<h2 id="code-examples">Code Examples</h2>
-<p>Let's illustrate the problem and its solution with concise, copy-paste ready code examples.</p>
-<h3 id="scenario-post-method-not-allowed-for-items">Scenario: <code>POST</code> method not allowed for <code>/items/</code></h3>
-<p>Imagine you have a FastAPI application like this, where <code>/items/</code> only supports <code>GET</code> requests:</p>
+<h3 id="step-2-locate-the-corresponding-fastapi-endpoint">Step 2: Locate the Corresponding FastAPI Endpoint</h3>
+<p>On the server side, find the Python code that defines the path operation for the URL segment identified in the error.</p>
+<p>For example, if the error occurs for <code>POST /items/123</code>, you'd look for functions decorated with <code>@app.post("/items/{item_id}")</code> or <code>@router.post("/items/{item_id}")</code>.</p>
+<h3 id="step-3-verify-the-defined-http-methods">Step 3: Verify the Defined HTTP Methods</h3>
+<p>Once you've found the relevant path operation function, inspect its decorators.</p>
+<p><strong>Example of an endpoint only allowing <code>GET</code>:</strong></p>
 <div class="highlight"><pre><span></span><code><span class="c1"># main.py</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">fastapi</span><span class="w"> </span><span class="kn">import</span> <span class="n">FastAPI</span><span class="p">,</span> <span class="n">HTTPException</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">pydantic</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseModel</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">fastapi</span><span class="w"> </span><span class="kn">import</span> <span class="n">FastAPI</span>
 
 <span class="n">app</span> <span class="o">=</span> <span class="n">FastAPI</span><span class="p">()</span>
 
-<span class="k">class</span><span class="w"> </span><span class="nc">Item</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
-    <span class="n">name</span><span class="p">:</span> <span class="nb">str</span>
-    <span class="n">description</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
-    <span class="n">price</span><span class="p">:</span> <span class="nb">float</span>
-    <span class="n">tax</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
-
-<span class="c1"># In this example, we only have a GET endpoint for /items/</span>
-<span class="nd">@app</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"/items/"</span><span class="p">)</span>
-<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">read_items</span><span class="p">():</span>
-<span class="w">    </span><span class="sd">"""</span>
-<span class="sd">    Retrieves a list of items.</span>
-<span class="sd">    """</span>
-    <span class="k">return</span> <span class="p">[{</span><span class="s2">"item_id"</span><span class="p">:</span> <span class="s2">"foo"</span><span class="p">,</span> <span class="s2">"name"</span><span class="p">:</span> <span class="s2">"Foo"</span><span class="p">},</span> <span class="p">{</span><span class="s2">"item_id"</span><span class="p">:</span> <span class="s2">"bar"</span><span class="p">,</span> <span class="s2">"name"</span><span class="p">:</span> <span class="s2">"Bar"</span><span class="p">}]</span>
-
 <span class="nd">@app</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"/items/</span><span class="si">{item_id}</span><span class="s2">"</span><span class="p">)</span>
-<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">read_item</span><span class="p">(</span><span class="n">item_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">"""</span>
-<span class="sd">    Retrieves a single item.</span>
-<span class="sd">    """</span>
-    <span class="k">return</span> <span class="p">{</span><span class="s2">"item_id"</span><span class="p">:</span> <span class="n">item_id</span><span class="p">,</span> <span class="s2">"name"</span><span class="p">:</span> <span class="s2">"Specific Item"</span><span class="p">}</span>
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">read_item</span><span class="p">(</span><span class="n">item_id</span><span class="p">:</span> <span class="nb">int</span><span class="p">):</span>
+    <span class="k">return</span> <span class="p">{</span><span class="s2">"item_id"</span><span class="p">:</span> <span class="n">item_id</span><span class="p">,</span> <span class="s2">"name"</span><span class="p">:</span> <span class="s2">"Foo"</span><span class="p">}</span>
 
-<span class="c1"># No @app.post("/items/") or @app.put("/items/") defined</span>
+<span class="c1"># If a client sends POST /items/123 to this app, it will result in the "Method POST not allowed" error.</span>
 </code></pre></div>
 
-<p>Now, if a client tries to create a new item by sending a <code>POST</code> request:</p>
-<div class="highlight"><pre><span></span><code><span class="c1"># Attempt to create an item with POST</span>
-curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span><span class="se">\</span>
-<span class="w">  </span>http://localhost:8000/items/<span class="w"> </span><span class="se">\</span>
-<span class="w">  </span>-H<span class="w"> </span><span class="s1">'Content-Type: application/json'</span><span class="w"> </span><span class="se">\</span>
-<span class="w">  </span>-d<span class="w"> </span><span class="s1">'{</span>
-<span class="s1">    "name": "New Awesome Item",</span>
-<span class="s1">    "price": 12.99</span>
-<span class="s1">  }'</span>
-</code></pre></div>
-
-<p>You would receive the <code>405 Method Not Allowed</code> response with the error <code>fastapi.routing.APIRoute: Path operation method POST not allowed</code>.</p>
-<h3 id="solution-adding-the-post-method">Solution: Adding the <code>POST</code> method</h3>
-<p>To fix this, you need to add the appropriate path operation decorator (<code>@app.post</code>) and its corresponding function to your FastAPI application:</p>
-<div class="highlight"><pre><span></span><code><span class="c1"># main.py (corrected)</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">fastapi</span><span class="w"> </span><span class="kn">import</span> <span class="n">FastAPI</span><span class="p">,</span> <span class="n">HTTPException</span><span class="p">,</span> <span class="n">status</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">pydantic</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseModel</span>
+<h3 id="step-4-align-client-and-server-methods">Step 4: Align Client and Server Methods</h3>
+<p>Now that you know what the client is sending (<code>X</code>) and what the server <em>allows</em> for that path, you have two primary ways to fix it:</p>
+<ul>
+<li>
+<p><strong>Option A: Change the Client Request Method (if the server is correct):</strong><br />
+    If the server's definition is correct (e.g., <code>/items/123</code> <em>should</em> only be <code>GET</code> for reading), then modify your client to use the correct method.</p>
+<p>```bash</p>
+<h1 id="correcting-the-curl-request-from-post-to-get">Correcting the curl request from POST to GET</h1>
+<p>curl -X GET http://localhost:8000/items/123<br />
+```</p>
+<p>```python</p>
+<h1 id="correcting-a-python-requests-client-from-post-to-get">Correcting a Python requests client from POST to GET</h1>
+<p>import requests<br />
+response = requests.get("http://localhost:8000/items/123")<br />
+print(response.json())<br />
+```</p>
+</li>
+<li>
+<p><strong>Option B: Add or Modify the Method Decorator on the FastAPI Server (if the client is correct):</strong><br />
+    If your client request <em>is</em> correct for the desired operation (e.g., you really <em>do</em> want to <code>POST</code> to create an item, or <code>PUT</code> to update one), then you need to add or correct the decorator in your FastAPI application.</p>
+<p>```python</p>
+<h1 id="mainpy">main.py</h1>
+<p>from fastapi import FastAPI, HTTPException<br />
+from typing import Dict</p>
+<p>app = FastAPI()</p>
+<h1 id="existing-get-endpoint">Existing GET endpoint</h1>
+<p>@app.get("/items/{item_id}")<br />
+async def read_item(item_id: int):<br />
+    if item_id not in items_db:<br />
+        raise HTTPException(status_code=404, detail="Item not found")<br />
+    return items_db[item_id]</p>
+<p>items_db: Dict[int, Dict] = {<br />
+    123: {"name": "Existing Item", "description": "This item was here before"}<br />
+}</p>
+<h1 id="fix-adding-a-post-endpoint-for-creating-new-items">FIX: Adding a POST endpoint for creating new items</h1>
+<p>@app.post("/items/")<br />
+async def create_item(item: Dict):<br />
+    new_id = max(items_db.keys(), default=0) + 1<br />
+    items_db[new_id] = item<br />
+    return {"id": new_id, **item}</p>
+<h1 id="fix-adding-a-put-endpoint-for-updating-an-item">FIX: Adding a PUT endpoint for updating an item</h1>
+<p>@app.put("/items/{item_id}")<br />
+async def update_item(item_id: int, item: Dict):<br />
+    if item_id not in items_db:<br />
+        raise HTTPException(status_code=404, detail="Item not found")<br />
+    items_db[item_id].update(item) # Update existing item<br />
+    return {"message": f"Item {item_id} updated", "item": items_db[item_id]}</p>
+<h1 id="fix-adding-a-delete-endpoint-for-deleting-an-item">FIX: Adding a DELETE endpoint for deleting an item</h1>
+<p>@app.delete("/items/{item_id}")<br />
+async def delete_item(item_id: int):<br />
+    if item_id not in items_db:<br />
+        raise HTTPException(status_code=404, detail="Item not found")<br />
+    del items_db[item_id]<br />
+    return {"message": f"Item {item_id} deleted"}<br />
+```</p>
+</li>
+</ul>
+<h3 id="step-5-test-the-fix">Step 5: Test the Fix</h3>
+<p>After making changes (either client-side or server-side), re-run your request. If the HTTP method now matches an allowed method on the server for that path, the 405 error should be resolved. You should then see a 2xx success code or a different, more specific error if there's another issue (e.g., validation error, 404 if the resource truly doesn't exist).</p>
+<h2 id="code-examples">Code Examples</h2>
+<p>Here are some concise examples demonstrating how the error arises and how to fix it.</p>
+<h3 id="scenario-1-fastapi-only-defines-get-but-client-sends-post">Scenario 1: FastAPI only defines GET, but client sends POST</h3>
+<p><strong>FastAPI application (<code>main.py</code>):</strong></p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">fastapi</span><span class="w"> </span><span class="kn">import</span> <span class="n">FastAPI</span>
 
 <span class="n">app</span> <span class="o">=</span> <span class="n">FastAPI</span><span class="p">()</span>
 
-<span class="k">class</span><span class="w"> </span><span class="nc">Item</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
-    <span class="n">name</span><span class="p">:</span> <span class="nb">str</span>
-    <span class="n">description</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
-    <span class="n">price</span><span class="p">:</span> <span class="nb">float</span>
-    <span class="n">tax</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="nd">@app</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"/greeting"</span><span class="p">)</span>
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">get_greeting</span><span class="p">():</span>
+    <span class="k">return</span> <span class="p">{</span><span class="s2">"message"</span><span class="p">:</span> <span class="s2">"Hello from FastAPI!"</span><span class="p">}</span>
 
-<span class="c1"># Existing GET endpoint</span>
-<span class="nd">@app</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"/items/"</span><span class="p">)</span>
-<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">read_items</span><span class="p">():</span>
-<span class="w">    </span><span class="sd">"""</span>
-<span class="sd">    Retrieves a list of items.</span>
-<span class="sd">    """</span>
-    <span class="k">return</span> <span class="p">[{</span><span class="s2">"item_id"</span><span class="p">:</span> <span class="s2">"foo"</span><span class="p">,</span> <span class="s2">"name"</span><span class="p">:</span> <span class="s2">"Foo"</span><span class="p">},</span> <span class="p">{</span><span class="s2">"item_id"</span><span class="p">:</span> <span class="s2">"bar"</span><span class="p">,</span> <span class="s2">"name"</span><span class="p">:</span> <span class="s2">"Bar"</span><span class="p">}]</span>
-
-<span class="c1"># NEW: Add a POST endpoint for creating items</span>
-<span class="nd">@app</span><span class="o">.</span><span class="n">post</span><span class="p">(</span><span class="s2">"/items/"</span><span class="p">,</span> <span class="n">status_code</span><span class="o">=</span><span class="n">status</span><span class="o">.</span><span class="n">HTTP_201_CREATED</span><span class="p">)</span>
-<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">create_item</span><span class="p">(</span><span class="n">item</span><span class="p">:</span> <span class="n">Item</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">"""</span>
-<span class="sd">    Creates a new item.</span>
-<span class="sd">    """</span>
-    <span class="c1"># In a real application, you'd save this to a database</span>
-    <span class="k">return</span> <span class="p">{</span><span class="s2">"message"</span><span class="p">:</span> <span class="s2">"Item created successfully"</span><span class="p">,</span> <span class="s2">"item"</span><span class="p">:</span> <span class="n">item</span><span class="p">}</span>
-
-<span class="nd">@app</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"/items/</span><span class="si">{item_id}</span><span class="s2">"</span><span class="p">)</span>
-<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">read_item</span><span class="p">(</span><span class="n">item_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">"""</span>
-<span class="sd">    Retrieves a single item.</span>
-<span class="sd">    """</span>
-    <span class="k">return</span> <span class="p">{</span><span class="s2">"item_id"</span><span class="p">:</span> <span class="n">item_id</span><span class="p">,</span> <span class="s2">"name"</span><span class="p">:</span> <span class="s2">"Specific Item"</span><span class="p">}</span>
+<span class="c1"># No POST, PUT, DELETE defined for "/greeting"</span>
 </code></pre></div>
 
-<p>With this change, the <code>POST</code> request from the client will now be successfully handled by the <code>create_item</code> function. You can similarly add <code>@app.put</code>, <code>@app.delete</code>, etc., as needed for other methods.</p>
+<p><strong>Client request (Python <code>requests</code>):</strong></p>
+<div class="highlight"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">requests</span>
+
+<span class="c1"># This will cause the error: Method POST not allowed</span>
+<span class="n">response</span> <span class="o">=</span> <span class="n">requests</span><span class="o">.</span><span class="n">post</span><span class="p">(</span><span class="s2">"http://localhost:8000/greeting"</span><span class="p">,</span> <span class="n">json</span><span class="o">=</span><span class="p">{</span><span class="s2">"name"</span><span class="p">:</span> <span class="s2">"Takeshi"</span><span class="p">})</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Status Code: </span><span class="si">{</span><span class="n">response</span><span class="o">.</span><span class="n">status_code</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Response: </span><span class="si">{</span><span class="n">response</span><span class="o">.</span><span class="n">text</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+</code></pre></div>
+
+<p><strong>Output:</strong></p>
+<div class="highlight"><pre><span></span><code>Status Code: 405
+Response: {"detail":"Method Not Allowed"}
+</code></pre></div>
+
+<h3 id="scenario-2-fixing-the-fastapi-application-to-allow-post">Scenario 2: Fixing the FastAPI application to allow POST</h3>
+<p>If <code>/greeting</code> <em>should</em> accept a <code>POST</code> to, for example, create a personalized greeting, you'd add the decorator:</p>
+<p><strong>FastAPI application (<code>main.py</code> - corrected):</strong></p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">fastapi</span><span class="w"> </span><span class="kn">import</span> <span class="n">FastAPI</span>
+
+<span class="n">app</span> <span class="o">=</span> <span class="n">FastAPI</span><span class="p">()</span>
+
+<span class="nd">@app</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"/greeting"</span><span class="p">)</span>
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">get_greeting</span><span class="p">():</span>
+    <span class="k">return</span> <span class="p">{</span><span class="s2">"message"</span><span class="p">:</span> <span class="s2">"Hello from FastAPI!"</span><span class="p">}</span>
+
+<span class="nd">@app</span><span class="o">.</span><span class="n">post</span><span class="p">(</span><span class="s2">"/greeting"</span><span class="p">)</span> <span class="c1"># &lt;-- ADDED THIS DECORATOR</span>
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">post_greeting</span><span class="p">(</span><span class="n">data</span><span class="p">:</span> <span class="nb">dict</span><span class="p">):</span>
+    <span class="n">name</span> <span class="o">=</span> <span class="n">data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"name"</span><span class="p">,</span> <span class="s2">"Guest"</span><span class="p">)</span>
+    <span class="k">return</span> <span class="p">{</span><span class="s2">"message"</span><span class="p">:</span> <span class="sa">f</span><span class="s2">"Hello, </span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2"> from FastAPI!"</span><span class="p">}</span>
+</code></pre></div>
+
+<p><strong>Client request (Python <code>requests</code> - same as before, now works):</strong></p>
+<div class="highlight"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">requests</span>
+
+<span class="n">response</span> <span class="o">=</span> <span class="n">requests</span><span class="o">.</span><span class="n">post</span><span class="p">(</span><span class="s2">"http://localhost:8000/greeting"</span><span class="p">,</span> <span class="n">json</span><span class="o">=</span><span class="p">{</span><span class="s2">"name"</span><span class="p">:</span> <span class="s2">"Takeshi"</span><span class="p">})</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Status Code: </span><span class="si">{</span><span class="n">response</span><span class="o">.</span><span class="n">status_code</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Response: </span><span class="si">{</span><span class="n">response</span><span class="o">.</span><span class="n">json</span><span class="p">()</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+</code></pre></div>
+
+<p><strong>Output:</strong></p>
+<div class="highlight"><pre><span></span><code>Status Code: 200
+Response: {'message': 'Hello, Takeshi from FastAPI!'}
+</code></pre></div>
+
+<h3 id="scenario-3-using-multiple-http-methods-on-the-same-path">Scenario 3: Using multiple HTTP methods on the same path</h3>
+<p>It's very common to have multiple HTTP methods for the same URL path, especially for resource management.</p>
+<p><strong>FastAPI application (<code>main.py</code>):</strong></p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">fastapi</span><span class="w"> </span><span class="kn">import</span> <span class="n">FastAPI</span><span class="p">,</span> <span class="n">HTTPException</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Dict</span>
+
+<span class="n">app</span> <span class="o">=</span> <span class="n">FastAPI</span><span class="p">()</span>
+
+<span class="c1"># In-memory "database"</span>
+<span class="n">items_db</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="n">Dict</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="mi">1</span><span class="p">:</span> <span class="p">{</span><span class="s2">"name"</span><span class="p">:</span> <span class="s2">"Laptop"</span><span class="p">,</span> <span class="s2">"price"</span><span class="p">:</span> <span class="mi">1200</span><span class="p">},</span>
+    <span class="mi">2</span><span class="p">:</span> <span class="p">{</span><span class="s2">"name"</span><span class="p">:</span> <span class="s2">"Mouse"</span><span class="p">,</span> <span class="s2">"price"</span><span class="p">:</span> <span class="mi">25</span><span class="p">},</span>
+<span class="p">}</span>
+
+<span class="nd">@app</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"/items/</span><span class="si">{item_id}</span><span class="s2">"</span><span class="p">)</span>
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">read_item</span><span class="p">(</span><span class="n">item_id</span><span class="p">:</span> <span class="nb">int</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">item_id</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">items_db</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="n">HTTPException</span><span class="p">(</span><span class="n">status_code</span><span class="o">=</span><span class="mi">404</span><span class="p">,</span> <span class="n">detail</span><span class="o">=</span><span class="s2">"Item not found"</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">items_db</span><span class="p">[</span><span class="n">item_id</span><span class="p">]</span>
+
+<span class="nd">@app</span><span class="o">.</span><span class="n">put</span><span class="p">(</span><span class="s2">"/items/</span><span class="si">{item_id}</span><span class="s2">"</span><span class="p">)</span>
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">update_item</span><span class="p">(</span><span class="n">item_id</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">item_data</span><span class="p">:</span> <span class="n">Dict</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">item_id</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">items_db</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="n">HTTPException</span><span class="p">(</span><span class="n">status_code</span><span class="o">=</span><span class="mi">404</span><span class="p">,</span> <span class="n">detail</span><span class="o">=</span><span class="s2">"Item not found"</span><span class="p">)</span>
+    <span class="n">items_db</span><span class="p">[</span><span class="n">item_id</span><span class="p">]</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">item_data</span><span class="p">)</span>
+    <span class="k">return</span> <span class="p">{</span><span class="s2">"message"</span><span class="p">:</span> <span class="sa">f</span><span class="s2">"Item </span><span class="si">{</span><span class="n">item_id</span><span class="si">}</span><span class="s2"> updated"</span><span class="p">,</span> <span class="s2">"item"</span><span class="p">:</span> <span class="n">items_db</span><span class="p">[</span><span class="n">item_id</span><span class="p">]}</span>
+
+<span class="nd">@app</span><span class="o">.</span><span class="n">delete</span><span class="p">(</span><span class="s2">"/items/</span><span class="si">{item_id}</span><span class="s2">"</span><span class="p">)</span>
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">delete_item</span><span class="p">(</span><span class="n">item_id</span><span class="p">:</span> <span class="nb">int</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">item_id</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">items_db</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="n">HTTPException</span><span class="p">(</span><span class="n">status_code</span><span class="o">=</span><span class="mi">404</span><span class="p">,</span> <span class="n">detail</span><span class="o">=</span><span class="s2">"Item not found"</span><span class="p">)</span>
+    <span class="k">del</span> <span class="n">items_db</span><span class="p">[</span><span class="n">item_id</span><span class="p">]</span>
+    <span class="k">return</span> <span class="p">{</span><span class="s2">"message"</span><span class="p">:</span> <span class="sa">f</span><span class="s2">"Item </span><span class="si">{</span><span class="n">item_id</span><span class="si">}</span><span class="s2"> deleted"</span><span class="p">}</span>
+
+<span class="nd">@app</span><span class="o">.</span><span class="n">post</span><span class="p">(</span><span class="s2">"/items/"</span><span class="p">)</span> <span class="c1"># Note: no item_id in path for creation</span>
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">create_item</span><span class="p">(</span><span class="n">item_data</span><span class="p">:</span> <span class="n">Dict</span><span class="p">):</span>
+    <span class="n">new_id</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">items_db</span><span class="o">.</span><span class="n">keys</span><span class="p">(),</span> <span class="n">default</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span> <span class="o">+</span> <span class="mi">1</span>
+    <span class="n">items_db</span><span class="p">[</span><span class="n">new_id</span><span class="p">]</span> <span class="o">=</span> <span class="n">item_data</span>
+    <span class="k">return</span> <span class="p">{</span><span class="s2">"id"</span><span class="p">:</span> <span class="n">new_id</span><span class="p">,</span> <span class="o">**</span><span class="n">item_data</span><span class="p">}</span>
+</code></pre></div>
+
+<p>With this setup, all standard CRUD operations on <code>/items/{item_id}</code> or <code>/items/</code> are properly defined, preventing the <code>Method Not Allowed</code> error for these paths.</p>
 <h2 id="environment-specific-notes">Environment-Specific Notes</h2>
-<p>The troubleshooting steps remain largely the same regardless of your deployment environment, but there are nuances to consider for each:</p>
+<p>The troubleshooting steps remain largely the same across environments, but certain considerations come into play depending on where your FastAPI application is running.</p>
 <ul>
 <li>
 <p><strong>Local Development:</strong></p>
 <ul>
-<li>This is the easiest environment to debug. You have direct access to the code.</li>
-<li>Ensure you restart your FastAPI server (<code>uvicorn main:app --reload</code>) after making any code changes for them to take effect. The <code>--reload</code> flag is very helpful here, as it automatically restarts on file changes.</li>
-<li>Use browser developer tools (Network tab), Postman, Insomnia, or <code>curl</code> to quickly test requests.</li>
+<li>This is the easiest environment to debug. You have direct access to your code.</li>
+<li>Ensure your <code>uvicorn</code> server is running and, crucially, that it has reloaded your code changes. If you're running <code>uvicorn main:app --reload</code>, changes should be picked up automatically. If not, manually stop and restart <code>uvicorn</code>. I've lost count of how many times I've forgotten to restart the server after a quick code change, leading to this exact error.</li>
+<li>Check for conflicting ports or other local services that might interfere.</li>
 </ul>
 </li>
 <li>
 <p><strong>Docker Containers:</strong></p>
 <ul>
-<li>If your FastAPI app is running in a Docker container, remember that changes to your local code files won't automatically propagate unless you're using volume mounts for development.</li>
-<li><strong>Crucial Step:</strong> After modifying your <code>main.py</code> or other source files, you <strong>must rebuild your Docker image</strong> (<code>docker build -t my-fastapi-app .</code>) and then <strong>restart your container</strong> (<code>docker run -p 8000:8000 my-fastapi-app</code>). Forgetting to rebuild or restart is a common pitfall.</li>
-<li>Verify the code inside the running container (e.g., <code>docker exec -it &lt;container_id&gt; bash</code> then <code>cat main.py</code>) to confirm the updated code is present.</li>
+<li><strong>Image Rebuild:</strong> A very common mistake here is making code changes and then simply restarting the Docker container without rebuilding the image. Your container might be running an old version of your application code that doesn't include the new method definition. Always ensure your <code>Dockerfile</code> correctly copies your source code and that you're running <code>docker build</code> (or your equivalent CI/CD step) to create a fresh image.</li>
+<li><strong>Container Restart:</strong> Even after rebuilding, you must <code>docker run</code> a new container or restart your existing one for the changes to take effect. If you're using <code>docker-compose</code>, a <code>docker-compose up --build -d</code> is often necessary.</li>
 </ul>
 </li>
 <li>
-<p><strong>Cloud (AWS, GCP, Azure, Kubernetes):</strong></p>
+<p><strong>Cloud Deployments (AWS Lambda, Google Cloud Run, Azure Functions, Kubernetes):</strong></p>
 <ul>
-<li><strong>Deployment Pipeline:</strong> The most frequent cause I've seen in cloud environments is that the latest code with the fix hasn't actually been deployed. Check your CI/CD pipeline logs to confirm the correct version of your application was deployed successfully.</li>
-<li><strong>API Gateways/Load Balancers:</strong> If you're using services like AWS API Gateway, GCP API Gateway, or a Kubernetes Ingress controller in front of your FastAPI service, verify their configurations. While they rarely <em>change</em> HTTP methods, they <em>could</em> filter them or not correctly proxy specific methods. Ensure your gateway is configured to pass through all standard HTTP methods (GET, POST, PUT, DELETE, etc.) to your backend. In my experience, misconfigured proxy paths in API Gateway (e.g., <code>/items/*</code> vs. <code>/items</code>) can lead to unexpected method handling.</li>
-<li><strong>Caching Layers:</strong> Less likely for method errors, but always good to check if a caching layer is serving stale responses from an older, pre-fix deployment. Clear any relevant caches if applicable.</li>
-<li><strong>Logs:</strong> Your cloud platform's logging service (CloudWatch, Stackdriver, Azure Monitor) will be invaluable. Look for application logs generated by FastAPI, which might provide more context about the request path before the 405 error is generated.</li>
+<li><strong>Deployment Pipeline Issues:</strong> In CI/CD heavy environments, the primary culprit is often that the latest code (with the corrected method) has not been successfully deployed. Check your deployment logs and ensure the build and deployment process completed without errors.</li>
+<li><strong>API Gateway/Load Balancer Configuration:</strong> This is critical in cloud environments.<ul>
+<li><strong>AWS API Gateway:</strong> If your FastAPI app is behind API Gateway, check the integration settings for the specific endpoint and method. Ensure the API Gateway is correctly proxying the request method to your backend. For instance, if you define a <code>POST</code> method in API Gateway, ensure its integration request is also configured to <code>POST</code> to your Lambda function or ALB. I've personally seen cases where a generic <code>ANY</code> method was set up, but the backend integration specifically expected <code>POST</code>, leading to confusion.</li>
+<li><strong>Kubernetes Ingress:</strong> If using Nginx or Traefik Ingress, ensure there are no rewrite rules or method filters that might be altering the HTTP method before it reaches your FastAPI service.</li>
+<li><strong>Caching:</strong> Check for caching layers (CDNs, CloudFront, etc.) that might be serving stale responses or interfering with request methods, though this is less common for method-specific errors.</li>
+</ul>
+</li>
+<li><strong>Service Mesh (Istio, Linkerd):</strong> If you're using a service mesh, verify that its configuration isn't unexpectedly modifying HTTP methods as requests traverse the mesh.</li>
 </ul>
 </li>
 </ul>
 <h2 id="frequently-asked-questions">Frequently Asked Questions</h2>
-<p><strong>Q: Can this error occur if the path itself is wrong?</strong><br />
-<strong>A:</strong> No. If the path itself does not exist (e.g., <code>/non-existent-path</code>), FastAPI would return an HTTP 404 Not Found error. The <code>Method Not Allowed</code> error explicitly means the path <em>does</em> exist in the routing table, but not for the specific HTTP method you attempted to use.</p>
-<p><strong>Q: Does the order of decorators matter if I have multiple methods for the same path?</strong><br />
-<strong>A:</strong> No, the order of decorators (e.g., <code>@app.get</code> then <code>@app.post</code>) for the same path operation function does not matter for method matching. FastAPI will correctly register all specified methods for that path.</p>
-<p><strong>Q: What if I want a single function to handle multiple methods?</strong><br />
-<strong>A:</strong> You can apply multiple decorators to a single function:</p>
-<div class="highlight"><pre><span></span><code><span class="nd">@app</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"/my-resource/"</span><span class="p">)</span>
-<span class="nd">@app</span><span class="o">.</span><span class="n">post</span><span class="p">(</span><span class="s2">"/my-resource/"</span><span class="p">)</span>
-<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">handle_my_resource</span><span class="p">():</span>
-    <span class="c1"># Logic for both GET and POST requests to /my-resource/</span>
-    <span class="k">return</span> <span class="p">{</span><span class="s2">"message"</span><span class="p">:</span> <span class="s2">"Handled by GET or POST"</span><span class="p">}</span>
+<p><strong>Q: What if I need multiple HTTP methods for the same path?</strong><br />
+<strong>A:</strong> FastAPI makes this straightforward. You can simply stack multiple HTTP method decorators on top of the same path operation function. For example, to allow both <code>GET</code> and <code>PUT</code> for <code>/items/{item_id}</code>:</p>
+<div class="highlight"><pre><span></span><code><span class="nd">@app</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"/items/</span><span class="si">{item_id}</span><span class="s2">"</span><span class="p">)</span>
+<span class="nd">@app</span><span class="o">.</span><span class="n">put</span><span class="p">(</span><span class="s2">"/items/</span><span class="si">{item_id}</span><span class="s2">"</span><span class="p">)</span>
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">item_operations</span><span class="p">(</span><span class="n">item_id</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">item</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">=</span> <span class="kc">None</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">item</span><span class="p">:</span> <span class="c1"># If a body is present, assume it's a PUT</span>
+        <span class="k">return</span> <span class="p">{</span><span class="s2">"message"</span><span class="p">:</span> <span class="sa">f</span><span class="s2">"Updated item </span><span class="si">{</span><span class="n">item_id</span><span class="si">}</span><span class="s2">"</span><span class="p">,</span> <span class="s2">"data"</span><span class="p">:</span> <span class="n">item</span><span class="p">}</span>
+    <span class="k">return</span> <span class="p">{</span><span class="s2">"message"</span><span class="p">:</span> <span class="sa">f</span><span class="s2">"Retrieved item </span><span class="si">{</span><span class="n">item_id</span><span class="si">}</span><span class="s2">"</span><span class="p">}</span>
 </code></pre></div>
 
-<p>Alternatively, you can use <code>APIRouter.api_route</code>:</p>
-<div class="highlight"><pre><span></span><code><span class="nd">@app</span><span class="o">.</span><span class="n">api_route</span><span class="p">(</span><span class="s2">"/my-resource/"</span><span class="p">,</span> <span class="n">methods</span><span class="o">=</span><span class="p">[</span><span class="s2">"GET"</span><span class="p">,</span> <span class="s2">"POST"</span><span class="p">])</span>
-<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">handle_my_resource_generic</span><span class="p">():</span>
-    <span class="c1"># Logic for both GET and POST requests</span>
-    <span class="k">return</span> <span class="p">{</span><span class="s2">"message"</span><span class="p">:</span> <span class="s2">"Handled generically"</span><span class="p">}</span>
+<p>Alternatively, you can define separate functions for each method, which is often clearer:</p>
+<div class="highlight"><pre><span></span><code><span class="nd">@app</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"/items/</span><span class="si">{item_id}</span><span class="s2">"</span><span class="p">)</span>
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">read_item</span><span class="p">(</span><span class="n">item_id</span><span class="p">:</span> <span class="nb">int</span><span class="p">):</span>
+    <span class="k">return</span> <span class="p">{</span><span class="s2">"message"</span><span class="p">:</span> <span class="sa">f</span><span class="s2">"Retrieved item </span><span class="si">{</span><span class="n">item_id</span><span class="si">}</span><span class="s2">"</span><span class="p">}</span>
+
+<span class="nd">@app</span><span class="o">.</span><span class="n">put</span><span class="p">(</span><span class="s2">"/items/</span><span class="si">{item_id}</span><span class="s2">"</span><span class="p">)</span>
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">update_item</span><span class="p">(</span><span class="n">item_id</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">item</span><span class="p">:</span> <span class="nb">dict</span><span class="p">):</span>
+    <span class="k">return</span> <span class="p">{</span><span class="s2">"message"</span><span class="p">:</span> <span class="sa">f</span><span class="s2">"Updated item </span><span class="si">{</span><span class="n">item_id</span><span class="si">}</span><span class="s2">"</span><span class="p">,</span> <span class="s2">"data"</span><span class="p">:</span> <span class="n">item</span><span class="p">}</span>
 </code></pre></div>
 
-<p><strong>Q: How do I debug this in a production environment without direct code access?</strong><br />
-<strong>A:</strong> Rely on monitoring and logging tools. Check application logs for error details. Use <code>curl</code> or a similar HTTP client from within your production network (if possible and secure) to simulate client requests and verify the API's behavior directly. Confirm the deployed code version matches the expected one.</p>
-<p><strong>Q: Is this error related to CORS (Cross-Origin Resource Sharing)?</strong><br />
-<strong>A:</strong> Not directly. CORS errors usually manifest as <code>Access-Control-Allow-Origin</code> headers being missing or incorrect in the browser console, typically preventing the request from even being sent successfully or processed by the browser. A <code>405 Method Not Allowed</code> is a server-side response indicating that the request <em>reached</em> the server, but the method was unsupported for that path. However, a browser might perform an <code>OPTIONS</code> preflight request (due to CORS) which itself could receive a 405 if you haven't explicitly handled <code>OPTIONS</code> for a path that requires preflights.</p>
+<p><strong>Q: Can this error happen with websockets?</strong><br />
+<strong>A:</strong> No, this error is specifically about standard HTTP methods (GET, POST, PUT, DELETE, etc.). WebSockets use a different communication protocol (WS or WSS) that begins with an HTTP handshake but then upgrades to a persistent, full-duplex connection. While the initial handshake uses HTTP <code>GET</code>, the <code>Method Not Allowed</code> error doesn't apply to the WebSocket connection itself.</p>
+<p><strong>Q: Is "X" always uppercase in the error message?</strong><br />
+<strong>A:</strong> Yes, the <code>X</code> representing the HTTP method (e.g., <code>POST</code>, <code>PUT</code>, <code>GET</code>) in the error message will typically be uppercase. This reflects the standard convention for HTTP verbs as defined in RFCs.</p>
+<p><strong>Q: How can I see all available routes and methods for my FastAPI app?</strong><br />
+<strong>A:</strong> FastAPI automatically generates interactive API documentation (Swagger UI) at <code>/docs</code> and ReDoc at <code>/redoc</code>. These interfaces clearly list all defined paths and the HTTP methods they support. Programmatically, you can inspect <code>app.routes</code> (or <code>router.routes</code> if using an <code>APIRouter</code>). This will give you a list of <code>APIRoute</code> objects, from which you can extract path and methods.</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">fastapi</span><span class="w"> </span><span class="kn">import</span> <span class="n">FastAPI</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">fastapi.routing</span><span class="w"> </span><span class="kn">import</span> <span class="n">APIRoute</span>
+
+<span class="n">app</span> <span class="o">=</span> <span class="n">FastAPI</span><span class="p">()</span>
+
+<span class="nd">@app</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"/hello"</span><span class="p">)</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">say_hello</span><span class="p">():</span>
+    <span class="k">return</span> <span class="p">{</span><span class="s2">"message"</span><span class="p">:</span> <span class="s2">"Hello"</span><span class="p">}</span>
+
+<span class="nd">@app</span><span class="o">.</span><span class="n">post</span><span class="p">(</span><span class="s2">"/items/"</span><span class="p">)</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">create_item</span><span class="p">():</span>
+    <span class="k">pass</span>
+
+<span class="k">for</span> <span class="n">route</span> <span class="ow">in</span> <span class="n">app</span><span class="o">.</span><span class="n">routes</span><span class="p">:</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">route</span><span class="p">,</span> <span class="n">APIRoute</span><span class="p">):</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Path: </span><span class="si">{</span><span class="n">route</span><span class="o">.</span><span class="n">path</span><span class="si">}</span><span class="s2">, Methods: </span><span class="si">{</span><span class="n">route</span><span class="o">.</span><span class="n">methods</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+
+<span class="c1"># Example output:</span>
+<span class="c1"># Path: /hello, Methods: {'GET'}</span>
+<span class="c1"># Path: /items/, Methods: {'POST'}</span>
+<span class="c1"># ... (FastAPI's internal routes like /openapi.json, /docs, /redoc will also appear)</span>
+</code></pre></div>
+
+<p><strong>Q: Does the order of decorators matter if I have multiple methods on the same path?</strong><br />
+<strong>A:</strong> For defining multiple HTTP methods for the <em>same</em> path, the order of <code>app.get</code>, <code>app.post</code>, etc., decorators on a single function does not fundamentally matter. Python applies decorators from bottom to top, but FastAPI internally registers all methods associated with that path. However, if you define <em>separate</em> path operation functions for each method on the same path (which is common and often clearer), FastAPI handles them correctly based on the incoming request method. The order of defining different <em>paths</em> can sometimes matter for path matching priority, but that's a different concern than the <code>Method Not Allowed</code> error.</p>
 <h2 id="related-errors">Related Errors</h2>
     </div>
 
@@ -401,7 +487,7 @@ curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </spa
     <div class="container">
       <p class="footer-logo">⚡ ErrorFix.dev</p>
       <p>Practical, engineer-written guides for real-world software errors.</p>
-      <p style="margin-top:.5rem">Last updated: <time>September 02, 2026</time>.</p>
+      <p style="margin-top:.5rem">Last updated: <time>September 03, 2026</time>.</p>
       <p class="footer-links" style="margin-top:.75rem">
         <!-- ╔══════════════════════════════════════════════════════════════╗ -->
         <!-- ║  AFFILIATE LINKS – replace the href values below            ║ -->
