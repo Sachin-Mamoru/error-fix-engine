@@ -124,245 +124,320 @@
     <div class="article-content">
       <h1 id="typescript-ts2307-cannot-find-module-x-or-its-corresponding-type-declarations">TypeScript TS2307: Cannot find module 'X' or its corresponding type declarations</h1>
 <blockquote>
-<p>Encountering TS2307 means TypeScript cannot find a module or its type declarations; this guide explains how to fix it.</p>
+<p>Encountering TypeScript TS2307 means your project can't locate a module or its type definitions; this guide explains how to fix it by verifying installations and configuration.</p>
 </blockquote>
 <h2 id="what-this-error-means">What This Error Means</h2>
-<p>When TypeScript throws the <code>TS2307: Cannot find module 'X' or its corresponding type declarations</code> error, it's telling you that during compilation, it couldn't locate a specific module you're trying to import, nor could it find the necessary type information for that module. This isn't just a runtime warning; it's a compilation stopper, meaning your TypeScript code won't successfully transform into runnable JavaScript until this issue is resolved.</p>
-<p>At its core, TypeScript needs to understand the shape of all data and functions it interacts with. When you <code>import SomeModule from 'X'</code>, TypeScript looks for two things:<br />
-1.  <strong>The module itself:</strong> Typically, this means a <code>.ts</code>, <code>.tsx</code>, <code>.js</code>, or <code>.jsx</code> file within your project or a JavaScript package in your <code>node_modules</code> directory.<br />
-2.  <strong>Its type declarations:</strong> These are usually found in <code>.d.ts</code> files, either alongside the module's source or, more commonly for third-party JavaScript libraries, in a separate <code>@types/X</code> package.</p>
-<p>If either of these components is missing or inaccessible from TypeScript's perspective, compilation fails. In my experience, this error usually surfaces during <code>npm run build</code> or when your IDE's language server is actively checking your code.</p>
+<p>This error indicates that the TypeScript compiler (<code>tsc</code>) cannot find the JavaScript module you are trying to <code>import</code>, or it cannot find the associated type declaration file (<code>.d.ts</code>) for that module. TypeScript needs these type declarations to perform static analysis and ensure type safety. Without them, it cannot understand the shape or interface of the imported module, leading to a compilation failure. It's essentially TypeScript telling you, "I don't know what <code>X</code> is, or what types it exposes, so I can't guarantee your code is safe to compile."</p>
 <h2 id="why-it-happens">Why It Happens</h2>
-<p>This error fundamentally occurs because TypeScript's compiler cannot resolve the path to the module you're importing, or it can resolve the module but has no type information to validate how you're using it. It's like asking someone to find a book without providing the correct library location or a book that exists but is written in a language they don't understand.</p>
-<p>The "why" behind this error can range from straightforward installation oversights to subtle configuration issues within your <code>tsconfig.json</code> or project structure. It means TypeScript's module resolution strategy, which dictates how it finds files, has failed for the module named 'X'. It's critical to understand that even if your JavaScript runtime (Node.js, browser) might find the module later, TypeScript's static analysis requires this information <em>at compile time</em>.</p>
+<p>This error typically arises when there's a disconnect between your project's <code>node_modules</code> directory, your <code>tsconfig.json</code> configuration, and the actual packages you're trying to use. TypeScript's compiler relies on these pieces to resolve modules. If any piece is missing, misconfigured, or out of sync, <code>TS2307</code> is the result. In my experience, it's almost always a pathing issue, a missing dependency, or a missing type declaration package.</p>
 <h2 id="common-causes">Common Causes</h2>
-<p>Based on years of working with TypeScript projects, I've distilled the common triggers for TS2307 into a few key areas:</p>
+<p>Let's break down the typical culprits I've encountered when this error surfaces:</p>
 <ol>
-<li><strong>Module Not Installed:</strong> The most frequent culprit. The package 'X' simply hasn't been installed into your <code>node_modules</code> directory. This happens if you forget <code>npm install X</code> or if <code>npm install</code> wasn't run after cloning a repository.</li>
-<li><strong>Missing Type Declarations (<code>@types</code>):</strong> Many older or JavaScript-first libraries don't ship with their own TypeScript declaration files (<code>.d.ts</code>). For these, you need to install a separate <code>@types/X</code> package from the DefinitelyTyped repository (e.g., <code>npm install @types/lodash --save-dev</code>). If you use a JavaScript library without its types, TypeScript won't know what <code>lodash.get()</code> returns or what arguments it expects.</li>
-<li><strong>Incorrect Import Path:</strong><ul>
-<li><strong>Relative Paths:</strong> Misspellings, incorrect directory traversal (<code>../</code> vs <code>./</code>), or forgetting the file extension (though <code>moduleResolution</code> often handles this for <code>.ts</code> files).</li>
-<li><strong>Absolute Paths/Path Aliases:</strong> If you're using <code>baseUrl</code> or <code>paths</code> in your <code>tsconfig.json</code> to create aliases (e.g., <code>import { MyComponent } from '@components/MyComponent'</code>), these settings might be misconfigured or not correctly mapping to the physical file location.</li>
-</ul>
-</li>
+<li><strong>Module Not Installed:</strong> The most straightforward reason. You're attempting to <code>import</code> a package that hasn't been added to your <code>package.json</code> dependencies and subsequently installed via <code>npm install</code> or <code>yarn install</code>. TypeScript can't find something that isn't there.</li>
+<li><strong>Missing Type Declarations (<code>@types</code> Package):</strong> Even if the JavaScript module is installed, TypeScript needs its type definitions. Many popular libraries ship with their types directly, but others (especially older ones or those not primarily focused on TypeScript) require a separate <code>@types/package-name</code> package from the DefinitelyTyped project. If this <code>devDependencies</code> package is missing, TypeScript cannot type-check the module.</li>
+<li><strong>Incorrect Module Name or Path:</strong> A simple typo in the <code>import</code> statement or an incorrect relative or absolute path to a local module. This often happens with refactoring or copy-pasting code.</li>
 <li><strong><code>tsconfig.json</code> Misconfiguration:</strong><ul>
-<li><strong><code>moduleResolution</code>:</strong> If set incorrectly (e.g., <code>node</code> vs. <code>bundler</code>), TypeScript might not use the expected algorithm to find modules in <code>node_modules</code>.</li>
-<li><strong><code>baseUrl</code> and <code>paths</code>:</strong> As mentioned above, incorrect mappings prevent TypeScript from resolving custom module paths.</li>
-<li><strong><code>include</code> / <code>exclude</code>:</strong> Your <code>tsconfig.json</code> might be accidentally excluding the directory where your module resides or where the type declarations are located.</li>
-<li><strong><code>allowSyntheticDefaultImports</code> / <code>esModuleInterop</code>:</strong> Sometimes, issues with how common JS modules are imported as ES modules can manifest similarly, though usually with different error codes.</li>
+<li><strong><code>baseUrl</code> and <code>paths</code>:</strong> If you're using path aliases (e.g., <code>import { logger } from '@utils/logger';</code>), your <code>tsconfig.json</code> needs to correctly map these aliases to physical file system paths. If these mappings are incorrect or incomplete, TypeScript won't find the aliased module.</li>
+<li><strong><code>moduleResolution</code>:</strong> Incorrectly set. For most Node.js projects, this should be <code>node</code>. If it's <code>classic</code> or an unsupported value, TypeScript might not use the standard Node.js module resolution algorithm to find your packages.</li>
+<li><strong><code>typeRoots</code>:</strong> If you're managing custom type declarations or placing <code>@types</code> packages in non-standard locations, <code>typeRoots</code> needs to explicitly point to these directories. By default, TypeScript usually looks in <code>node_modules/@types</code>, but custom setups can override this.</li>
+<li><strong><code>include</code> / <code>exclude</code>:</strong> The TypeScript compiler might not be looking in the correct directories for your source files or installed types if these configuration options are too restrictive.</li>
 </ul>
 </li>
-<li><strong>Case Sensitivity:</strong> On case-sensitive file systems (Linux, macOS by default), <code>import { MyService } from './myService'</code> will fail if the file is actually named <code>MyService.ts</code>. Windows is usually case-insensitive, which can hide these issues until deployment.</li>
-<li><strong>Monorepo Challenges:</strong> In monorepos, hoisted <code>node_modules</code> or complex <code>tsconfig.json</code> setups across packages can sometimes lead to situations where a package is installed at the root but not correctly linked or resolved by a specific sub-package's TypeScript configuration.</li>
-<li><strong>Outdated <code>node_modules</code> / Cache Issues:</strong> Sometimes, phantom errors occur due to corrupted <code>node_modules</code> or a stale <code>npm</code>/<code>yarn</code> cache. I've seen this in production when a <code>package-lock.json</code> gets out of sync or during CI builds.</li>
+<li><strong>Corrupted <code>node_modules</code> or <code>package-lock.json</code>:</strong> Sometimes, local dependency caches can get out of sync, or the <code>node_modules</code> directory can become corrupted. This often happens after merging branches, switching Node.js versions, or dealing with complex dependency trees.</li>
+<li><strong>Case Sensitivity Issues:</strong> While development environments on Windows or macOS might be case-insensitive, Linux-based CI/CD pipelines, Docker containers, or production servers are strictly case-sensitive. If an import path or module name has incorrect casing (e.g., <code>import { MyUtil } from './myUtil';</code> instead of <code>./MyUtil</code>), it might work locally but fail in a case-sensitive environment.</li>
+<li><strong>Transpiled Output vs. Source:</strong> If you're importing a module that's part of your project but hasn't been compiled yet (or its output is in a different directory than expected), TypeScript might not find it. This is less common for external <code>node_modules</code> but can happen with monorepos or complex build setups where internal packages depend on each other's compiled output.</li>
 </ol>
 <h2 id="step-by-step-fix">Step-by-Step Fix</h2>
-<p>Let's walk through the diagnostic and resolution process for TS2307.</p>
+<p>Let's walk through the troubleshooting steps I typically follow when encountering this error.</p>
 <ol>
 <li>
-<p><strong>Verify Module Installation:</strong><br />
-    First, confirm that the module 'X' is actually installed in your <code>node_modules</code> directory.<br />
-    ```bash<br />
-    # For npm<br />
-    npm ls X</p>
-<h1 id="for-yarn">For yarn</h1>
-<p>yarn why X<br />
-<code>``
-If</code>npm ls X<code>or</code>yarn why X` returns "empty" or "no dependencies", the module is not installed. If it shows the module, note its version.</p>
-</li>
-<li>
-<p><strong>Install the Missing Module:</strong><br />
-    If the module 'X' is not installed, install it.<br />
-    ```bash<br />
-    # Install as a regular dependency<br />
-    npm install X<br />
-    # or<br />
-    yarn add X</p>
-<h1 id="install-as-a-dev-dependency-if-only-used-during-developmentbuild">Install as a dev dependency (if only used during development/build)</h1>
-<p>npm install X --save-dev</p>
-<h1 id="or">or</h1>
-<p>yarn add X --dev<br />
-```</p>
-</li>
-<li>
-<p><strong>Install Missing Type Declarations:</strong><br />
-    If the module 'X' <em>is</em> installed but you're still getting the TS2307 error, it often means TypeScript can't find its type definitions. This is common for older JavaScript libraries.<br />
-<code>bash
-    # Install types as a dev dependency
-    npm install @types/X --save-dev
-    # or
-    yarn add @types/X --dev</code><br />
-<em>Self-correction:</em> For scoped packages like <code>@angular/core</code>, the types package would typically be <code>@types/angular__core</code> (using double underscore). If 'X' is <code>lodash</code>, you'd install <code>@types/lodash</code>. If you're unsure, search on npmjs.com for <code>@types/X</code>.</p>
-</li>
-<li>
-<p><strong>Check Import Path Accuracy:</strong><br />
-    Scrutinize the <code>import</code> statement in your code.</p>
+<p><strong>Verify Module Installation:</strong></p>
 <ul>
-<li><strong>Relative Paths:</strong> Is <code>import { foo } from '../../components/foo'</code> correct? Double-check the directory structure.</li>
-<li><strong>Named vs. Default Imports:</strong> Are you importing <code>import X from 'X'</code> (default) when it should be <code>import { X } from 'X'</code> (named), or vice-versa? Some libraries have different export styles.</li>
-<li><strong>Subpath Imports:</strong> If you're importing a specific part of a library (e.g., <code>import { createLogger } from 'winston/lib/winston/create-logger'</code>), ensure the subpath is correct and exposed.</li>
+<li><strong>Check <code>package.json</code>:</strong> Open your <code>package.json</code> file and confirm that the module <code>X</code> (or the package that provides <code>X</code>) is listed under <code>dependencies</code> or <code>devDependencies</code>.</li>
+<li><strong>Check <code>node_modules</code>:</strong> Manually verify that the module's directory actually exists within your project's <code>node_modules</code> directory.</li>
+<li><strong>Reinstall:</strong> If the module isn't found, install it.<br />
+<code>bash
+    npm install &lt;module-name&gt; # For production dependencies
+    # or
+    npm install --save-dev &lt;module-name&gt; # For development dependencies
+    # If using Yarn:
+    yarn add &lt;module-name&gt;
+    # or
+    yarn add --dev &lt;module-name&gt;</code></li>
+<li><strong>Example:</strong> If the error is <code>Cannot find module 'lodash'</code>, you'd run <code>npm install lodash</code>.</li>
 </ul>
 </li>
 <li>
-<p><strong>Review <code>tsconfig.json</code> Configuration:</strong><br />
-    Open your <code>tsconfig.json</code> file.</p>
+<p><strong>Install Missing Type Declarations:</strong></p>
 <ul>
-<li><strong><code>baseUrl</code> and <code>paths</code>:</strong> If you're using path aliases, verify they are correctly configured.<br />
+<li>If the module itself is installed (i.e., step 1 passed) but the error persists, it's highly likely you need the <code>@types</code> package for it. Search for <code>npm install @types/&lt;module-name&gt;</code>.</li>
+<li>Type declaration packages are almost always <code>devDependencies</code>.</li>
+<li><strong>Example:</strong> For <code>lodash</code>, you'd run <code>npm install --save-dev @types/lodash</code>.</li>
+<li><strong>Note:</strong> Sometimes the type declaration package name differs slightly from the module name (e.g., <code>react-router-dom</code> needs <code>@types/react-router-dom</code>). A quick search on npmjs.com or DefinitelyTyped's repository usually clarifies this.</li>
+</ul>
+</li>
+<li>
+<p><strong>Check Import Path and Module Name:</strong></p>
+<ul>
+<li><strong>Typo?</strong> Double-check the spelling of the module in your <code>import</code> statement in the problematic TypeScript file.</li>
+<li><strong>Relative Path Correct?</strong> For local files (e.g., <code>import { MyService } from '../services/my-service';</code>), ensure the path is accurate relative to the importing file. Remember that <code>./</code> means "current directory" and <code>../</code> means "parent directory".</li>
+<li><strong>Absolute Path / Alias Correct?</strong> If you're using path aliases (e.g., <code>import { logger } from '@utils/logger';</code>), confirm that the alias is correctly defined in <code>tsconfig.json</code> (see step 4). Pay attention to case sensitivity here.</li>
+</ul>
+</li>
+<li>
+<p><strong>Review <code>tsconfig.json</code> Configuration:</strong></p>
+<ul>
+<li><strong><code>baseUrl</code> and <code>paths</code>:</strong> If you are using path aliases, confirm they are correctly mapped within <code>compilerOptions</code>. The <code>baseUrl</code> typically defines the root for module resolution.<br />
 <code>json
+    // tsconfig.json example for path aliases
     {
       "compilerOptions": {
-        "baseUrl": ".", // This makes paths relative to the project root
+        "baseUrl": "./src", // Crucial: all module paths are relative to this base
         "paths": {
-          "@components/*": ["src/components/*"],
-          "@utils/*": ["src/utils/*"]
+          "@utils/*": ["utils/*"], // Now resolves to ./src/utils/*
+          "@config": ["config/index.ts"] // Resolves to ./src/config/index.ts
         },
-        "moduleResolution": "node", // Generally safe default
         // ... other options
       }
     }</code><br />
-    Then, <code>import { MyButton } from '@components/MyButton'</code> should resolve to <code>src/components/MyButton.ts</code>.</li>
-<li><strong><code>moduleResolution</code>:</strong> Ensure it's set to <code>"node"</code> or <code>"bundler"</code> (for modern setups like Vite/Rollup). If you're using an older value, update it.</li>
-<li><strong><code>include</code> and <code>exclude</code>:</strong> Make sure your source files and any relevant <code>node_modules</code> aren't being inadvertently excluded.</li>
-<li><strong><code>allowSyntheticDefaultImports</code> / <code>esModuleInterop</code>:</strong> For packages that might have module interop issues, try setting these to <code>true</code> in <code>compilerOptions</code>.<br />
+    In this example, <code>import { foo } from '@utils/bar';</code> would resolve to <code>src/utils/bar.ts</code>.</li>
+<li><strong><code>moduleResolution</code>:</strong> For most modern Node.js projects, this should be <code>node</code>.<br />
 <code>json
     {
       "compilerOptions": {
-        "allowSyntheticDefaultImports": true,
-        "esModuleInterop": true
+        "moduleResolution": "node",
         // ...
       }
     }</code></li>
+<li><strong><code>typeRoots</code>:</strong> If you have custom type declarations or are using a non-standard structure for <code>@types</code> packages, ensure <code>typeRoots</code> points to them. Generally, <code>typeRoots: ["./node_modules/@types"]</code> is implicitly handled, but explicit declaration might be needed in complex setups or when using global types.</li>
+<li><strong><code>include</code> / <code>exclude</code>:</strong> Ensure your TypeScript source files and any directories containing custom type definitions are covered by the <code>include</code> array and not inadvertently excluded by <code>exclude</code>.</li>
 </ul>
 </li>
 <li>
-<p><strong>Rebuild/Restart:</strong><br />
-    After making changes, especially to <code>tsconfig.json</code> or installing new packages, stop and restart your TypeScript compiler, build process, or development server (e.g., <code>npm run dev</code>, <code>tsc --watch</code>). Your IDE might also need a restart to refresh its language server cache.</p>
-</li>
+<p><strong>Clean and Reinstall Dependencies:</strong></p>
+<ul>
 <li>
-<p><strong>Clear <code>node_modules</code> and Cache:</strong><br />
-    As a last resort for stubborn issues, a clean slate often helps.<br />
+<p>Sometimes, the <code>node_modules</code> directory or the lock file (<code>package-lock.json</code>, <code>yarn.lock</code>) can get into a strange state. A fresh install often resolves these issues.<br />
     ```bash<br />
-    # Delete node_modules and package-lock.json/yarn.lock<br />
     rm -rf node_modules<br />
-    rm -f package-lock.json yarn.lock</p>
-<h1 id="clear-npmyarn-cache">Clear npm/yarn cache</h1>
-<p>npm cache clean --force # For npm<br />
-yarn cache clean        # For yarn</p>
-<h1 id="reinstall-everything">Reinstall everything</h1>
-<p>npm install</p>
-<h1 id="or_1">or</h1>
-<p>yarn install<br />
+    rm -f package-lock.json # For npm users<br />
+    rm -f yarn.lock        # For yarn users</p>
+<p>npm install # or yarn install<br />
 ```<br />
-Then, try to build again. I've often seen this fix weird, inexplicable resolution failures.</p>
+    *   After performing this, try compiling your TypeScript project again.</p>
+</li>
+</ul>
 </li>
 <li>
-<p><strong>Monorepo Specifics:</strong><br />
-    If you're in a monorepo, ensure the package is correctly declared in the <code>package.json</code> of the <em>sub-package</em> that's trying to import it. Also, check that your monorepo tool (Lerna, Nx, pnpm workspace) is properly hoisting or linking dependencies.</p>
+<p><strong>Restart TypeScript Language Server (IDE):</strong></p>
+<ul>
+<li>If you're using an IDE like VS Code, the TypeScript language server might not have picked up recent changes (like newly installed <code>@types</code> packages). Restarting VS Code or using the "TypeScript: Restart TS Server" command (usually accessible via Ctrl+Shift+P or Cmd+Shift+P) can resolve this by forcing the language server to re-index your project. I've seen this many times where the command line build passes but the IDE still shows the error.</li>
+</ul>
 </li>
 </ol>
 <h2 id="code-examples">Code Examples</h2>
-<p>Here are some concise, copy-paste ready examples for common fixes.</p>
-<p><strong>1. Installing a missing module:</strong></p>
-<div class="highlight"><pre><span></span><code><span class="c1"># If your code has `import { someFunction } from 'some-library';`</span>
-<span class="c1"># and 'some-library' is not installed:</span>
-npm<span class="w"> </span>install<span class="w"> </span>some-library
-<span class="c1"># or</span>
-yarn<span class="w"> </span>add<span class="w"> </span>some-library
-</code></pre></div>
+<p>Here are some common scenarios and their corresponding fixes.</p>
+<p><strong>Scenario 1: Missing Module Installation</strong></p>
+<p>Error: <code>TS2307: Cannot find module 'axios' or its corresponding type declarations.</code><br />
+Your code:</p>
+<div class="highlight"><pre><span></span><code><span class="k">import</span><span class="w"> </span><span class="nx">axios</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s1">'axios'</span><span class="p">;</span>
 
-<p><strong>2. Installing missing type declarations:</strong></p>
-<div class="highlight"><pre><span></span><code><span class="c1"># If your code has `import moment from 'moment';`</span>
-<span class="c1"># and you get TS2307, because 'moment' ships without its own types:</span>
-npm<span class="w"> </span>install<span class="w"> </span>@types/moment<span class="w"> </span>--save-dev
-<span class="c1"># or</span>
-yarn<span class="w"> </span>add<span class="w"> </span>@types/moment<span class="w"> </span>--dev
-</code></pre></div>
-
-<p><strong>3. Correct <code>tsconfig.json</code> for path aliases:</strong></p>
-<div class="highlight"><pre><span></span><code><span class="c1">// tsconfig.json</span>
-<span class="p">{</span>
-<span class="w">  </span><span class="nt">"compilerOptions"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="nt">"baseUrl"</span><span class="p">:</span><span class="w"> </span><span class="s2">"./src"</span><span class="p">,</span><span class="w"> </span><span class="c1">// Base URL for module resolution, relative to tsconfig.json</span>
-<span class="w">    </span><span class="nt">"paths"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">      </span><span class="nt">"@components/*"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"components/*"</span><span class="p">],</span><span class="w"> </span><span class="c1">// Maps @components/X to src/components/X</span>
-<span class="w">      </span><span class="nt">"@services/*"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"services/*"</span><span class="p">]</span><span class="w">      </span><span class="c1">// Maps @services/X to src/services/X</span>
-<span class="w">    </span><span class="p">},</span>
-<span class="w">    </span><span class="nt">"moduleResolution"</span><span class="p">:</span><span class="w"> </span><span class="s2">"node"</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">"target"</span><span class="p">:</span><span class="w"> </span><span class="s2">"es2020"</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">"lib"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"es2020"</span><span class="p">,</span><span class="w"> </span><span class="s2">"dom"</span><span class="p">],</span>
-<span class="w">    </span><span class="nt">"jsx"</span><span class="p">:</span><span class="w"> </span><span class="s2">"react"</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">"strict"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">"esModuleInterop"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">"skipLibCheck"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">"forceConsistentCasingInFileNames"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
-<span class="w">  </span><span class="p">},</span>
-<span class="w">  </span><span class="nt">"include"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"src/**/*.ts"</span><span class="p">,</span><span class="w"> </span><span class="s2">"src/**/*.tsx"</span><span class="p">],</span>
-<span class="w">  </span><span class="nt">"exclude"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"node_modules"</span><span class="p">]</span>
+<span class="k">async</span><span class="w"> </span><span class="kd">function</span><span class="w"> </span><span class="nx">fetchData</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="nx">response</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">await</span><span class="w"> </span><span class="nx">axios</span><span class="p">.</span><span class="nx">get</span><span class="p">(</span><span class="s1">'https://api.example.com/data'</span><span class="p">);</span>
+<span class="w">  </span><span class="nx">console</span><span class="p">.</span><span class="nx">log</span><span class="p">(</span><span class="nx">response</span><span class="p">.</span><span class="nx">data</span><span class="p">);</span>
 <span class="p">}</span>
 </code></pre></div>
 
-<p>With the above <code>tsconfig.json</code>, you could write:</p>
-<div class="highlight"><pre><span></span><code><span class="c1">// src/pages/HomePage.ts</span>
-<span class="k">import</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">Button</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s1">'@components/Button'</span><span class="p">;</span><span class="w"> </span><span class="c1">// Resolves to src/components/Button.ts</span>
-<span class="k">import</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">UserService</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s1">'@services/UserService'</span><span class="p">;</span><span class="w"> </span><span class="c1">// Resolves to src/services/UserService.ts</span>
-
-<span class="c1">// ...</span>
+<p>Fix: Install the <code>axios</code> package.</p>
+<div class="highlight"><pre><span></span><code>npm<span class="w"> </span>install<span class="w"> </span>axios
+<span class="c1"># or</span>
+yarn<span class="w"> </span>add<span class="w"> </span>axios
 </code></pre></div>
 
-<p><strong>4. Enabling ES Module Interop:</strong></p>
-<div class="highlight"><pre><span></span><code><span class="c1">// tsconfig.json</span>
-<span class="p">{</span>
+<p><strong>Scenario 2: Missing Type Declarations for an Installed Module</strong></p>
+<p>Error: <code>TS2307: Cannot find module 'express' or its corresponding type declarations.</code><br />
+Your code:</p>
+<div class="highlight"><pre><span></span><code><span class="k">import</span><span class="w"> </span><span class="nx">express</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s1">'express'</span><span class="p">;</span>
+<span class="kd">const</span><span class="w"> </span><span class="nx">app</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">express</span><span class="p">();</span>
+<span class="nx">app</span><span class="p">.</span><span class="nx">get</span><span class="p">(</span><span class="s1">'/'</span><span class="p">,</span><span class="w"> </span><span class="p">(</span><span class="nx">req</span><span class="p">,</span><span class="w"> </span><span class="nx">res</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nx">res</span><span class="p">.</span><span class="nx">send</span><span class="p">(</span><span class="s1">'Hello'</span><span class="p">));</span>
+<span class="nx">app</span><span class="p">.</span><span class="nx">listen</span><span class="p">(</span><span class="mf">3000</span><span class="p">,</span><span class="w"> </span><span class="p">()</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nx">console</span><span class="p">.</span><span class="nx">log</span><span class="p">(</span><span class="s1">'Listening on port 3000'</span><span class="p">));</span>
+</code></pre></div>
+
+<p>Fix: Install the <code>@types/express</code> type declaration package.</p>
+<div class="highlight"><pre><span></span><code>npm<span class="w"> </span>install<span class="w"> </span>--save-dev<span class="w"> </span>@types/express
+<span class="c1"># or</span>
+yarn<span class="w"> </span>add<span class="w"> </span>--dev<span class="w"> </span>@types/express
+</code></pre></div>
+
+<p><strong>Scenario 3: Incorrect Relative Path for a Local File</strong></p>
+<p>Error: <code>TS2307: Cannot find module './utils/helpers' or its corresponding type declarations.</code><br />
+File structure:</p>
+<div class="highlight"><pre><span></span><code>src/
+  api/
+    index.ts (where the error occurs)
+  common/
+    helpers.ts
+</code></pre></div>
+
+<p>Your code in <code>src/api/index.ts</code>:</p>
+<div class="highlight"><pre><span></span><code><span class="k">import</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">formatData</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s1">'./utils/helpers'</span><span class="p">;</span><span class="w"> </span><span class="c1">// Incorrect path</span>
+<span class="c1">// The file 'helpers.ts' is in 'src/common', not 'src/api/utils'</span>
+</code></pre></div>
+
+<p>Fix: Correct the import path to reflect the actual file location.</p>
+<div class="highlight"><pre><span></span><code><span class="k">import</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">formatData</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s1">'../common/helpers'</span><span class="p">;</span><span class="w"> </span><span class="c1">// Corrected path</span>
+</code></pre></div>
+
+<p><strong>Scenario 4: <code>baseUrl</code> and <code>paths</code> Misconfiguration for an Alias</strong></p>
+<p>Error: <code>TS2307: Cannot find module '@config/app' or its corresponding type declarations.</code><br />
+Your code:</p>
+<div class="highlight"><pre><span></span><code><span class="k">import</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">APP_NAME</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s1">'@config/app'</span><span class="p">;</span>
+<span class="nx">console</span><span class="p">.</span><span class="nx">log</span><span class="p">(</span><span class="nx">APP_NAME</span><span class="p">);</span>
+</code></pre></div>
+
+<p><code>tsconfig.json</code>:</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
 <span class="w">  </span><span class="nt">"compilerOptions"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="nt">"esModuleInterop"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">"allowSyntheticDefaultImports"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
+<span class="w">    </span><span class="nt">"baseUrl"</span><span class="p">:</span><span class="w"> </span><span class="s2">"."</span><span class="p">,</span><span class="w"> </span><span class="c1">// Assume project root is '.'</span>
+<span class="w">    </span><span class="nt">"paths"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">"@config/*"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"config/*"</span><span class="p">]</span><span class="w"> </span><span class="c1">// This maps to ./config/* relative to baseUrl</span>
+<span class="w">    </span><span class="p">},</span>
 <span class="w">    </span><span class="c1">// ... other options</span>
+<span class="w">  </span><span class="p">},</span>
+<span class="w">  </span><span class="nt">"include"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"src/**/*"</span><span class="p">]</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>And file structure:</p>
+<div class="highlight"><pre><span></span><code>my-project/
+  src/
+    config/
+      app.ts
+  tsconfig.json
+</code></pre></div>
+
+<p>The error here is that <code>@config/*</code> would resolve to <code>config/*</code> relative to <code>baseUrl: "."</code>, meaning <code>my-project/config/app.ts</code>. But the actual file is at <code>my-project/src/config/app.ts</code>.</p>
+<p>Fix: Adjust <code>baseUrl</code> and <code>paths</code> to correctly reflect the structure.</p>
+<p>Option A: Set <code>baseUrl</code> to <code>src</code></p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">"compilerOptions"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">"baseUrl"</span><span class="p">:</span><span class="w"> </span><span class="s2">"./src"</span><span class="p">,</span><span class="w"> </span><span class="c1">// Now base is 'src'</span>
+<span class="w">    </span><span class="nt">"paths"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">"@config/*"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"config/*"</span><span class="p">]</span><span class="w"> </span><span class="c1">// Resolves to ./src/config/*</span>
+<span class="w">    </span><span class="p">},</span>
+<span class="w">    </span><span class="c1">// ...</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p>Option B: Keep <code>baseUrl</code> at <code>.</code> but adjust <code>paths</code></p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">"compilerOptions"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">"baseUrl"</span><span class="p">:</span><span class="w"> </span><span class="s2">"."</span><span class="p">,</span><span class="w"> </span><span class="c1">// Base is project root</span>
+<span class="w">    </span><span class="nt">"paths"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">"@config/*"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"src/config/*"</span><span class="p">]</span><span class="w"> </span><span class="c1">// Explicitly point into 'src'</span>
+<span class="w">    </span><span class="p">},</span>
+<span class="w">    </span><span class="c1">// ...</span>
 <span class="w">  </span><span class="p">}</span>
 <span class="p">}</span>
 </code></pre></div>
 
 <h2 id="environment-specific-notes">Environment-Specific Notes</h2>
-<p>The troubleshooting steps remain largely consistent, but how you apply them can differ slightly across environments.</p>
-<h3 id="local-development">Local Development</h3>
+<p>The <code>TS2307</code> error can manifest differently or require specific considerations based on your development and deployment environment.</p>
 <ul>
-<li><strong>IDE Integration:</strong> Your IDE (VS Code, WebStorm) typically runs its own TypeScript language server. This server often caches information. If you install new packages or change <code>tsconfig.json</code>, you might need to restart your IDE or use a "Restart TS Server" command within it to clear its cache and pick up the changes.</li>
-<li><strong>File System:</strong> Be mindful of case sensitivity if you develop on Windows and deploy to Linux. Windows' file system is usually case-insensitive, while Linux's is not. This can lead to modules being found locally but failing on a CI/CD server.</li>
-<li><strong><code>node_modules</code>:</strong> Ensure the <code>node_modules</code> folder is where your <code>package.json</code> and <code>tsconfig.json</code> expects it to be. Accidental deletion or moving it can cause issues.</li>
+<li>
+<p><strong>Local Development:</strong></p>
+<ul>
+<li><strong>IDE Caching:</strong> As mentioned, if you add new <code>@types</code> packages, your IDE's TypeScript language server might need a restart to pick up the changes. This is a common pitfall and can lead to confusion when the command line compiler works, but the IDE still flags an error.</li>
+<li><strong>Global Installs:</strong> Avoid using global <code>npm install -g</code> for project dependencies. This can lead to version mismatches, makes your project less portable, and makes it harder for project-specific tools to find modules reliably. Always install dependencies locally to the project.</li>
+<li><strong><code>node_modules</code> Visibility:</strong> Ensure your project root (where <code>package.json</code> and <code>tsconfig.json</code> reside) is at a level where <code>node_modules</code> is directly accessible. Sometimes overly nested project structures can confuse module resolution.</li>
 </ul>
-<h3 id="docker-containers">Docker Containers</h3>
+</li>
+<li>
+<p><strong>Docker Containers:</strong></p>
 <ul>
-<li><strong>Build Context:</strong> When building Docker images, the <code>COPY . .</code> command copies your entire build context. Ensure that your <code>node_modules</code> are <em>not</em> copied from your host (unless you explicitly mean to, which is rarely recommended for production images). Instead, run <code>npm install</code> <em>inside</em> the Docker container during the build process.</li>
-<li><strong><code>WORKDIR</code>:</strong> Verify your <code>WORKDIR</code> inside the Dockerfile is correctly set, as relative paths and <code>node_modules</code> resolution depend on it.</li>
-<li><strong>Layer Caching:</strong> Docker layers can cache <code>node_modules</code>. If you modify <code>package.json</code> or <code>package-lock.json</code>, ensure your Dockerfile invalidates the cache layer for <code>npm install</code> by placing it after the <code>COPY package*.json</code> step.<br />
-<code>dockerfile
-    # Dockerfile example
-    FROM node:lts-alpine
-    WORKDIR /app
-    COPY package*.json ./
-    RUN npm install # This layer will be re-run if package.json changes
-    COPY . .
-    RUN npm run build
-    CMD ["node", "dist/index.js"]</code><br />
-    If <code>npm install</code> fails inside Docker, check the container logs meticulously.</li>
+<li><strong>Image Layers and <code>npm install</code>:</strong> When building Docker images, <code>node_modules</code> is typically created as a separate layer. It's crucial that <code>npm install</code> (or <code>yarn install</code>) runs <em>inside</em> the container during the Docker build process, after <code>package.json</code> and <code>package-lock.json</code> are copied. Copying <code>node_modules</code> from your host machine directly can lead to issues due to OS differences (e.g., native module compilation, symlinks).</li>
+<li><strong><code>.dockerignore</code>:</strong> Double-check your <code>.dockerignore</code> file. If <code>node_modules</code> is listed, it won't be copied into the container. This is usually desired if you want <code>npm install</code> to run freshly. However, if you explicitly intended to copy an existing <code>node_modules</code> (which is rare and often problematic), ensure it's not ignored.</li>
+<li><strong><code>WORKDIR</code>:</strong> Verify that the <code>WORKDIR</code> instruction in your <code>Dockerfile</code> is correctly set to the directory where your <code>package.json</code> and <code>tsconfig.json</code> reside. An incorrect <code>WORKDIR</code> means <code>npm install</code> will run in the wrong place, and <code>tsc</code> won't find <code>node_modules</code> when it tries to compile.</li>
 </ul>
-<h3 id="cloud-environments-cicd-serverless">Cloud Environments (CI/CD, Serverless)</h3>
+<p>```dockerfile</p>
+<h1 id="example-dockerfile-snippet-for-a-typescript-nodejs-app">Example Dockerfile snippet for a TypeScript Node.js app</h1>
+<p>FROM node:18-alpine as builder<br />
+WORKDIR /app<br />
+COPY package.json package-lock.json ./ # Copy only package files first<br />
+RUN npm install --frozen-lockfile      # Install dependencies in a separate layer</p>
+<p>COPY . .                               # Copy the rest of your application code<br />
+RUN npm run build                      # Run your TypeScript build command</p>
+<p>FROM node:18-alpine as runner<br />
+WORKDIR /app<br />
+COPY --from=builder /app/package.json ./<br />
+COPY --from=builder /app/node_modules ./node_modules<br />
+COPY --from=builder /app/dist ./dist  # Assuming 'dist' is your build output directory</p>
+<p>CMD ["node", "dist/index.js"]<br />
+```</p>
+</li>
+<li>
+<p><strong>Cloud (e.g., AWS Lambda, Google Cloud Functions):</strong></p>
 <ul>
-<li><strong>Clean Installs:</strong> CI/CD pipelines typically perform clean <code>npm install</code> or <code>yarn install</code> operations. This is good as it prevents local environment inconsistencies, but it means you must ensure all dependencies (including <code>@types</code> packages) are correctly listed in <code>package.json</code>.</li>
-<li><strong>Caching Strategies:</strong> Most CI/CD platforms offer dependency caching. While this speeds up builds, a corrupted cache can sometimes be a source of <code>TS2307</code>. If an error is persistent, try disabling the cache for a build to see if it resolves the issue.</li>
-<li><strong>Build Environment:</strong> The Node.js version and npm/yarn version used in your CI/CD pipeline might differ from your local setup. Ensure they are compatible and consistent.</li>
-<li><strong>Serverless Functions:</strong> When deploying serverless functions (AWS Lambda, Azure Functions, Google Cloud Functions), your <code>node_modules</code> folder is usually zipped and uploaded. This means any <code>devDependencies</code> (including <code>@types</code>) that are critical for the <em>build process</em> must be installed <em>before</em> packaging, but often are not included in the final deployment package. Make sure your build script correctly handles this separation. I've often seen <code>TS2307</code> errors appear during serverless deployments simply because the build environment didn't have <code>@types</code> installed, even though the final runtime didn't need them.</li>
+<li><strong>Deployment Package Size:</strong> When deploying to serverless platforms, the <code>node_modules</code> directory is often part of your deployment package. Ensure all necessary dependencies, including <code>@types</code> packages (if your build runs on the serverless platform and needs them, though typically <code>@types</code> are dev dependencies), are included and correctly bundled.</li>
+<li><strong>Build Environment Consistency:</strong> The build environment in cloud CI/CD pipelines (e.g., AWS CodeBuild, GitHub Actions, GitLab CI) might differ from your local machine. Ensure these environments have sufficient memory and disk space for <code>npm install</code> to complete successfully and consistently. I've seen <code>npm install</code> silently fail or get corrupted due to resource constraints, leading to this <code>TS2307</code> error only in deployment.</li>
+<li><strong>Lambda Layers:</strong> If using AWS Lambda Layers for common dependencies, ensure the layer is correctly configured and accessible to your function. The path within the layer must match what the Node.js runtime expects (e.g., <code>/opt/nodejs/node_modules</code>). Your function's import statements need to resolve to these paths.</li>
+</ul>
+</li>
 </ul>
 <h2 id="frequently-asked-questions">Frequently Asked Questions</h2>
-<p><strong>Q: Why do I need <code>@types</code> packages if TypeScript is installed?</strong><br />
-<strong>A:</strong> TypeScript itself provides the language features and compiler. However, many JavaScript libraries were written before TypeScript became popular and don't include type definitions. <code>@types</code> packages, primarily from the DefinitelyTyped project, provide these external type declarations, allowing TypeScript to understand and validate the usage of these JavaScript libraries.</p>
-<p><strong>Q: How do I find the correct <code>@types</code> package for a library?</strong><br />
-<strong>A:</strong> The standard convention is <code>npm install @types/library-name</code>. For scoped packages like <code>@angular/core</code>, it's <code>npm install @types/angular__core</code>. If unsure, search on npmjs.com for <code>@types/your-library-name</code>. If no <code>@types</code> package exists, you might need to create a simple declaration file (<code>.d.ts</code>) yourself, often with <code>declare module 'X';</code> as a fallback.</p>
-<p><strong>Q: What if the module <em>is</em> installed (I see it in <code>node_modules</code>) but I still get the error?</strong><br />
-<strong>A:</strong> This points to a module resolution issue. Double-check your import path, review your <code>tsconfig.json</code> (<code>baseUrl</code>, <code>paths</code>, <code>moduleResolution</code>), ensure you have the corresponding <code>@types</code> package, or try clearing <code>node_modules</code> and reinstalling. Case sensitivity on Linux/macOS is also a common culprit here.</p>
-<p><strong>Q: Does this error mean my code won't run at all?</strong><br />
-<strong>A:</strong> It means your TypeScript code won't <em>compile</em> into JavaScript. If you manage to compile it (e.g., using <code>tsc --noEmit false</code> or ignoring the error), and the underlying JavaScript module is present at runtime, the JavaScript code might run. However, the purpose of TypeScript is to catch these errors at compile time, so bypassing it defeats the purpose and introduces potential runtime issues.</p>
-<p><strong>Q: What exactly do <code>baseUrl</code> and <code>paths</code> in <code>tsconfig.json</code> do?</strong><br />
-<strong>A:</strong> <code>baseUrl</code> defines the base directory from which non-relative module imports are resolved. <code>paths</code> allows you to create alias mappings for specific import paths, letting you use shorter or more descriptive names (e.g., <code>@components</code>) instead of long relative paths like <code>../../../src/components</code>. They are powerful for organizing large projects and preventing "dot-dot-slash hell."</p>
+<ul>
+<li>
+<p><strong>Q: Why does my code work fine in VS Code but fail when I run <code>tsc</code> from the command line?</strong></p>
+<ul>
+<li><strong>A:</strong> VS Code's TypeScript language server sometimes has a more lenient module resolution, or it might be using an older/cached version of your <code>node_modules</code> or <code>tsconfig.json</code>. When <code>tsc</code> runs from the command line, it's performing a fresh compilation based strictly on your current project files and configuration. Restarting VS Code's TS server or explicitly running <code>tsc --build</code> (or <code>npm run build</code>) after changes usually syncs them up.</li>
+</ul>
+</li>
+<li>
+<p><strong>Q: I'm using Yarn workspaces or a monorepo. How does that affect this error?</strong></p>
+<ul>
+<li><strong>A:</strong> In monorepos, module resolution can be more complex. Ensure that:<ol>
+<li>Your <code>package.json</code> files for each workspace correctly list their dependencies.</li>
+<li><code>yarn install</code> or <code>npm install</code> is run from the monorepo root to hoist/link dependencies correctly.</li>
+<li><code>tsconfig.json</code> files in sub-packages correctly extend a base <code>tsconfig.json</code> if applicable, and their <code>baseUrl</code> and <code>paths</code> are configured relative to their own context or the monorepo root. Sometimes <code>composite</code> projects and <code>references</code> in <code>tsconfig.json</code> are needed for inter-package dependencies.</li>
+</ol>
+</li>
+</ul>
+</li>
+<li>
+<p><strong>Q: Does the order of <code>npm install package</code> and <code>npm install --save-dev @types/package</code> matter?</strong></p>
+<ul>
+<li><strong>A:</strong> Not strictly for the TypeScript compiler, as it will look for types regardless of when they were installed, as long as they are present in <code>node_modules/@types</code>. However, it's good practice to install the main package first, then its types. When installing a new package, I typically install both (the <code>package</code> and <code>@types/package</code>) together or consecutively before attempting to compile, just to ensure consistency.</li>
+</ul>
+</li>
+<li>
+<p><strong>Q: My module <code>X</code> <em>does</em> have its own built-in types (e.g., <code>react</code>). Why am I still getting TS2307?</strong></p>
+<ul>
+<li><strong>A:</strong> Even with built-in types, there might be an issue.<ol>
+<li><strong>TypeScript Version:</strong> Your project's TypeScript version might be too old to understand the types provided by the module, especially if the module uses newer TypeScript features.</li>
+<li><strong><code>package.json</code> <code>types</code> field:</strong> The module's <code>package.json</code> might not correctly point to its type declarations via the <code>types</code> or <code>typings</code> field, or there's an issue with the module's packaging.</li>
+<li><strong><code>moduleResolution</code>:</strong> An incorrect <code>moduleResolution</code> setting in <code>tsconfig.json</code> can prevent TypeScript from finding built-in types. Ensure it's set to <code>node</code> for Node.js environments.</li>
+<li><strong>Corrupted <code>node_modules</code>:</strong> A clean reinstall (step 5) can sometimes resolve this if the package was partially installed or corrupted.</li>
+</ol>
+</li>
+</ul>
+</li>
+<li>
+<p><strong>Q: I've tried everything in the guide, but the error persists. What's next?</strong></p>
+<ul>
+<li><strong>A:</strong><ol>
+<li><strong>Simplify:</strong> Create a minimal <code>tsconfig.json</code> and a single <code>.ts</code> file that only imports the problematic module. Does it still fail? This helps isolate whether the issue is with the module itself or your broader project configuration.</li>
+<li><strong>Verbose Output:</strong> Run <code>tsc --traceResolution</code> to get extremely detailed output on how TypeScript is attempting to resolve modules. This verbose logging can reveal exactly where it's looking, what paths it's trying, and why it's ultimately failing to find the module. It's often the Rosetta Stone for complex resolution issues.</li>
+<li><strong>Search:</strong> Use the exact error message along with the specific module name (<code>TS2307 cannot find module 'X'</code>) in a search engine. Someone else has likely encountered the same specific combination of module, environment, and <code>tsconfig.json</code> settings.</li>
+</ol>
+</li>
+</ul>
+</li>
+</ul>
 <h2 id="related-errors">Related Errors</h2>
+<ul>
+<li><em>(none)</em></li>
+</ul>
     </div>
 
     <!-- ── AdSense placement 2 – bottom of article ───────────────────────── -->
@@ -429,7 +504,7 @@ yarn<span class="w"> </span>add<span class="w"> </span>@types/moment<span class=
     <div class="container">
       <p class="footer-logo">⚡ ErrorFix.dev</p>
       <p>Practical, engineer-written guides for real-world software errors.</p>
-      <p style="margin-top:.5rem">Last updated: <time>September 11, 2026</time>.</p>
+      <p style="margin-top:.5rem">Last updated: <time>September 12, 2026</time>.</p>
       <p class="footer-links" style="margin-top:.75rem">
         <!-- ╔══════════════════════════════════════════════════════════════╗ -->
         <!-- ║  AFFILIATE LINKS – replace the href values below            ║ -->

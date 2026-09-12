@@ -1,258 +1,285 @@
 # TypeScript TS2307: Cannot find module 'X' or its corresponding type declarations
-> Encountering TS2307 means TypeScript cannot find a module or its type declarations; this guide explains how to fix it.
+> Encountering TypeScript TS2307 means your project can't locate a module or its type definitions; this guide explains how to fix it by verifying installations and configuration.
 
 ## What This Error Means
 
-When TypeScript throws the `TS2307: Cannot find module 'X' or its corresponding type declarations` error, it's telling you that during compilation, it couldn't locate a specific module you're trying to import, nor could it find the necessary type information for that module. This isn't just a runtime warning; it's a compilation stopper, meaning your TypeScript code won't successfully transform into runnable JavaScript until this issue is resolved.
-
-At its core, TypeScript needs to understand the shape of all data and functions it interacts with. When you `import SomeModule from 'X'`, TypeScript looks for two things:
-1.  **The module itself:** Typically, this means a `.ts`, `.tsx`, `.js`, or `.jsx` file within your project or a JavaScript package in your `node_modules` directory.
-2.  **Its type declarations:** These are usually found in `.d.ts` files, either alongside the module's source or, more commonly for third-party JavaScript libraries, in a separate `@types/X` package.
-
-If either of these components is missing or inaccessible from TypeScript's perspective, compilation fails. In my experience, this error usually surfaces during `npm run build` or when your IDE's language server is actively checking your code.
+This error indicates that the TypeScript compiler (`tsc`) cannot find the JavaScript module you are trying to `import`, or it cannot find the associated type declaration file (`.d.ts`) for that module. TypeScript needs these type declarations to perform static analysis and ensure type safety. Without them, it cannot understand the shape or interface of the imported module, leading to a compilation failure. It's essentially TypeScript telling you, "I don't know what `X` is, or what types it exposes, so I can't guarantee your code is safe to compile."
 
 ## Why It Happens
 
-This error fundamentally occurs because TypeScript's compiler cannot resolve the path to the module you're importing, or it can resolve the module but has no type information to validate how you're using it. It's like asking someone to find a book without providing the correct library location or a book that exists but is written in a language they don't understand.
-
-The "why" behind this error can range from straightforward installation oversights to subtle configuration issues within your `tsconfig.json` or project structure. It means TypeScript's module resolution strategy, which dictates how it finds files, has failed for the module named 'X'. It's critical to understand that even if your JavaScript runtime (Node.js, browser) might find the module later, TypeScript's static analysis requires this information *at compile time*.
+This error typically arises when there's a disconnect between your project's `node_modules` directory, your `tsconfig.json` configuration, and the actual packages you're trying to use. TypeScript's compiler relies on these pieces to resolve modules. If any piece is missing, misconfigured, or out of sync, `TS2307` is the result. In my experience, it's almost always a pathing issue, a missing dependency, or a missing type declaration package.
 
 ## Common Causes
 
-Based on years of working with TypeScript projects, I've distilled the common triggers for TS2307 into a few key areas:
+Let's break down the typical culprits I've encountered when this error surfaces:
 
-1.  **Module Not Installed:** The most frequent culprit. The package 'X' simply hasn't been installed into your `node_modules` directory. This happens if you forget `npm install X` or if `npm install` wasn't run after cloning a repository.
-2.  **Missing Type Declarations (`@types`):** Many older or JavaScript-first libraries don't ship with their own TypeScript declaration files (`.d.ts`). For these, you need to install a separate `@types/X` package from the DefinitelyTyped repository (e.g., `npm install @types/lodash --save-dev`). If you use a JavaScript library without its types, TypeScript won't know what `lodash.get()` returns or what arguments it expects.
-3.  **Incorrect Import Path:**
-    *   **Relative Paths:** Misspellings, incorrect directory traversal (`../` vs `./`), or forgetting the file extension (though `moduleResolution` often handles this for `.ts` files).
-    *   **Absolute Paths/Path Aliases:** If you're using `baseUrl` or `paths` in your `tsconfig.json` to create aliases (e.g., `import { MyComponent } from '@components/MyComponent'`), these settings might be misconfigured or not correctly mapping to the physical file location.
+1.  **Module Not Installed:** The most straightforward reason. You're attempting to `import` a package that hasn't been added to your `package.json` dependencies and subsequently installed via `npm install` or `yarn install`. TypeScript can't find something that isn't there.
+2.  **Missing Type Declarations (`@types` Package):** Even if the JavaScript module is installed, TypeScript needs its type definitions. Many popular libraries ship with their types directly, but others (especially older ones or those not primarily focused on TypeScript) require a separate `@types/package-name` package from the DefinitelyTyped project. If this `devDependencies` package is missing, TypeScript cannot type-check the module.
+3.  **Incorrect Module Name or Path:** A simple typo in the `import` statement or an incorrect relative or absolute path to a local module. This often happens with refactoring or copy-pasting code.
 4.  **`tsconfig.json` Misconfiguration:**
-    *   **`moduleResolution`:** If set incorrectly (e.g., `node` vs. `bundler`), TypeScript might not use the expected algorithm to find modules in `node_modules`.
-    *   **`baseUrl` and `paths`:** As mentioned above, incorrect mappings prevent TypeScript from resolving custom module paths.
-    *   **`include` / `exclude`:** Your `tsconfig.json` might be accidentally excluding the directory where your module resides or where the type declarations are located.
-    *   **`allowSyntheticDefaultImports` / `esModuleInterop`:** Sometimes, issues with how common JS modules are imported as ES modules can manifest similarly, though usually with different error codes.
-5.  **Case Sensitivity:** On case-sensitive file systems (Linux, macOS by default), `import { MyService } from './myService'` will fail if the file is actually named `MyService.ts`. Windows is usually case-insensitive, which can hide these issues until deployment.
-6.  **Monorepo Challenges:** In monorepos, hoisted `node_modules` or complex `tsconfig.json` setups across packages can sometimes lead to situations where a package is installed at the root but not correctly linked or resolved by a specific sub-package's TypeScript configuration.
-7.  **Outdated `node_modules` / Cache Issues:** Sometimes, phantom errors occur due to corrupted `node_modules` or a stale `npm`/`yarn` cache. I've seen this in production when a `package-lock.json` gets out of sync or during CI builds.
+    *   **`baseUrl` and `paths`:** If you're using path aliases (e.g., `import { logger } from '@utils/logger';`), your `tsconfig.json` needs to correctly map these aliases to physical file system paths. If these mappings are incorrect or incomplete, TypeScript won't find the aliased module.
+    *   **`moduleResolution`:** Incorrectly set. For most Node.js projects, this should be `node`. If it's `classic` or an unsupported value, TypeScript might not use the standard Node.js module resolution algorithm to find your packages.
+    *   **`typeRoots`:** If you're managing custom type declarations or placing `@types` packages in non-standard locations, `typeRoots` needs to explicitly point to these directories. By default, TypeScript usually looks in `node_modules/@types`, but custom setups can override this.
+    *   **`include` / `exclude`:** The TypeScript compiler might not be looking in the correct directories for your source files or installed types if these configuration options are too restrictive.
+5.  **Corrupted `node_modules` or `package-lock.json`:** Sometimes, local dependency caches can get out of sync, or the `node_modules` directory can become corrupted. This often happens after merging branches, switching Node.js versions, or dealing with complex dependency trees.
+6.  **Case Sensitivity Issues:** While development environments on Windows or macOS might be case-insensitive, Linux-based CI/CD pipelines, Docker containers, or production servers are strictly case-sensitive. If an import path or module name has incorrect casing (e.g., `import { MyUtil } from './myUtil';` instead of `./MyUtil`), it might work locally but fail in a case-sensitive environment.
+7.  **Transpiled Output vs. Source:** If you're importing a module that's part of your project but hasn't been compiled yet (or its output is in a different directory than expected), TypeScript might not find it. This is less common for external `node_modules` but can happen with monorepos or complex build setups where internal packages depend on each other's compiled output.
 
 ## Step-by-Step Fix
 
-Let's walk through the diagnostic and resolution process for TS2307.
+Let's walk through the troubleshooting steps I typically follow when encountering this error.
 
 1.  **Verify Module Installation:**
-    First, confirm that the module 'X' is actually installed in your `node_modules` directory.
-    ```bash
-    # For npm
-    npm ls X
+    *   **Check `package.json`:** Open your `package.json` file and confirm that the module `X` (or the package that provides `X`) is listed under `dependencies` or `devDependencies`.
+    *   **Check `node_modules`:** Manually verify that the module's directory actually exists within your project's `node_modules` directory.
+    *   **Reinstall:** If the module isn't found, install it.
+        ```bash
+        npm install <module-name> # For production dependencies
+        # or
+        npm install --save-dev <module-name> # For development dependencies
+        # If using Yarn:
+        yarn add <module-name>
+        # or
+        yarn add --dev <module-name>
+        ```
+    *   **Example:** If the error is `Cannot find module 'lodash'`, you'd run `npm install lodash`.
 
-    # For yarn
-    yarn why X
-    ```
-    If `npm ls X` or `yarn why X` returns "empty" or "no dependencies", the module is not installed. If it shows the module, note its version.
+2.  **Install Missing Type Declarations:**
+    *   If the module itself is installed (i.e., step 1 passed) but the error persists, it's highly likely you need the `@types` package for it. Search for `npm install @types/<module-name>`.
+    *   Type declaration packages are almost always `devDependencies`.
+    *   **Example:** For `lodash`, you'd run `npm install --save-dev @types/lodash`.
+    *   **Note:** Sometimes the type declaration package name differs slightly from the module name (e.g., `react-router-dom` needs `@types/react-router-dom`). A quick search on npmjs.com or DefinitelyTyped's repository usually clarifies this.
 
-2.  **Install the Missing Module:**
-    If the module 'X' is not installed, install it.
-    ```bash
-    # Install as a regular dependency
-    npm install X
-    # or
-    yarn add X
+3.  **Check Import Path and Module Name:**
+    *   **Typo?** Double-check the spelling of the module in your `import` statement in the problematic TypeScript file.
+    *   **Relative Path Correct?** For local files (e.g., `import { MyService } from '../services/my-service';`), ensure the path is accurate relative to the importing file. Remember that `./` means "current directory" and `../` means "parent directory".
+    *   **Absolute Path / Alias Correct?** If you're using path aliases (e.g., `import { logger } from '@utils/logger';`), confirm that the alias is correctly defined in `tsconfig.json` (see step 4). Pay attention to case sensitivity here.
 
-    # Install as a dev dependency (if only used during development/build)
-    npm install X --save-dev
-    # or
-    yarn add X --dev
-    ```
-
-3.  **Install Missing Type Declarations:**
-    If the module 'X' *is* installed but you're still getting the TS2307 error, it often means TypeScript can't find its type definitions. This is common for older JavaScript libraries.
-    ```bash
-    # Install types as a dev dependency
-    npm install @types/X --save-dev
-    # or
-    yarn add @types/X --dev
-    ```
-    *Self-correction:* For scoped packages like `@angular/core`, the types package would typically be `@types/angular__core` (using double underscore). If 'X' is `lodash`, you'd install `@types/lodash`. If you're unsure, search on npmjs.com for `@types/X`.
-
-4.  **Check Import Path Accuracy:**
-    Scrutinize the `import` statement in your code.
-    *   **Relative Paths:** Is `import { foo } from '../../components/foo'` correct? Double-check the directory structure.
-    *   **Named vs. Default Imports:** Are you importing `import X from 'X'` (default) when it should be `import { X } from 'X'` (named), or vice-versa? Some libraries have different export styles.
-    *   **Subpath Imports:** If you're importing a specific part of a library (e.g., `import { createLogger } from 'winston/lib/winston/create-logger'`), ensure the subpath is correct and exposed.
-
-5.  **Review `tsconfig.json` Configuration:**
-    Open your `tsconfig.json` file.
-    *   **`baseUrl` and `paths`:** If you're using path aliases, verify they are correctly configured.
+4.  **Review `tsconfig.json` Configuration:**
+    *   **`baseUrl` and `paths`:** If you are using path aliases, confirm they are correctly mapped within `compilerOptions`. The `baseUrl` typically defines the root for module resolution.
         ```json
+        // tsconfig.json example for path aliases
         {
           "compilerOptions": {
-            "baseUrl": ".", // This makes paths relative to the project root
+            "baseUrl": "./src", // Crucial: all module paths are relative to this base
             "paths": {
-              "@components/*": ["src/components/*"],
-              "@utils/*": ["src/utils/*"]
+              "@utils/*": ["utils/*"], // Now resolves to ./src/utils/*
+              "@config": ["config/index.ts"] // Resolves to ./src/config/index.ts
             },
-            "moduleResolution": "node", // Generally safe default
             // ... other options
           }
         }
         ```
-        Then, `import { MyButton } from '@components/MyButton'` should resolve to `src/components/MyButton.ts`.
-    *   **`moduleResolution`:** Ensure it's set to `"node"` or `"bundler"` (for modern setups like Vite/Rollup). If you're using an older value, update it.
-    *   **`include` and `exclude`:** Make sure your source files and any relevant `node_modules` aren't being inadvertently excluded.
-    *   **`allowSyntheticDefaultImports` / `esModuleInterop`:** For packages that might have module interop issues, try setting these to `true` in `compilerOptions`.
+        In this example, `import { foo } from '@utils/bar';` would resolve to `src/utils/bar.ts`.
+    *   **`moduleResolution`:** For most modern Node.js projects, this should be `node`.
         ```json
         {
           "compilerOptions": {
-            "allowSyntheticDefaultImports": true,
-            "esModuleInterop": true
+            "moduleResolution": "node",
             // ...
           }
         }
         ```
+    *   **`typeRoots`:** If you have custom type declarations or are using a non-standard structure for `@types` packages, ensure `typeRoots` points to them. Generally, `typeRoots: ["./node_modules/@types"]` is implicitly handled, but explicit declaration might be needed in complex setups or when using global types.
+    *   **`include` / `exclude`:** Ensure your TypeScript source files and any directories containing custom type definitions are covered by the `include` array and not inadvertently excluded by `exclude`.
 
-6.  **Rebuild/Restart:**
-    After making changes, especially to `tsconfig.json` or installing new packages, stop and restart your TypeScript compiler, build process, or development server (e.g., `npm run dev`, `tsc --watch`). Your IDE might also need a restart to refresh its language server cache.
+5.  **Clean and Reinstall Dependencies:**
+    *   Sometimes, the `node_modules` directory or the lock file (`package-lock.json`, `yarn.lock`) can get into a strange state. A fresh install often resolves these issues.
+        ```bash
+        rm -rf node_modules
+        rm -f package-lock.json # For npm users
+        rm -f yarn.lock        # For yarn users
 
-7.  **Clear `node_modules` and Cache:**
-    As a last resort for stubborn issues, a clean slate often helps.
-    ```bash
-    # Delete node_modules and package-lock.json/yarn.lock
-    rm -rf node_modules
-    rm -f package-lock.json yarn.lock
+        npm install # or yarn install
+        ```
+    *   After performing this, try compiling your TypeScript project again.
 
-    # Clear npm/yarn cache
-    npm cache clean --force # For npm
-    yarn cache clean        # For yarn
-
-    # Reinstall everything
-    npm install
-    # or
-    yarn install
-    ```
-    Then, try to build again. I've often seen this fix weird, inexplicable resolution failures.
-
-8.  **Monorepo Specifics:**
-    If you're in a monorepo, ensure the package is correctly declared in the `package.json` of the *sub-package* that's trying to import it. Also, check that your monorepo tool (Lerna, Nx, pnpm workspace) is properly hoisting or linking dependencies.
+6.  **Restart TypeScript Language Server (IDE):**
+    *   If you're using an IDE like VS Code, the TypeScript language server might not have picked up recent changes (like newly installed `@types` packages). Restarting VS Code or using the "TypeScript: Restart TS Server" command (usually accessible via Ctrl+Shift+P or Cmd+Shift+P) can resolve this by forcing the language server to re-index your project. I've seen this many times where the command line build passes but the IDE still shows the error.
 
 ## Code Examples
 
-Here are some concise, copy-paste ready examples for common fixes.
+Here are some common scenarios and their corresponding fixes.
 
-**1. Installing a missing module:**
+**Scenario 1: Missing Module Installation**
 
-```bash
-# If your code has `import { someFunction } from 'some-library';`
-# and 'some-library' is not installed:
-npm install some-library
-# or
-yarn add some-library
-```
+Error: `TS2307: Cannot find module 'axios' or its corresponding type declarations.`
+Your code:
+```typescript
+import axios from 'axios';
 
-**2. Installing missing type declarations:**
-
-```bash
-# If your code has `import moment from 'moment';`
-# and you get TS2307, because 'moment' ships without its own types:
-npm install @types/moment --save-dev
-# or
-yarn add @types/moment --dev
-```
-
-**3. Correct `tsconfig.json` for path aliases:**
-
-```json
-// tsconfig.json
-{
-  "compilerOptions": {
-    "baseUrl": "./src", // Base URL for module resolution, relative to tsconfig.json
-    "paths": {
-      "@components/*": ["components/*"], // Maps @components/X to src/components/X
-      "@services/*": ["services/*"]      // Maps @services/X to src/services/X
-    },
-    "moduleResolution": "node",
-    "target": "es2020",
-    "lib": ["es2020", "dom"],
-    "jsx": "react",
-    "strict": true,
-    "esModuleInterop": true,
-    "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true
-  },
-  "include": ["src/**/*.ts", "src/**/*.tsx"],
-  "exclude": ["node_modules"]
+async function fetchData() {
+  const response = await axios.get('https://api.example.com/data');
+  console.log(response.data);
 }
 ```
-With the above `tsconfig.json`, you could write:
-```typescript
-// src/pages/HomePage.ts
-import { Button } from '@components/Button'; // Resolves to src/components/Button.ts
-import { UserService } from '@services/UserService'; // Resolves to src/services/UserService.ts
-
-// ...
+Fix: Install the `axios` package.
+```bash
+npm install axios
+# or
+yarn add axios
 ```
 
-**4. Enabling ES Module Interop:**
+**Scenario 2: Missing Type Declarations for an Installed Module**
 
+Error: `TS2307: Cannot find module 'express' or its corresponding type declarations.`
+Your code:
+```typescript
+import express from 'express';
+const app = express();
+app.get('/', (req, res) => res.send('Hello'));
+app.listen(3000, () => console.log('Listening on port 3000'));
+```
+Fix: Install the `@types/express` type declaration package.
+```bash
+npm install --save-dev @types/express
+# or
+yarn add --dev @types/express
+```
+
+**Scenario 3: Incorrect Relative Path for a Local File**
+
+Error: `TS2307: Cannot find module './utils/helpers' or its corresponding type declarations.`
+File structure:
+```
+src/
+  api/
+    index.ts (where the error occurs)
+  common/
+    helpers.ts
+```
+Your code in `src/api/index.ts`:
+```typescript
+import { formatData } from './utils/helpers'; // Incorrect path
+// The file 'helpers.ts' is in 'src/common', not 'src/api/utils'
+```
+Fix: Correct the import path to reflect the actual file location.
+```typescript
+import { formatData } from '../common/helpers'; // Corrected path
+```
+
+**Scenario 4: `baseUrl` and `paths` Misconfiguration for an Alias**
+
+Error: `TS2307: Cannot find module '@config/app' or its corresponding type declarations.`
+Your code:
+```typescript
+import { APP_NAME } from '@config/app';
+console.log(APP_NAME);
+```
+`tsconfig.json`:
 ```json
-// tsconfig.json
 {
   "compilerOptions": {
-    "esModuleInterop": true,
-    "allowSyntheticDefaultImports": true
+    "baseUrl": ".", // Assume project root is '.'
+    "paths": {
+      "@config/*": ["config/*"] // This maps to ./config/* relative to baseUrl
+    },
     // ... other options
+  },
+  "include": ["src/**/*"]
+}
+```
+And file structure:
+```
+my-project/
+  src/
+    config/
+      app.ts
+  tsconfig.json
+```
+The error here is that `@config/*` would resolve to `config/*` relative to `baseUrl: "."`, meaning `my-project/config/app.ts`. But the actual file is at `my-project/src/config/app.ts`.
+
+Fix: Adjust `baseUrl` and `paths` to correctly reflect the structure.
+
+Option A: Set `baseUrl` to `src`
+```json
+{
+  "compilerOptions": {
+    "baseUrl": "./src", // Now base is 'src'
+    "paths": {
+      "@config/*": ["config/*"] // Resolves to ./src/config/*
+    },
+    // ...
+  }
+}
+```
+Option B: Keep `baseUrl` at `.` but adjust `paths`
+```json
+{
+  "compilerOptions": {
+    "baseUrl": ".", // Base is project root
+    "paths": {
+      "@config/*": ["src/config/*"] // Explicitly point into 'src'
+    },
+    // ...
   }
 }
 ```
 
 ## Environment-Specific Notes
 
-The troubleshooting steps remain largely consistent, but how you apply them can differ slightly across environments.
+The `TS2307` error can manifest differently or require specific considerations based on your development and deployment environment.
 
-### Local Development
+*   **Local Development:**
+    *   **IDE Caching:** As mentioned, if you add new `@types` packages, your IDE's TypeScript language server might need a restart to pick up the changes. This is a common pitfall and can lead to confusion when the command line compiler works, but the IDE still flags an error.
+    *   **Global Installs:** Avoid using global `npm install -g` for project dependencies. This can lead to version mismatches, makes your project less portable, and makes it harder for project-specific tools to find modules reliably. Always install dependencies locally to the project.
+    *   **`node_modules` Visibility:** Ensure your project root (where `package.json` and `tsconfig.json` reside) is at a level where `node_modules` is directly accessible. Sometimes overly nested project structures can confuse module resolution.
 
-*   **IDE Integration:** Your IDE (VS Code, WebStorm) typically runs its own TypeScript language server. This server often caches information. If you install new packages or change `tsconfig.json`, you might need to restart your IDE or use a "Restart TS Server" command within it to clear its cache and pick up the changes.
-*   **File System:** Be mindful of case sensitivity if you develop on Windows and deploy to Linux. Windows' file system is usually case-insensitive, while Linux's is not. This can lead to modules being found locally but failing on a CI/CD server.
-*   **`node_modules`:** Ensure the `node_modules` folder is where your `package.json` and `tsconfig.json` expects it to be. Accidental deletion or moving it can cause issues.
+*   **Docker Containers:**
+    *   **Image Layers and `npm install`:** When building Docker images, `node_modules` is typically created as a separate layer. It's crucial that `npm install` (or `yarn install`) runs *inside* the container during the Docker build process, after `package.json` and `package-lock.json` are copied. Copying `node_modules` from your host machine directly can lead to issues due to OS differences (e.g., native module compilation, symlinks).
+    *   **`.dockerignore`:** Double-check your `.dockerignore` file. If `node_modules` is listed, it won't be copied into the container. This is usually desired if you want `npm install` to run freshly. However, if you explicitly intended to copy an existing `node_modules` (which is rare and often problematic), ensure it's not ignored.
+    *   **`WORKDIR`:** Verify that the `WORKDIR` instruction in your `Dockerfile` is correctly set to the directory where your `package.json` and `tsconfig.json` reside. An incorrect `WORKDIR` means `npm install` will run in the wrong place, and `tsc` won't find `node_modules` when it tries to compile.
 
-### Docker Containers
-
-*   **Build Context:** When building Docker images, the `COPY . .` command copies your entire build context. Ensure that your `node_modules` are *not* copied from your host (unless you explicitly mean to, which is rarely recommended for production images). Instead, run `npm install` *inside* the Docker container during the build process.
-*   **`WORKDIR`:** Verify your `WORKDIR` inside the Dockerfile is correctly set, as relative paths and `node_modules` resolution depend on it.
-*   **Layer Caching:** Docker layers can cache `node_modules`. If you modify `package.json` or `package-lock.json`, ensure your Dockerfile invalidates the cache layer for `npm install` by placing it after the `COPY package*.json` step.
     ```dockerfile
-    # Dockerfile example
-    FROM node:lts-alpine
+    # Example Dockerfile snippet for a TypeScript Node.js app
+    FROM node:18-alpine as builder
     WORKDIR /app
-    COPY package*.json ./
-    RUN npm install # This layer will be re-run if package.json changes
-    COPY . .
-    RUN npm run build
+    COPY package.json package-lock.json ./ # Copy only package files first
+    RUN npm install --frozen-lockfile      # Install dependencies in a separate layer
+
+    COPY . .                               # Copy the rest of your application code
+    RUN npm run build                      # Run your TypeScript build command
+
+    FROM node:18-alpine as runner
+    WORKDIR /app
+    COPY --from=builder /app/package.json ./
+    COPY --from=builder /app/node_modules ./node_modules
+    COPY --from=builder /app/dist ./dist  # Assuming 'dist' is your build output directory
+
     CMD ["node", "dist/index.js"]
     ```
-    If `npm install` fails inside Docker, check the container logs meticulously.
 
-### Cloud Environments (CI/CD, Serverless)
-
-*   **Clean Installs:** CI/CD pipelines typically perform clean `npm install` or `yarn install` operations. This is good as it prevents local environment inconsistencies, but it means you must ensure all dependencies (including `@types` packages) are correctly listed in `package.json`.
-*   **Caching Strategies:** Most CI/CD platforms offer dependency caching. While this speeds up builds, a corrupted cache can sometimes be a source of `TS2307`. If an error is persistent, try disabling the cache for a build to see if it resolves the issue.
-*   **Build Environment:** The Node.js version and npm/yarn version used in your CI/CD pipeline might differ from your local setup. Ensure they are compatible and consistent.
-*   **Serverless Functions:** When deploying serverless functions (AWS Lambda, Azure Functions, Google Cloud Functions), your `node_modules` folder is usually zipped and uploaded. This means any `devDependencies` (including `@types`) that are critical for the *build process* must be installed *before* packaging, but often are not included in the final deployment package. Make sure your build script correctly handles this separation. I've often seen `TS2307` errors appear during serverless deployments simply because the build environment didn't have `@types` installed, even though the final runtime didn't need them.
+*   **Cloud (e.g., AWS Lambda, Google Cloud Functions):**
+    *   **Deployment Package Size:** When deploying to serverless platforms, the `node_modules` directory is often part of your deployment package. Ensure all necessary dependencies, including `@types` packages (if your build runs on the serverless platform and needs them, though typically `@types` are dev dependencies), are included and correctly bundled.
+    *   **Build Environment Consistency:** The build environment in cloud CI/CD pipelines (e.g., AWS CodeBuild, GitHub Actions, GitLab CI) might differ from your local machine. Ensure these environments have sufficient memory and disk space for `npm install` to complete successfully and consistently. I've seen `npm install` silently fail or get corrupted due to resource constraints, leading to this `TS2307` error only in deployment.
+    *   **Lambda Layers:** If using AWS Lambda Layers for common dependencies, ensure the layer is correctly configured and accessible to your function. The path within the layer must match what the Node.js runtime expects (e.g., `/opt/nodejs/node_modules`). Your function's import statements need to resolve to these paths.
 
 ## Frequently Asked Questions
 
-**Q: Why do I need `@types` packages if TypeScript is installed?**
-**A:** TypeScript itself provides the language features and compiler. However, many JavaScript libraries were written before TypeScript became popular and don't include type definitions. `@types` packages, primarily from the DefinitelyTyped project, provide these external type declarations, allowing TypeScript to understand and validate the usage of these JavaScript libraries.
+*   **Q: Why does my code work fine in VS Code but fail when I run `tsc` from the command line?**
+    *   **A:** VS Code's TypeScript language server sometimes has a more lenient module resolution, or it might be using an older/cached version of your `node_modules` or `tsconfig.json`. When `tsc` runs from the command line, it's performing a fresh compilation based strictly on your current project files and configuration. Restarting VS Code's TS server or explicitly running `tsc --build` (or `npm run build`) after changes usually syncs them up.
 
-**Q: How do I find the correct `@types` package for a library?**
-**A:** The standard convention is `npm install @types/library-name`. For scoped packages like `@angular/core`, it's `npm install @types/angular__core`. If unsure, search on npmjs.com for `@types/your-library-name`. If no `@types` package exists, you might need to create a simple declaration file (`.d.ts`) yourself, often with `declare module 'X';` as a fallback.
+*   **Q: I'm using Yarn workspaces or a monorepo. How does that affect this error?**
+    *   **A:** In monorepos, module resolution can be more complex. Ensure that:
+        1.  Your `package.json` files for each workspace correctly list their dependencies.
+        2.  `yarn install` or `npm install` is run from the monorepo root to hoist/link dependencies correctly.
+        3.  `tsconfig.json` files in sub-packages correctly extend a base `tsconfig.json` if applicable, and their `baseUrl` and `paths` are configured relative to their own context or the monorepo root. Sometimes `composite` projects and `references` in `tsconfig.json` are needed for inter-package dependencies.
 
-**Q: What if the module *is* installed (I see it in `node_modules`) but I still get the error?**
-**A:** This points to a module resolution issue. Double-check your import path, review your `tsconfig.json` (`baseUrl`, `paths`, `moduleResolution`), ensure you have the corresponding `@types` package, or try clearing `node_modules` and reinstalling. Case sensitivity on Linux/macOS is also a common culprit here.
+*   **Q: Does the order of `npm install package` and `npm install --save-dev @types/package` matter?**
+    *   **A:** Not strictly for the TypeScript compiler, as it will look for types regardless of when they were installed, as long as they are present in `node_modules/@types`. However, it's good practice to install the main package first, then its types. When installing a new package, I typically install both (the `package` and `@types/package`) together or consecutively before attempting to compile, just to ensure consistency.
 
-**Q: Does this error mean my code won't run at all?**
-**A:** It means your TypeScript code won't *compile* into JavaScript. If you manage to compile it (e.g., using `tsc --noEmit false` or ignoring the error), and the underlying JavaScript module is present at runtime, the JavaScript code might run. However, the purpose of TypeScript is to catch these errors at compile time, so bypassing it defeats the purpose and introduces potential runtime issues.
+*   **Q: My module `X` *does* have its own built-in types (e.g., `react`). Why am I still getting TS2307?**
+    *   **A:** Even with built-in types, there might be an issue.
+        1.  **TypeScript Version:** Your project's TypeScript version might be too old to understand the types provided by the module, especially if the module uses newer TypeScript features.
+        2.  **`package.json` `types` field:** The module's `package.json` might not correctly point to its type declarations via the `types` or `typings` field, or there's an issue with the module's packaging.
+        3.  **`moduleResolution`:** An incorrect `moduleResolution` setting in `tsconfig.json` can prevent TypeScript from finding built-in types. Ensure it's set to `node` for Node.js environments.
+        4.  **Corrupted `node_modules`:** A clean reinstall (step 5) can sometimes resolve this if the package was partially installed or corrupted.
 
-**Q: What exactly do `baseUrl` and `paths` in `tsconfig.json` do?**
-**A:** `baseUrl` defines the base directory from which non-relative module imports are resolved. `paths` allows you to create alias mappings for specific import paths, letting you use shorter or more descriptive names (e.g., `@components`) instead of long relative paths like `../../../src/components`. They are powerful for organizing large projects and preventing "dot-dot-slash hell."
+*   **Q: I've tried everything in the guide, but the error persists. What's next?**
+    *   **A:**
+        1.  **Simplify:** Create a minimal `tsconfig.json` and a single `.ts` file that only imports the problematic module. Does it still fail? This helps isolate whether the issue is with the module itself or your broader project configuration.
+        2.  **Verbose Output:** Run `tsc --traceResolution` to get extremely detailed output on how TypeScript is attempting to resolve modules. This verbose logging can reveal exactly where it's looking, what paths it's trying, and why it's ultimately failing to find the module. It's often the Rosetta Stone for complex resolution issues.
+        3.  **Search:** Use the exact error message along with the specific module name (`TS2307 cannot find module 'X'`) in a search engine. Someone else has likely encountered the same specific combination of module, environment, and `tsconfig.json` settings.
 
 ## Related Errors
+*   *(none)*
