@@ -126,255 +126,322 @@
     <div class="article-content">
       <h1 id="poetrymasonryutilsenvenvcommanderror-x-not-found">poetry.masonry.utils.env.EnvCommandError: X not found.</h1>
 <blockquote>
-<p>Encountering poetry.masonry.utils.env.EnvCommandError: X not found means Poetry couldn't locate a crucial command-line tool in your system's PATH; this guide explains how to diagnose and resolve it.</p>
+<p>Encountering "X not found" means Poetry couldn't locate a crucial command-line tool, halting environment setup or build; this guide explains how to diagnose and resolve it.</p>
 </blockquote>
-<p>When you're working with Poetry, especially in environments where build processes are involved, hitting an <code>EnvCommandError</code> that explicitly states "X not found" can be a frustrating roadblock. This error message is a clear signal that Poetry, during its operations—be it dependency resolution, package installation, or script execution—attempted to invoke an external command-line tool, but your system couldn't locate that tool. As a software engineer, I've run into this countless times, both on my local machine and in CI/CD pipelines, and it almost always points to an environmental misconfiguration rather than a bug in Poetry itself.</p>
 <h2 id="what-this-error-means">What This Error Means</h2>
-<p>At its core, <code>poetry.masonry.utils.env.EnvCommandError: X not found.</code> indicates that a process spawned by Poetry failed because the operating system could not find an executable program named <code>X</code>. Poetry relies on various external tools for certain advanced operations. For instance, if a Python package you're trying to install has C extensions (like <code>numpy</code>, <code>psycopg2</code>, <code>cryptography</code>), Poetry needs a C compiler (<code>gcc</code> or <code>clang</code>) and potentially <code>make</code> to build these extensions. Similarly, fetching packages directly from a Git repository requires the <code>git</code> command-line tool. If <code>X</code> (e.g., <code>gcc</code>, <code>git</code>, <code>npm</code>) is missing from the system's <code>PATH</code> environment variable, or simply not installed, Poetry reports this error.</p>
-<p>The <code>masonry.utils.env</code> part of the error message specifically tells us that the problem occurred within Poetry's environment management and build utilities (Masonry). This is where Poetry prepares the isolated environment for your project and handles complex build steps. When it tries to execute an external command (<code>X</code>) in this context and fails, it means the underlying operating system couldn't find the <code>X</code> executable in any of the directories specified in the <code>PATH</code> environment variable. It's not a Python-level error, but a deeper system-level issue that Poetry is robustly reporting.</p>
+<p>This error, <code>poetry.masonry.utils.env.EnvCommandError: X not found.</code>, is a clear indication that Poetry, during its operations, attempted to execute an external command-line tool or executable (<code>X</code>) but could not locate it within the system's <code>PATH</code> environment variable. The <code>X</code> is a placeholder for the actual command that was missing, which could be anything from a source code management tool like <code>git</code>, a compiler like <code>gcc</code> or <code>clang</code>, a build automation tool like <code>make</code>, or even a JavaScript package manager like <code>npm</code> or <code>yarn</code>.</p>
+<p>Poetry, while excellent at managing Python dependencies and virtual environments, sometimes needs to interact with the underlying operating system and other system-level tools. This often happens when:</p>
+<ul>
+<li><strong>Installing dependencies with native extensions:</strong> Many Python packages (e.g., <code>numpy</code>, <code>psycopg2</code>, <code>cryptography</code>) require compilation from source, which mandates the presence of a C/C++ compiler (<code>gcc</code>, <code>clang</code>) and sometimes <code>make</code> or other build tools.</li>
+<li><strong>Installing packages directly from Git repositories:</strong> If you specify a dependency pointing to a Git URL (e.g., <code>package = { git = "https://github.com/user/repo.git" }</code>), Poetry will attempt to use the <code>git</code> command to clone the repository.</li>
+<li><strong>Executing custom scripts defined in <code>pyproject.toml</code>:</strong> Your project might include <code>[tool.poetry.scripts]</code> or <code>[tool.poetry.build]</code> sections that call external tools as part of a pre-build, post-install, or general utility task. For instance, building a web frontend often involves <code>npm run build</code> or <code>yarn install</code>.</li>
+<li><strong>Running pre-commit hooks or other environment setup scripts:</strong> If your development workflow involves tools outside of Python that are triggered within the Poetry context.</li>
+</ul>
+<p>When <code>EnvCommandError</code> appears with "X not found", it's effectively the same as opening a terminal and typing <code>X</code> only to be met with "command not found" or a similar shell error. Poetry is merely reporting that underlying system failure.</p>
 <h2 id="why-it-happens">Why It Happens</h2>
-<p>This error primarily occurs for a few key reasons, all stemming from the system's inability to provide the required executable when Poetry asks for it:</p>
+<p>At its core, the <code>X not found</code> error stems from the operating system's inability to locate an executable file named <code>X</code> in any of the directories listed in the <code>PATH</code> environment variable. The <code>PATH</code> is a crucial system setting that tells your shell (and any programs it runs) where to look for executable programs.</p>
+<p>Here's a breakdown of the specific reasons this might occur within a Poetry context:</p>
 <ol>
-<li><strong>Missing Tool Installation:</strong> The most straightforward reason is that the command-line tool <code>X</code> is simply not installed on the system where Poetry is running. This is extremely common on fresh operating system installations, minimal Docker images, or newly provisioned virtual machines.</li>
-<li><strong>Incorrect or Incomplete PATH:</strong> Even if the tool <code>X</code> is installed, the operating system might not know where to find it. This happens when the directory containing <code>X</code>'s executable is not included in the <code>PATH</code> environment variable. The <code>PATH</code> variable is a list of directories that the shell (and programs launched by it, like Poetry) searches when you try to run a command without specifying its full path. If <code>X</code> resides in <code>/usr/local/go/bin</code> but <code>/usr/local/go/bin</code> isn't in <code>PATH</code>, <code>X</code> will be "not found."</li>
-<li><strong>Environment Isolation:</strong> In isolated environments like Docker containers or CI/CD pipelines, the base image often provides a minimal set of tools. Developers might forget to explicitly install build dependencies that are taken for granted on their local development machines. I've personally spent hours debugging CI pipelines only to realize a basic <code>build-essential</code> package was missing from the Dockerfile.</li>
-<li><strong>Session-Specific PATH Changes:</strong> Occasionally, you might install a tool and its installer updates your <code>PATH</code> in a configuration file (like <code>.bashrc</code> or <code>.zshrc</code>), but the current terminal session or the process running Poetry hasn't reloaded that configuration. This means the <code>PATH</code> seen by Poetry is stale.</li>
+<li><strong>Missing System-Level Installation:</strong> The most straightforward reason: the tool <code>X</code> simply isn't installed on your system. Poetry, like any other application, cannot magically conjure <code>git</code> or <code>gcc</code> if they haven't been installed via your operating system's package manager (e.g., <code>apt</code>, <code>yum</code>, <code>brew</code>, <code>choco</code>).</li>
+<li><strong>Incorrect or Incomplete PATH Configuration:</strong> The tool <code>X</code> might be installed, but its executable directory is not included in the <code>PATH</code> environment variable. This is common if you've installed tools manually to non-standard locations, or if system-wide installations haven't correctly updated the <code>PATH</code> for your user. In my experience, I've seen this often when installing tools like <code>Go</code> or <code>Rust</code> where their <code>bin</code> directories need to be manually added to the <code>PATH</code>.</li>
+<li><strong>Environment Inconsistencies:</strong> The <code>PATH</code> might differ depending on how you invoke Poetry. For example, running Poetry from a specific IDE might use a different <code>PATH</code> than running it directly from your terminal. Similarly, CI/CD environments, Docker containers, or cloud-based build services often have stripped-down <code>PATH</code> variables or minimal toolsets compared to a full local development machine.</li>
+<li><strong>Poetry's Virtual Environment Context:</strong> While Poetry creates isolated Python virtual environments, it doesn't <em>fully</em> isolate itself from the system's <code>PATH</code> for non-Python executables. When Poetry needs a system tool, it still relies on the <code>PATH</code> inherited from the shell where it was invoked. This means if <code>X</code> isn't in that shell's <code>PATH</code>, Poetry won't find it.</li>
+<li><strong>Dependency-Specific Requirements:</strong> Some Python packages might have very specific pre-installation requirements that go beyond just a compiler. They might need <code>pkg-config</code>, specific development headers, or even external libraries to be present on the system for their native extensions to build successfully. If these dependencies are missing, the build process might fail, and the reported <code>X</code> could be one of these underlying tools.</li>
 </ol>
-<p>Understanding these underlying causes is crucial for effective troubleshooting, as the fix will vary depending on which scenario applies to your situation.</p>
 <h2 id="common-causes">Common Causes</h2>
-<p>Let's get specific about the kinds of "X" that typically trigger this <code>EnvCommandError</code> and the scenarios in which they tend to be missing:</p>
+<p>Based on the nature of the error, I've encountered several recurring scenarios that lead to <code>poetry.masonry.utils.env.EnvCommandError: X not found.</code>:</p>
 <ul>
-<li><strong><code>git</code>:</strong> If your <code>pyproject.toml</code> references dependencies directly from Git repositories (e.g., <code>foo = { git = "https://github.com/user/foo.git" }</code>), Poetry will attempt to use the <code>git</code> command to clone these repositories. A missing <code>git</code> executable is a frequent cause, especially in minimal environments or when building a project for the first time.</li>
-<li><strong><code>gcc</code>, <code>g++</code>, <code>make</code>, <code>clang</code> (Build Tools):</strong> Many Python packages (especially those dealing with numerical computation, cryptography, or database drivers like <code>psycopg2</code>, <code>mysqlclient</code>, <code>numpy</code>, <code>scipy</code>, <code>cryptography</code>) contain C, C++, or Fortran extensions. To compile these extensions during installation, Poetry invokes system compilers (<code>gcc</code>, <code>g++</code>, <code>clang</code>) and build utilities (<code>make</code>). On Linux, these are often part of a <code>build-essential</code> or <code>development tools</code> package. On macOS, they come with Xcode Command Line Tools.</li>
-<li><strong><code>npm</code>, <code>node</code>, <code>yarn</code> (Frontend Tools):</strong> If your Python project is part of a larger application that includes a frontend built with JavaScript, your <code>pyproject.toml</code> or <code>poetry run</code> scripts might invoke <code>npm</code>, <code>node</code>, or <code>yarn</code> for assets compilation or other tasks. If these JavaScript runtimes or package managers aren't installed or configured correctly, you'll see this error.</li>
-<li><strong><code>rustc</code>, <code>cargo</code> (Rust Tools):</strong> Some newer Python packages might have performance-critical components written in Rust and use <code>maturin</code> or <code>setuptools-rust</code> to build them. In such cases, <code>rustc</code> (the Rust compiler) and <code>cargo</code> (Rust's package manager) become required system dependencies.</li>
-<li><strong>Any Custom CLI Tool:</strong> Beyond standard development tools, your project might be configured to run a specific custom command-line interface (CLI) tool. If this tool isn't installed and its executable isn't discoverable, Poetry will raise this error when it tries to run it.</li>
+<li><strong><code>git not found</code>:</strong> This is often the case when a <code>pyproject.toml</code> file includes a dependency like <code>mypackage = { git = "https://github.com/myorg/mypackage.git" }</code>. Poetry needs <code>git</code> to clone the repository. If <code>git</code> isn't installed on the system, or its executable isn't in the <code>PATH</code>, this error occurs.</li>
+<li><strong><code>gcc not found</code> / <code>clang not found</code> / <code>make not found</code>:</strong> When installing Python packages that contain C, C++, or Fortran extensions (e.g., <code>numpy</code>, <code>scipy</code>, <code>cryptography</code>, <code>psycopg2-binary</code> if building from source, <code>lxml</code>, <code>Pillow</code>), a C/C++ compiler and often <code>make</code> are required to build these components. On Linux, <code>build-essential</code> (which includes <code>gcc</code> and <code>make</code>) is typically needed. On macOS, Xcode Command Line Tools provide <code>clang</code> and <code>make</code>.</li>
+<li><strong><code>node not found</code> / <code>npm not found</code> / <code>yarn not found</code> / <code>pnpm not found</code>:</strong> This commonly surfaces when a Python project is part of a larger application that includes a JavaScript/TypeScript frontend. If your <code>pyproject.toml</code> defines a <code>poetry run build_frontend</code> script that in turn calls <code>npm run build</code>, and <code>npm</code> (or <code>node</code>) is not installed or discoverable, you'll hit this error.</li>
+<li><strong><code>python not found</code> (less common but possible):</strong> While Poetry manages Python versions, if a script or a pre-install hook explicitly tries to invoke a <code>python</code> command that's not within Poetry's managed environment and not in the system <code>PATH</code>, this could happen.</li>
+<li><strong>Other specialized tools:</strong> Depending on the project, <code>X</code> could be <code>protoc</code> (for protobufs), <code>go</code> (if building Go binaries as part of the project), or even custom scripts.</li>
 </ul>
-<p>In my experience, the <code>build-essential</code> package on Debian/Ubuntu systems, or <code>Xcode Command Line Tools</code> on macOS, are by far the most common omissions leading to these errors for Python projects with compiled dependencies.</p>
+<p>The common thread is always that an external dependency, not directly managed by Poetry as a Python package, is missing from the operational environment.</p>
 <h2 id="step-by-step-fix">Step-by-Step Fix</h2>
-<p>Addressing the <code>poetry.masonry.utils.env.EnvCommandError: X not found</code> involves a logical progression of diagnosis and remediation. Follow these steps to resolve the issue:</p>
-<ol>
-<li>
-<p><strong>Identify the Missing Command (<code>X</code>):</strong><br />
-    The first and most critical step is to accurately identify what <code>X</code> refers to in the error message. The error will usually be very explicit: <code>EnvCommandError: git not found.</code>, <code>EnvCommandError: gcc not found.</code>, <code>EnvCommandError: make not found.</code>, etc. This <code>X</code> is the exact command you need to target.</p>
-</li>
-<li>
-<p><strong>Verify <code>X</code>'s Presence and Discoverability:</strong><br />
-    Open a new terminal session (to ensure a fresh environment) and try to invoke the missing command directly.</p>
+<p>Addressing this error is usually a process of identification and ensuring the necessary external tool is available and discoverable.</p>
+<h3 id="1-identify-the-missing-tool-x">1. Identify the Missing Tool (<code>X</code>)</h3>
+<p>The error message itself will tell you what <code>X</code> is. For example:<br />
+<code>poetry.masonry.utils.env.EnvCommandError: 'git' not found.</code><br />
+Here, <code>X</code> is <code>git</code>. Pay close attention to the exact name provided in the quotes.</p>
+<h3 id="2-check-if-the-tool-x-is-installed-and-in-path">2. Check if the Tool (<code>X</code>) is Installed and in PATH</h3>
+<p>Open a new terminal session and try to invoke the missing tool directly:</p>
 <ul>
-<li><strong>Check if it's in your PATH:</strong><br />
+<li>
+<p><strong>On Linux/macOS:</strong><br />
 <code>bash
-    which X # On Linux/macOS
-    # Example: which git -&gt; /usr/local/bin/git (if found)
-    # Example: which git -&gt; git not found (if not found in PATH)</code><br />
-<code>powershell
-    Get-Command X # On PowerShell (Windows)
-    # Or simply: X.exe (if it's an exe)
-    # Example: git --version</code></li>
-<li>If <code>which X</code> or <code>Get-Command X</code> yields no results, or <code>X --version</code> fails, then <code>X</code> is either not installed or not in your system's <code>PATH</code>.</li>
-</ul>
+    which X</code><br />
+    (e.g., <code>which git</code>, <code>which gcc</code>, <code>which npm</code>)<br />
+    If it's installed and discoverable, it will print the path to the executable (e.g., <code>/usr/bin/git</code>). If not, it will typically return an empty line or "X not found".</p>
 </li>
 <li>
-<p><strong>Install the Missing Tool (<code>X</code>):</strong><br />
-    If <code>X</code> is genuinely missing, you need to install it. The installation method depends on your operating system:</p>
+<p><strong>On Windows (Command Prompt or PowerShell):</strong><br />
+<code>bash
+    where X</code><br />
+    (e.g., <code>where git</code>, <code>where gcc</code>, <code>where npm</code>)<br />
+    This will show the paths if found, or an error if not.</p>
+</li>
+</ul>
+<p>Additionally, check your current <code>PATH</code> environment variable:<br />
+*   <strong>On Linux/macOS:</strong><br />
+<code>bash
+    echo $PATH</code><br />
+*   <strong>On Windows (Command Prompt):</strong><br />
+<code>bash
+    echo %PATH%</code><br />
+*   <strong>On Windows (PowerShell):</strong><br />
+<code>powershell
+    $env:Path</code><br />
+    Look for directories that should contain <code>X</code>.</p>
+<h3 id="3-install-the-missing-tool-x">3. Install the Missing Tool (<code>X</code>)</h3>
+<p>If <code>X</code> is not found, you need to install it using your system's package manager.</p>
 <ul>
-<li><strong>Linux (Debian/Ubuntu-based):</strong><br />
-    For general build tools like <code>gcc</code>, <code>g++</code>, <code>make</code>, and <code>git</code>:<br />
+<li>
+<p><strong>Debian/Ubuntu (Linux):</strong><br />
 <code>bash
     sudo apt update
-    sudo apt install build-essential git
+    # For Git:
+    sudo apt install git
+    # For compilers and build tools:
+    sudo apt install build-essential # Includes gcc, g++, make
     # For Node.js/npm:
-    sudo apt install nodejs npm</code></li>
-<li><strong>Linux (Fedora/CentOS/RHEL-based):</strong><br />
-    For general build tools:<br />
-<code>bash
-    sudo dnf groupinstall "Development Tools"
-    sudo dnf install git
-    # For Node.js/npm:
-    sudo dnf install nodejs npm</code></li>
-<li><strong>macOS:</strong><br />
-    Install Xcode Command Line Tools (provides <code>gcc</code>, <code>make</code>, <code>clang</code>, etc.):<br />
-<code>bash
-    xcode-select --install</code><br />
-    For other tools like <code>git</code>, <code>node</code>, <code>npm</code>, use Homebrew:<br />
-<code>bash
-    brew install git node</code></li>
-<li><strong>Windows:</strong><br />
-    This can be more complex. Consider:<ul>
-<li><strong>WSL (Windows Subsystem for Linux):</strong> Recommended for development. Install tools within your WSL distribution using <code>apt</code> or <code>dnf</code> as above.</li>
-<li><strong>Scoop or Chocolatey:</strong> Package managers for Windows.<br />
-<code>powershell
-    scoop install git nodejs
-    choco install git nodejs</code></li>
-<li><strong>Official Installers:</strong> Download and install directly from the tool's website (e.g., Git for Windows, Node.js installer). Ensure you select the option to add it to your system's <code>PATH</code>.</li>
-</ul>
-</li>
-</ul>
+    sudo apt install nodejs npm
+    # For Yarn (if needed, after Node.js/npm):
+    sudo npm install -g yarn</code></p>
 </li>
 <li>
-<p><strong>Update Your System's PATH Environment Variable (If Necessary):</strong><br />
-    If <code>X</code> is installed but <code>which X</code> still fails, it's a <code>PATH</code> issue.</p>
+<p><strong>CentOS/RHEL/Fedora (Linux):</strong><br />
+<code>bash
+    sudo yum update # or dnf update
+    # For Git:
+    sudo yum install git # or dnf install git
+    # For compilers and build tools:
+    sudo yum groupinstall 'Development Tools' # or dnf groupinstall 'Development Tools'
+    # For Node.js/npm (often via EPEL or NodeSource repos):
+    # (Specific installation steps for Node.js on RHEL/CentOS vary, check NodeSource website)</code></p>
+</li>
+<li>
+<p><strong>macOS (with Homebrew):</strong><br />
+<code>bash
+    brew update
+    # For Git:
+    brew install git
+    # For compilers and build tools (Xcode Command Line Tools):
+    xcode-select --install # Installs clang, make, etc.
+    # For Node.js/npm/yarn:
+    brew install node
+    brew install yarn # If you prefer yarn</code></p>
+</li>
+<li>
+<p><strong>Windows (with Chocolatey or Scoop):</strong><br />
+<code>bash
+    # Ensure Chocolatey is installed: https://chocolatey.org/install
+    choco install git # For Git
+    choco install mingw # For GCC (MinGW)
+    choco install nodejs-lts # For Node.js/npm
+    choco install yarn # For Yarn</code><br />
+    Alternatively, for Windows, you might download installers directly from the official websites (e.g., Git for Windows, Node.js).</p>
+</li>
+</ul>
+<h3 id="4-update-your-path-if-necessary">4. Update Your PATH (If Necessary)</h3>
+<p>If you've installed <code>X</code> but <code>which X</code> or <code>where X</code> still doesn't find it, or if it's in a non-standard location, you'll need to add its directory to your <code>PATH</code>.</p>
 <ul>
-<li><strong>Check Current PATH:</strong><br />
+<li>
+<p><strong>Temporary (for current shell session):</strong><br />
 <code>bash
-    echo $PATH # Linux/macOS
-    echo %PATH% # Windows Command Prompt
-    echo $env:PATH # Windows PowerShell</code></li>
-<li><strong>Add to PATH (Linux/macOS - temporarily):</strong><br />
-    If your tool <code>X</code> is in, say, <code>/opt/mytool/bin</code>, you can add it temporarily to your current session:<br />
-<code>bash
-    export PATH="/opt/mytool/bin:$PATH"</code><br />
-    To make it permanent, add this line to your shell's configuration file (<code>~/.bashrc</code>, <code>~/.zshrc</code>, <code>~/.profile</code>) and then <code>source</code> the file (e.g., <code>source ~/.bashrc</code>) or restart your terminal.</li>
-<li><strong>Add to PATH (Windows - permanently):</strong><br />
-    Search for "Environment Variables" in the Start Menu, open "Edit the system environment variables," click "Environment Variables...," then edit the "Path" variable under "System variables" or "User variables." Add the directory containing <code>X.exe</code>. Restart any open terminals or applications for changes to take effect.</li>
-</ul>
+    # Linux/macOS
+    export PATH="/path/to/X/bin:$PATH"
+    # Windows Command Prompt
+    set PATH=%PATH%;C:\path\to\X\bin
+    # Windows PowerShell
+    $env:Path += ";C:\path\to\X\bin"</code><br />
+    Replace <code>/path/to/X/bin</code> with the actual directory containing the <code>X</code> executable.</p>
 </li>
 <li>
-<p><strong>Re-run the Poetry Command:</strong><br />
-    After installing the tool and ensuring your <code>PATH</code> is correctly configured (often requiring a terminal restart or <code>source</code> command), retry the Poetry command that initially failed:<br />
+<p><strong>Permanent (recommended for local development):</strong></p>
+<ul>
+<li><strong>Linux/macOS:</strong> Edit your shell configuration file (<code>~/.bashrc</code>, <code>~/.zshrc</code>, <code>~/.profile</code>).<br />
 <code>bash
-    poetry install
-    poetry update
-    poetry build
-    poetry run your-script</code></p>
-<p>In my experience, 95% of the time, the fix is simply <code>sudo apt install build-essential git</code> or <code>brew install git</code>, followed by retrying the Poetry command.</p>
-</li>
+    echo 'export PATH="/path/to/X/bin:$PATH"' &gt;&gt; ~/.bashrc # or ~/.zshrc
+    source ~/.bashrc # or ~/.zshrc</code></li>
+<li><strong>Windows:</strong><ol>
+<li>Search for "Environment Variables" in the Start Menu.</li>
+<li>Click "Edit the system environment variables".</li>
+<li>In the System Properties window, click "Environment Variables...".</li>
+<li>Under "User variables" or "System variables", find <code>Path</code> and click "Edit...".</li>
+<li>Add the directory containing <code>X</code> (e.g., <code>C:\Program Files\Git\bin</code>). Restart your terminal for changes to take effect.</li>
 </ol>
+</li>
+</ul>
+</li>
+</ul>
+<h3 id="5-re-run-the-poetry-command">5. Re-run the Poetry Command</h3>
+<p>After ensuring <code>X</code> is installed and discoverable in your <code>PATH</code>, try the original Poetry command that failed:</p>
+<div class="highlight"><pre><span></span><code>poetry<span class="w"> </span>install
+<span class="c1"># or</span>
+poetry<span class="w"> </span>build
+<span class="c1"># or</span>
+poetry<span class="w"> </span>run<span class="w"> </span>&lt;your-script-name&gt;
+</code></pre></div>
+
+<p>The error should now be resolved. If not, double-check all steps, ensuring the <code>PATH</code> is correctly configured in the exact shell where Poetry is run. I've often seen this when I update my <code>.bashrc</code> but forget to <code>source</code> it or open a new terminal.</p>
 <h2 id="code-examples">Code Examples</h2>
-<p>Here are some concise, copy-paste ready examples for common scenarios:</p>
-<p><strong>1. Checking Your System's PATH:</strong></p>
-<div class="highlight"><pre><span></span><code><span class="c1"># On Linux or macOS</span>
+<p>Here are some concise, copy-paste ready examples for common scenarios.</p>
+<h3 id="installing-git-and-build-essential-for-gcc-make-on-debianubuntu">Installing <code>git</code> and <code>build-essential</code> (for <code>gcc</code>, <code>make</code>) on Debian/Ubuntu</h3>
+<div class="highlight"><pre><span></span><code>sudo<span class="w"> </span>apt<span class="w"> </span>update
+sudo<span class="w"> </span>apt<span class="w"> </span>install<span class="w"> </span>git<span class="w"> </span>build-essential<span class="w"> </span>-y
+</code></pre></div>
+
+<h3 id="installing-git-and-xcode-command-line-tools-on-macos">Installing <code>git</code> and Xcode Command Line Tools on macOS</h3>
+<div class="highlight"><pre><span></span><code><span class="c1"># Install Homebrew if not already installed</span>
+/bin/bash<span class="w"> </span>-c<span class="w"> </span><span class="s2">"</span><span class="k">$(</span>curl<span class="w"> </span>-fsSL<span class="w"> </span>https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh<span class="k">)</span><span class="s2">"</span>
+
+<span class="c1"># Install Git</span>
+brew<span class="w"> </span>install<span class="w"> </span>git
+
+<span class="c1"># Install Xcode Command Line Tools (includes clang, make)</span>
+xcode-select<span class="w"> </span>--install
+</code></pre></div>
+
+<h3 id="installing-node-and-npm-using-homebrew-on-macos">Installing <code>node</code> and <code>npm</code> using Homebrew on macOS</h3>
+<div class="highlight"><pre><span></span><code>brew<span class="w"> </span>install<span class="w"> </span>node
+</code></pre></div>
+
+<p>This typically installs <code>node</code> and <code>npm</code> together. Verify with <code>node -v</code> and <code>npm -v</code>.</p>
+<h3 id="adding-a-directory-to-path-temporarily-linuxmacos">Adding a directory to PATH temporarily (Linux/macOS)</h3>
+<p>Let's say a specific tool <code>mytool</code> is in <code>/opt/mytool/bin</code>.</p>
+<div class="highlight"><pre><span></span><code><span class="nb">export</span><span class="w"> </span><span class="nv">PATH</span><span class="o">=</span><span class="s2">"/opt/mytool/bin:</span><span class="nv">$PATH</span><span class="s2">"</span>
+poetry<span class="w"> </span>install<span class="w"> </span><span class="c1"># Now poetry should find 'mytool' if needed</span>
+</code></pre></div>
+
+<h3 id="verifying-a-tools-location-and-current-path-within-a-poetry-environment">Verifying a tool's location and current PATH within a Poetry environment</h3>
+<div class="highlight"><pre><span></span><code><span class="c1"># This shows where 'git' is found in the current shell</span>
+which<span class="w"> </span>git
+
+<span class="c1"># This shows the PATH variable in the current shell</span>
 <span class="nb">echo</span><span class="w"> </span><span class="nv">$PATH</span>
 
-<span class="c1"># Example output:</span>
-<span class="c1"># /usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/Users/takeshi/.pyenv/shims:/Users/takeshi/.cargo/bin:/opt/homebrew/bin</span>
+<span class="c1"># This executes a command (like `which git`) within Poetry's managed environment</span>
+poetry<span class="w"> </span>run<span class="w"> </span>which<span class="w"> </span>git
+
+<span class="c1"># This shows the PATH variable as seen by processes launched via poetry run</span>
+poetry<span class="w"> </span>run<span class="w"> </span>bash<span class="w"> </span>-c<span class="w"> </span><span class="s1">'echo $PATH'</span>
 </code></pre></div>
 
-<div class="highlight"><pre><span></span><code><span class="c"># On Windows PowerShell</span>
-<span class="nb">echo </span><span class="nv">$env:PATH</span>
-
-<span class="c"># Example output:</span>
-<span class="c"># C:\Windows\system32;C:\Windows;C:\Program Files\Git\cmd;C:\Users\takeshi\AppData\Local\Microsoft\WindowsApps</span>
+<h3 id="example-pyprojecttoml-script-that-might-trigger-npm-not-found">Example <code>pyproject.toml</code> script that might trigger <code>npm not found</code></h3>
+<p>If your <code>pyproject.toml</code> contains something like this:</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># pyproject.toml</span>
+<span class="k">[tool.poetry.scripts]</span>
+<span class="n">build-frontend</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"my_package.builder:build_frontend_assets"</span>
 </code></pre></div>
 
-<p><strong>2. Installing Common Build Tools on Ubuntu/Debian:</strong></p>
-<div class="highlight"><pre><span></span><code><span class="c1"># Update package list and install general build dependencies and Git</span>
-sudo<span class="w"> </span>apt<span class="w"> </span>update
-sudo<span class="w"> </span>apt<span class="w"> </span>install<span class="w"> </span>-y<span class="w"> </span>build-essential<span class="w"> </span>git
+<p>And your <code>my_package/builder.py</code> looks like:</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># my_package/builder.py</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">subprocess</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">sys</span>
 
-<span class="c1"># If your project uses Node.js/NPM (e.g., for frontend assets)</span>
-sudo<span class="w"> </span>apt<span class="w"> </span>install<span class="w"> </span>-y<span class="w"> </span>nodejs<span class="w"> </span>npm
+<span class="k">def</span><span class="w"> </span><span class="nf">build_frontend_assets</span><span class="p">():</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"Building frontend assets with npm..."</span><span class="p">)</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="c1"># This command will fail if 'npm' is not found in the PATH</span>
+        <span class="n">subprocess</span><span class="o">.</span><span class="n">run</span><span class="p">([</span><span class="s2">"npm"</span><span class="p">,</span> <span class="s2">"run"</span><span class="p">,</span> <span class="s2">"build"</span><span class="p">],</span> <span class="n">check</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">cwd</span><span class="o">=</span><span class="s2">"./frontend"</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">"Frontend assets built successfully."</span><span class="p">)</span>
+    <span class="k">except</span> <span class="ne">FileNotFoundError</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">"Error: 'npm' command not found. Please ensure Node.js and npm are installed and in your PATH."</span><span class="p">,</span> <span class="n">file</span><span class="o">=</span><span class="n">sys</span><span class="o">.</span><span class="n">stderr</span><span class="p">)</span>
+        <span class="n">sys</span><span class="o">.</span><span class="n">exit</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+    <span class="k">except</span> <span class="n">subprocess</span><span class="o">.</span><span class="n">CalledProcessError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Error building frontend assets: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">"</span><span class="p">,</span> <span class="n">file</span><span class="o">=</span><span class="n">sys</span><span class="o">.</span><span class="n">stderr</span><span class="p">)</span>
+        <span class="n">sys</span><span class="o">.</span><span class="n">exit</span><span class="p">(</span><span class="n">e</span><span class="o">.</span><span class="n">returncode</span><span class="p">)</span>
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">"__main__"</span><span class="p">:</span>
+    <span class="n">build_frontend_assets</span><span class="p">()</span>
 </code></pre></div>
 
-<p><strong>3. Installing Common Build Tools on macOS (with Homebrew):</strong></p>
-<div class="highlight"><pre><span></span><code><span class="c1"># Install Xcode Command Line Tools (for gcc, make, clang)</span>
-xcode-select<span class="w"> </span>--install
-
-<span class="c1"># Install Git and Node.js using Homebrew</span>
-brew<span class="w"> </span>install<span class="w"> </span>git<span class="w"> </span>node
-</code></pre></div>
-
-<p><strong>4. Temporarily Adding a Tool to PATH (Linux/macOS):</strong></p>
-<p>Let's say <code>mytool</code> executable is located in <code>/usr/local/custom/bin</code> and is not in your current <code>PATH</code>.</p>
-<div class="highlight"><pre><span></span><code><span class="c1"># Add the directory to the PATH for the current terminal session</span>
-<span class="nb">export</span><span class="w"> </span><span class="nv">PATH</span><span class="o">=</span><span class="s2">"/usr/local/custom/bin:</span><span class="nv">$PATH</span><span class="s2">"</span>
-
-<span class="c1"># Verify it's now discoverable</span>
-which<span class="w"> </span>mytool
-<span class="c1"># Expected output: /usr/local/custom/bin/mytool</span>
-
-<span class="c1"># Now, Poetry should find it</span>
-poetry<span class="w"> </span>install
-</code></pre></div>
-
-<p><strong>5. Dockerfile Example for System Dependencies:</strong></p>
-<p>This example demonstrates how to include essential build tools in a <code>python:slim</code> Docker image, which is common for production deployments.</p>
-<div class="highlight"><pre><span></span><code><span class="c"># Use a slim Python image as base</span>
-<span class="k">FROM</span><span class="w"> </span><span class="s">python:3.10-slim-buster</span>
-
-<span class="c"># Prevent prompts during apt-get install and clean up apt cache</span>
-<span class="k">ENV</span><span class="w"> </span><span class="nv">DEBIAN_FRONTEND</span><span class="o">=</span>noninteractive
-
-<span class="c"># Install system dependencies required for many Python packages:</span>
-<span class="c"># build-essential: Provides gcc, g++, make, dpkg-dev (for C extensions)</span>
-<span class="c"># git: Needed if any dependencies are sourced from git repositories</span>
-<span class="c"># libpq-dev: Example for psycopg2 (PostgreSQL client library)</span>
-<span class="c"># nodejs, npm: If your project involves JavaScript build steps</span>
-<span class="k">RUN</span><span class="w"> </span>apt-get<span class="w"> </span>update<span class="w"> </span><span class="se">\</span>
-<span class="w">    </span><span class="o">&amp;&amp;</span><span class="w"> </span>apt-get<span class="w"> </span>install<span class="w"> </span>-y<span class="w"> </span>--no-install-recommends<span class="w"> </span><span class="se">\</span>
-<span class="w">        </span>build-essential<span class="w"> </span><span class="se">\</span>
-<span class="w">        </span>git<span class="w"> </span><span class="se">\</span>
-<span class="w">        </span>libpq-dev<span class="w"> </span><span class="se">\</span>
-<span class="w">        </span>nodejs<span class="w"> </span><span class="se">\</span>
-<span class="w">        </span>npm<span class="w"> </span><span class="se">\</span>
-<span class="w">    </span><span class="o">&amp;&amp;</span><span class="w"> </span>rm<span class="w"> </span>-rf<span class="w"> </span>/var/lib/apt/lists/*
-
-<span class="c"># Set up your working directory</span>
-<span class="k">WORKDIR</span><span class="w"> </span><span class="s">/app</span>
-
-<span class="c"># Copy pyproject.toml and poetry.lock</span>
-<span class="k">COPY</span><span class="w"> </span>pyproject.toml<span class="w"> </span>poetry.lock<span class="w"> </span>./
-
-<span class="c"># Install Poetry (if not using a base image that has it)</span>
-<span class="k">RUN</span><span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>poetry
-
-<span class="c"># Tell Poetry to not create a virtual environment inside the image</span>
-<span class="k">ENV</span><span class="w"> </span><span class="nv">POETRY_VIRTUALENVS_CREATE</span><span class="o">=</span><span class="nb">false</span>
-
-<span class="c"># Install project dependencies</span>
-<span class="k">RUN</span><span class="w"> </span>poetry<span class="w"> </span>install<span class="w"> </span>--no-root<span class="w"> </span>--no-dev
-
-<span class="c"># Copy the rest of your application code</span>
-<span class="k">COPY</span><span class="w"> </span>.<span class="w"> </span>.
-
-<span class="c"># Your application entry point (example)</span>
-<span class="k">CMD</span><span class="w"> </span><span class="p">[</span><span class="s2">"poetry"</span><span class="p">,</span><span class="w"> </span><span class="s2">"run"</span><span class="p">,</span><span class="w"> </span><span class="s2">"python"</span><span class="p">,</span><span class="w"> </span><span class="s2">"your_app.py"</span><span class="p">]</span>
-</code></pre></div>
-
+<p>Then <code>poetry run build-frontend</code> would produce the <code>EnvCommandError: 'npm' not found.</code> if <code>npm</code> is not discoverable.</p>
 <h2 id="environment-specific-notes">Environment-Specific Notes</h2>
-<p>The context in which you encounter <code>poetry.masonry.utils.env.EnvCommandError: X not found</code> significantly influences how you diagnose and fix it.</p>
+<p>The "X not found" error has different nuances depending on the environment where your Poetry project is being built or run.</p>
+<h3 id="local-development">Local Development</h3>
+<p>For local development, the primary fix involves directly installing the missing tool using your operating system's package manager (e.g., <code>apt</code>, <code>brew</code>, <code>choco</code>) and ensuring its executable path is correctly added to your user's <code>PATH</code> environment variable. This typically means updating your <code>~/.bashrc</code> or <code>~/.zshrc</code> file on Linux/macOS, or the system's environment variables on Windows. I've personally found that restarting the terminal or IDE after making <code>PATH</code> changes is often necessary for them to take effect.</p>
+<h3 id="docker-containers">Docker Containers</h3>
+<p>Docker environments are a common place to encounter this error due to their minimal nature. Base images like <code>alpine</code> are notoriously lean and omit many standard tools.</p>
 <ul>
 <li>
-<p><strong>Local Development Environment:</strong><br />
-    On your personal development machine, this error typically means you've forgotten to install a prerequisite tool or the tool's installation directory isn't correctly added to your <code>PATH</code>. For example, I've had new colleagues encounter this when they tried to install a project with <code>psycopg2</code> dependencies without first installing <code>libpq-dev</code> (Linux) or Xcode Command Line Tools (macOS). The fix usually involves a <code>sudo apt install</code> or <code>brew install</code> command, followed by a quick terminal restart.</p>
-</li>
-<li>
-<p><strong>Docker Containers:</strong><br />
-    This is where I've seen this error most frequently in a production-adjacent context. Docker images, especially <code>alpine</code> or <code>-slim</code> variants of official language images (e.g., <code>python:3.9-slim</code>), are designed to be minimal. They often lack common build tools like <code>gcc</code>, <code>make</code>, <code>git</code>, or specific libraries (<code>libpq-dev</code> for PostgreSQL access). If your <code>Dockerfile</code> doesn't explicitly include <code>RUN apt-get install -y build-essential git ...</code> (or equivalent for Alpine: <code>apk add ...</code>), Poetry will almost certainly fail when it encounters a package that needs compilation or Git access. Debugging involves inspecting the <code>Dockerfile</code> and adding the necessary <code>RUN</code> commands. It's a common oversight, particularly when migrating a project from a more feature-rich base image.</p>
-</li>
-<li>
-<p><strong>CI/CD Pipelines (GitHub Actions, GitLab CI, Jenkins, etc.):</strong><br />
-    Similar to Docker, CI/CD runners often start from a clean, predefined environment. While some managed runners might include common tools, you cannot assume they will. If your <code>jobs</code> or <code>stages</code> involve building Python packages, you must ensure the runner environment has the necessary system dependencies. For example, in a GitHub Actions workflow, you might need a step like:<br />
-    ```yaml</p>
-<ul>
-<li>name: Install system dependencies<br />
-  run: |<br />
-    sudo apt-get update<br />
-    sudo apt-get install -y build-essential git<br />
+<p><strong>Explicit Installation:</strong> You <em>must</em> explicitly install all required system tools within your <code>Dockerfile</code>. For instance, to get <code>git</code> and build tools in a Debian-based image:<br />
+    ```dockerfile<br />
+    FROM python:3.9-slim-buster</p>
+<h1 id="install-git-and-build-essential-for-gcc-make-etc">Install git and build-essential (for gcc, make, etc.)</h1>
+<p>RUN apt-get update &amp;&amp; apt-get install -y --no-install-recommends \<br />
+    git \<br />
+    build-essential \<br />
+    # Add other tools like nodejs, npm if needed<br />
+    nodejs \<br />
+    npm \<br />
+&amp;&amp; rm -rf /var/lib/apt/lists/* # Clean up apt cache</p>
+<p>WORKDIR /app<br />
+COPY pyproject.toml poetry.lock ./</p>
+<h1 id="ensure-poetry-is-installed">Ensure Poetry is installed</h1>
+<p>RUN pip install poetry</p>
+<h1 id="install-project-dependencies">Install project dependencies</h1>
+<p>RUN poetry install --no-root --no-dev</p>
+<p>COPY . .</p>
+<p>CMD ["poetry", "run", "python", "your_app.py"]<br />
 <code>``
-This ensures that when Poetry runs in a subsequent step, tools like</code>gcc<code>and</code>git<code>are available. I've spent frustrating hours debugging GitLab CI pipelines only to realize a</code>build-essential<code>package was missing in the runner's setup, leading to</code>gcc not found<code>errors during</code>poetry install`.</li>
+*   **PATH within Docker:** Ensure any non-standard tool installations in your</code>Dockerfile<code>also update the</code>PATH<code>environment variable within the container using</code>ENV PATH="/usr/local/go/bin:${PATH}"<code>.
+*   **Minimalist Images:** I've often seen this in Docker when a base image is too minimal (e.g.,</code>python:3.9-alpine<code>) and critical build tools like</code>build-essential<code>or</code>git<code>are missing. Always check your base image's capabilities and add explicit</code>RUN` commands for any required binaries.</p>
+</li>
+</ul>
+<h3 id="cicd-pipelines-github-actions-gitlab-ci-jenkins-azure-devops">CI/CD Pipelines (GitHub Actions, GitLab CI, Jenkins, Azure DevOps)</h3>
+<p>CI/CD runners are effectively clean virtual machines or containers that execute your build steps. They often start with a basic set of tools.</p>
+<ul>
+<li><strong>Pre-installed Tools:</strong> Some CI/CD services pre-install common tools like <code>git</code> and <code>Node.js</code>. However, compilers (<code>gcc</code>, <code>clang</code>) or specific versions might be missing.</li>
+<li><strong>Explicit Steps:</strong> Always add explicit installation steps at the beginning of your CI job if a tool is required.<ul>
+<li><strong>GitHub Actions:</strong> Use setup actions like <code>actions/setup-node@v3</code> or install directly:<br />
+    ```yaml<ul>
+<li>name: Install build tools<br />
+  run: sudo apt update &amp;&amp; sudo apt install -y build-essential</li>
+<li>name: Setup Node.js<br />
+  uses: actions/setup-node@v3<br />
+  with:<br />
+    node-version: '18'<br />
+```</li>
 </ul>
 </li>
-<li>
-<p><strong>Cloud Environments (AWS Lambda, Google Cloud Run, Azure Functions):</strong><br />
-    While these serverless platforms often handle the runtime environment for you, the <code>EnvCommandError</code> might arise during the <em>build phase</em> that precedes deployment. If you're building a Docker image or a deployment package on a cloud-provided build service (like AWS CodeBuild or Google Cloud Build), these build environments are effectively isolated containers. They require the same careful installation of system dependencies as a custom Dockerfile or CI runner. If the error occurs at <em>runtime</em> within a serverless function, it's usually because a required external binary <code>X</code> (e.g., <code>ffmpeg</code> if your Python script invokes it) was not bundled with your deployment package and the limited serverless environment doesn't provide it by default. For Poetry's <code>EnvCommandError</code>, it's almost always a build-time issue.</p>
+<li><strong>GitLab CI:</strong><br />
+    ```yaml<br />
+    before_script:<ul>
+<li>apt-get update -qq &amp;&amp; apt-get install -yq build-essential git nodejs npm<br />
+```</li>
+</ul>
 </li>
+</ul>
+</li>
+<li><strong>PATH Awareness:</strong> Be mindful of how environment variables, including <code>PATH</code>, are handled by your CI platform. Sometimes, a tool installed in a non-standard location might not automatically be added to the <code>PATH</code> accessible by subsequent steps. I typically add explicit <code>apt update &amp;&amp; apt install ...</code> steps at the beginning of the build job to ensure all necessary tools are present, even if they <em>should</em> be there, just to be safe.</li>
+</ul>
+<h3 id="cloud-environments-aws-lambda-gcp-cloud-functions-heroku-app-engine">Cloud Environments (AWS Lambda, GCP Cloud Functions, Heroku, App Engine)</h3>
+<p>Deploying to serverless functions or platform-as-a-service (PaaS) often imposes stricter constraints.</p>
+<ul>
+<li><strong>Serverless (Lambda/Cloud Functions):</strong> These environments are highly restrictive. If a Python package has native extensions that require <code>gcc</code> or <code>make</code> to build, you usually cannot compile them directly on the serverless platform. The typical solution is to:<ol>
+<li>Build the project (including native dependencies) on a Docker image or EC2 instance that <em>mimics</em> the target serverless runtime environment (same OS, same architecture).</li>
+<li>Package all the compiled binaries and Python dependencies into a deployment zip file.</li>
+<li>Deploy the pre-built package.<br />
+<em>Personal experience: for serverless functions, this is particularly tricky. If a dependency needs <code>gcc</code>, you often have to compile it on an EC2 instance that matches the Lambda runtime environment, then zip it all up.</em></li>
+</ol>
+</li>
+<li><strong>PaaS (Heroku, App Engine):</strong> These platforms use buildpacks (Heroku) or similar mechanisms to detect and install dependencies. Ensure your buildpack configuration includes the necessary system dependencies. For example, Heroku often requires specific <code>buildpacks</code> to install Node.js alongside Python. If you need a specific compiler or other tool, you might need a custom buildpack or a multi-buildpack setup.</li>
 </ul>
 <h2 id="frequently-asked-questions">Frequently Asked Questions</h2>
-<p><strong>Q: Does <code>poetry env use python</code> help with this error?</strong><br />
-<strong>A:</strong> Not directly. <code>poetry env use python</code> is for selecting which Python interpreter Poetry should use for the project's virtual environment. The <code>EnvCommandError: X not found</code> refers to an <em>external, non-Python</em> command-line tool (<code>X</code>), such as <code>git</code> or <code>gcc</code>. While having the correct Python interpreter is crucial for Poetry, it won't resolve issues with missing system binaries.</p>
-<p><strong>Q: Why does it work on my machine but not in Docker/CI?</strong><br />
-<strong>A:</strong> This is a classic "works on my machine" scenario. Your local development environment likely has a comprehensive set of development tools (like compilers, Git, Node.js) installed over time. Docker images and CI/CD pipeline runners, by contrast, often start from a minimal base. They require explicit instructions (e.g., <code>RUN apt-get install</code> in a Dockerfile or a <code>script</code> step in CI config) to install any system-level dependencies that your project, or its Python packages, might need.</p>
-<p><strong>Q: I've installed X, but Poetry still says "X not found". What gives?</strong><br />
-<strong>A:</strong> The most probable cause is that your <code>PATH</code> environment variable hasn't been updated or properly propagated to the process running Poetry.<br />
-    1.  <strong>Restart your terminal:</strong> This is often enough to load updated shell configuration files (like <code>.bashrc</code> or <code>.zshrc</code>).<br />
-    2.  <strong>Source your config:</strong> If you've just edited a config file, run <code>source ~/.bashrc</code> (or your equivalent).<br />
-    3.  <strong>Check <code>PATH</code> directly where Poetry runs:</strong> If running Poetry from an IDE or script, ensure that execution context has the correct <code>PATH</code>. I've seen cases where a user installs <code>X</code>, but an IDE's integrated terminal starts with a default <code>PATH</code> that doesn't include <code>X</code>'s directory.<br />
-    4.  <strong>Verify <code>which X</code>:</strong> Make sure running <code>which X</code> in the same terminal where you run <code>poetry</code> yields the correct path.</p>
-<p><strong>Q: Is this a Poetry bug?</strong><br />
-<strong>A:</strong> Generally, no. Poetry is acting as an orchestrator. When it tries to execute an external command (<code>X</code>) and the operating system reports that <code>X</code> cannot be found, Poetry simply surfaces that error message. The underlying problem is typically an environmental misconfiguration – either <code>X</code> isn't installed, or its location isn't included in the system's <code>PATH</code>. Poetry is doing its job by letting you know it can't proceed due to a missing prerequisite.</p>
-<p><strong>Q: Can I tell Poetry where to find <code>X</code> specifically?</strong><br />
-<strong>A:</strong> Not directly for arbitrary system commands. Poetry inherits the environment, including the <code>PATH</code> variable, from the shell or process that launched it. The standard and recommended approach is to ensure that <code>X</code> is correctly installed and its executable's directory is globally or locally added to the <code>PATH</code> environment variable, making it discoverable for any program, including Poetry. Attempting to hardcode paths for every external tool within Poetry's configuration would be brittle and counter to standard operating system practices.</p>
+<p><strong>Q: Why does Poetry need external tools like <code>gcc</code> or <code>git</code>?</strong><br />
+A: Poetry needs external tools because many Python packages, especially those with C extensions (like <code>cryptography</code>, <code>psycopg2</code>, <code>numpy</code>, <code>Pillow</code>), need a C compiler (<code>gcc</code>, <code>clang</code>) and sometimes <code>make</code> to build from source code. <code>git</code> is required if you're installing Python dependencies directly from Git repositories specified in your <code>pyproject.toml</code>. These are not Python packages themselves but essential system-level tools for building or acquiring certain dependencies.</p>
+<p><strong>Q: I installed X, but Poetry still says "X not found". What gives?</strong><br />
+A: This nearly always means the <code>PATH</code> environment variable in the specific shell session where you're running Poetry doesn't include the directory where <code>X</code>'s executable resides. Even if <code>X</code> is installed, if its path isn't discoverable, the operating system (and thus Poetry) won't find it.<br />
+*   Verify your <code>PATH</code> by running <code>echo $PATH</code> (Linux/macOS) or <code>echo %PATH%</code> (Windows) in the <em>same terminal</em> you're using for Poetry.<br />
+*   Ensure any permanent <code>PATH</code> changes (e.g., in <code>.bashrc</code>, <code>.zshrc</code>) have been activated by opening a new terminal window or running <code>source ~/.bashrc</code>.</p>
+<p><strong>Q: Does <code>poetry env use pythonX.Y</code> affect this error?</strong><br />
+A: <code>poetry env use pythonX.Y</code> changes the specific Python interpreter Poetry will use for the project's virtual environment. It does <em>not</em> directly influence the system's <code>PATH</code> for <em>non-Python</em> executables like <code>git</code>, <code>gcc</code>, or <code>npm</code>. Those tools are still resolved via the <code>PATH</code> inherited from the shell where you invoked the Poetry command.</p>
+<p><strong>Q: Can I tell Poetry where to find X?</strong><br />
+A: Not directly for arbitrary external tools like <code>git</code> or <code>gcc</code>. Poetry relies on the operating system's <code>PATH</code> environment variable. The best and standard approach is to ensure <code>X</code> is correctly installed on your system and its executable directory is part of the <code>PATH</code> for the user running Poetry. For Python interpreters, you can use <code>poetry env use /path/to/python</code> or configure <code>virtualenvs.path</code> via <code>poetry config</code>.</p>
+<p><strong>Q: What if <code>X</code> is a JavaScript tool like <code>npm</code> or <code>yarn</code>?</strong><br />
+A: The principles remain the same. You need to ensure Node.js and the respective package manager (<code>npm</code>, <code>yarn</code>, <code>pnpm</code>) are installed on your system and that their executables are available in the <code>PATH</code> environment variable during the Poetry execution. This often means installing Node.js via your system package manager or <code>nvm</code> (Node Version Manager) and ensuring its <code>bin</code> directory is in your <code>PATH</code>.</p>
 <h2 id="related-errors">Related Errors</h2>
     </div>
 
@@ -426,7 +493,7 @@ This ensures that when Poetry runs in a subsequent step, tools like</code>gcc<co
     <div class="container">
       <p class="footer-logo">⚡ ErrorFix.dev</p>
       <p>Practical, engineer-written guides for real-world software errors.</p>
-      <p style="margin-top:.5rem">Last updated: <time>September 21, 2026</time>.</p>
+      <p style="margin-top:.5rem">Last updated: <time>September 22, 2026</time>.</p>
       <p class="footer-links" style="margin-top:.75rem">
         <!-- ╔══════════════════════════════════════════════════════════════╗ -->
         <!-- ║  AFFILIATE LINKS – replace the href values below            ║ -->
