@@ -126,263 +126,233 @@
     <div class="article-content">
       <h1 id="starletteexceptionshttpexception-404-not-found">starlette.exceptions.HTTPException: 404 Not Found</h1>
 <blockquote>
-<p>Encountering a 404 Not Found error in FastAPI means the requested resource doesn't exist; this guide explains how to diagnose and resolve it.</p>
+<p>Encountering <code>starlette.exceptions.HTTPException: 404 Not Found</code> means your FastAPI application couldn't find the requested resource; this guide explains how to fix it by checking routes, methods, and deployment configurations.</p>
 </blockquote>
 <h2 id="what-this-error-means">What This Error Means</h2>
-<p>When you encounter <code>starlette.exceptions.HTTPException: 404 Not Found</code> in a FastAPI application, it signifies that your application is running, actively received an HTTP request, but could not find a route or resource matching the Uniform Resource Locator (URL) provided in that request. This isn't a server crash, but rather an explicit response from your FastAPI application (or its underlying Starlette framework) indicating that, while the server is operational, the specific path the client requested simply doesn't exist within the defined API.</p>
-<p>In HTTP parlance, a "404 Not Found" status code is a client error, meaning the issue lies with the request itself rather than the server experiencing an unexpected failure. From my perspective, this is often a relief because it tells me the application is alive and responding, even if it's with an error. The challenge is then to pinpoint <em>why</em> the path wasn't found.</p>
+<p>As a DevOps and Cloud Specialist, I've seen countless <code>404 Not Found</code> errors across various platforms. When this specific error, <code>starlette.exceptions.HTTPException: 404 Not Found</code>, appears in your FastAPI application, it signifies a fundamental routing issue. It means that the Starlette framework, which FastAPI is built upon, received an incoming HTTP request but could not find a defined route (or "endpoint") that matches both the requested URL path <em>and</em> the HTTP method (GET, POST, PUT, DELETE, etc.).</p>
+<p>Crucially, a 404 is not a server crash or an internal server error (like a 500). Instead, it's an explicit response from your application indicating that while the server is alive and functioning, it simply doesn't know how to handle the specific request you made to that particular path. It's like asking for a book at a library, and the librarian tells you, "We don't have that title here" – not that the library is closed, but that the resource isn't available at the location you specified.</p>
 <h2 id="why-it-happens">Why It Happens</h2>
-<p>The core reason for this error is that FastAPI's routing mechanism, powered by Starlette, failed to match the incoming request's URL path and HTTP method (GET, POST, PUT, DELETE, etc.) against any of the API endpoints you've defined using decorators like <code>@app.get()</code>, <code>@app.post()</code>, or via <code>APIRouter</code>.</p>
-<p>Think of FastAPI as having a directory of all available paths and the corresponding function to execute for each. When a request comes in, it consults this directory. If the requested path isn't listed, or if it's listed but the HTTP method doesn't match, then a 404 Not Found is the logical response. It's akin to asking for a specific file in a folder, and the folder reports, "Sorry, that file isn't here."</p>
-<p>I've seen this frequently occur during development or when new features are deployed, especially when API contracts change or new endpoints are introduced without proper testing.</p>
+<p>The root cause of a <code>404 Not Found</code> in FastAPI lies in its routing mechanism. FastAPI, leveraging Starlette, maps incoming HTTP requests to specific Python functions (known as <em>path operation functions</em>) based on the request's URL path and HTTP method. If there's no exact match, Starlette raises the <code>HTTPException(404, detail="Not Found")</code>.</p>
+<p>In my experience, this usually happens because:</p>
+<ol>
+<li><strong>The requested URL path doesn't exist</strong> in your application's defined routes.</li>
+<li><strong>The HTTP method used by the client doesn't match</strong> the method defined for the existing path. For example, a client sending a <code>POST</code> request to an endpoint only defined with <code>@app.get()</code>.</li>
+<li><strong>The application isn't running the expected code,</strong> meaning new routes haven't been deployed or old routes have been removed.</li>
+<li><strong>External factors</strong> like API gateways, load balancers, or reverse proxies are misconfigured, rewriting paths or not directing traffic correctly to your FastAPI service.</li>
+</ol>
+<p>Understanding these underlying reasons is key to efficiently troubleshooting the problem, whether you're in local development or a complex cloud environment.</p>
 <h2 id="common-causes">Common Causes</h2>
-<p>Based on my experience troubleshooting <code>404 Not Found</code> errors in FastAPI, these are the most common culprits:</p>
-<ol>
-<li><strong>Typographical Errors in the URL:</strong> This is, by far, the most frequent cause. A simple misspelling in the client-side request URL (e.g., <code>/user</code> instead of <code>/users</code>, or <code>/items</code> instead of <code>/item</code>) will lead to a 404 if the backend doesn't have a route for the misspelled path.</li>
-<li><strong>Missing Route Definition:</strong> You might have intended to create an endpoint, but forgot to add the <code>@app.get("/my-path")</code> or <code>@router.post("/new-resource")</code> decorator, or the associated function.</li>
-<li><strong>Incorrect HTTP Method:</strong> FastAPI routes are specific to HTTP methods. If you define <code>@app.get("/items")</code> but the client sends a <code>POST</code> request to <code>/items</code>, FastAPI won't find a <code>POST</code> route for that path and will return a 404. It effectively sees <code>/items</code> as available only via <code>GET</code>.</li>
-<li><strong>Path Parameter Mismatch:</strong> If your route expects path parameters, such as <code>@app.get("/items/{item_id}")</code>, requesting <code>/items/</code> (without an <code>item_id</code>) or <code>/items/all</code> (if <code>all</code> is not an expected specific ID or sub-path) might result in a 404 if there isn't a more general route like <code>@app.get("/items/")</code> defined.</li>
-<li><strong>Trailing Slashes (or Lack Thereof):</strong> While FastAPI generally normalizes trailing slashes, discrepancies can sometimes arise, particularly with older clients or specific proxy configurations. A route defined as <code>/users</code> might not perfectly match <code>/users/</code> in all scenarios without explicit handling, though FastAPI is usually robust here.</li>
-<li><strong>Static Files Not Configured or Incorrectly Accessed:</strong> If you're trying to serve static assets (images, CSS, JavaScript files) through FastAPI but haven't correctly configured <code>app.mount(StaticFiles(directory="static"), name="static")</code> or you're accessing them via the wrong URL prefix (e.g., <code>/images/logo.png</code> instead of <code>/static/logo.png</code>), you'll get a 404.</li>
-<li><strong><code>APIRouter</code> or Sub-Application Mounting Issues:</strong> When organizing your API with <code>APIRouter</code> or mounting sub-applications, a common mistake is getting the base path wrong. If you define routes in <code>user_router</code> with paths like <code>/</code>, <code>/me</code>, and then mount it as <code>app.include_router(user_router, prefix="/api/v1/users")</code>, the actual full paths become <code>/api/v1/users/</code>, <code>/api/v1/users/me</code>. Forgetting the prefix in the client request or having a mismatch will cause a 404.</li>
-<li><strong>Reverse Proxy/Load Balancer Path Rewrites:</strong> In production environments, reverse proxies (like Nginx, Apache, or cloud load balancers) often sit in front of FastAPI. These proxies can sometimes rewrite URL paths before forwarding them to your application. If a proxy strips a <code>/api</code> prefix that your FastAPI app expects, or adds one that your app doesn't, it will lead to a 404 within FastAPI.</li>
-</ol>
+<p>Here's a breakdown of the most frequent scenarios I encounter that lead to <code>starlette.exceptions.HTTPException: 404 Not Found</code>:</p>
+<ul>
+<li><strong>Typo in the Client-Side URL:</strong> This is surprisingly common. A small misspelling in the URL path from your frontend, Postman, curl command, or another service calling your API can instantly trigger a 404. For instance, calling <code>/userz</code> instead of <code>/users</code>.</li>
+<li><strong>Typo in the FastAPI Route Definition:</strong> Similar to client-side typos, a typo in your <code>@app.get("/incorrect_path")</code> or <code>@router.post("/wrong_route")</code> decorator will mean that specific path simply doesn't exist as far as FastAPI is concerned.</li>
+<li><strong>Missing Route Definition:</strong> You might have simply forgotten to add the <code>@app.&lt;method&gt;("/path")</code> decorator to a function you intended to expose as an API endpoint, or you removed a route that a client still expects to exist.</li>
+<li><strong>Incorrect HTTP Method:</strong> One of the most common mistakes. Your FastAPI route might be defined as <code>@app.get("/items")</code>, but your client is attempting to send a <code>POST</code> request to <code>/items</code>. FastAPI will not find a <code>POST</code> handler for that path and will return a 404.</li>
+<li><strong><code>APIRouter</code> Prefix Issues:</strong> When using <code>APIRouter</code> to modularize your application, you typically mount it with a prefix: <code>app.include_router(router, prefix="/api/v1")</code>. If your client then tries to access <code>/users</code> when the actual route is <code>/api/v1/users</code>, you'll get a 404. Conversely, if your client <em>includes</em> the prefix, but you forgot to specify it in <code>app.include_router</code>, you'll also hit a 404.</li>
+<li><strong>Trailing Slashes (or Lack Thereof):</strong> FastAPI, by default, is smart about trailing slashes, redirecting <code>/items/</code> to <code>/items</code> (or vice-versa) if a route exists. However, if your application has custom middleware, or if <code>redirect_slashes=False</code> is set on your <code>FastAPI</code> app or <code>APIRouter</code>, this behavior might change and lead to a 404 if the client's slash usage doesn't match the route definition exactly.</li>
+<li><strong>Middleware Interference:</strong> Custom middleware that inspects or rewrites paths <em>before</em> they reach FastAPI's router can sometimes unintentionally alter a path, leading to a 404. I've seen this in production when a custom authentication middleware incorrectly modifies the request scope.</li>
+<li><strong>Order of Route Definitions:</strong> While less common for direct 404s, if you have very generic routes (e.g., a catch-all route like <code>/path/{wildcard:path}</code>) defined <em>before</em> more specific routes (<code>/path/specific_item</code>), the wildcard route might "consume" the request, leading to unexpected behavior. It's generally good practice to define more specific routes first.</li>
+<li><strong>Static Files Not Served:</strong> If you're trying to access a static file (e.g., <code>favicon.ico</code>, <code>index.html</code>) and haven't correctly configured <code>app.mount()</code> with <code>StaticFiles</code>, FastAPI won't find a route for it and will return a 404.</li>
+<li><strong>Deployment Errors:</strong> The most insidious ones. Your local environment works perfectly, but after deployment, you get 404s. This often means the deployed code isn't the expected version, the application isn't running, or proxy/load balancer configurations are directing traffic to the wrong service or path.</li>
+</ul>
 <h2 id="step-by-step-fix">Step-by-Step Fix</h2>
-<p>Here's how I typically approach diagnosing and fixing <code>starlette.exceptions.HTTPException: 404 Not Found</code>:</p>
+<p>Troubleshooting a <code>404 Not Found</code> typically involves a systematic check of your application's routing, from the client's request to your FastAPI server's definitions.</p>
 <ol>
 <li>
-<p><strong>Identify the Exact Requested URL and Method:</strong></p>
+<p><strong>Verify the Client-Side URL and HTTP Method:</strong></p>
 <ul>
-<li>Check your application logs. FastAPI often logs 404s, sometimes with the requested path.</li>
-<li>If you have a front-end client, inspect its network requests (e.g., in browser developer tools) to get the precise URL and HTTP method (GET, POST, etc.) that triggered the 404.</li>
-<li>Use <code>curl -v</code> or Postman/Insomnia to make the exact request, paying attention to the full URL, method, and any headers. This helps isolate if the client is sending something unexpected.</li>
+<li><strong>Double-check the URL:</strong> Is the path exactly what you expect? Pay attention to spelling, casing (paths are case-sensitive), and any prefixes.</li>
+<li><strong>Confirm the HTTP Method:</strong> Are you sending a <code>GET</code> when the route expects <code>POST</code>? Use tools like Postman, curl, or your browser's developer tools (Network tab) to inspect the exact request being sent.</li>
+</ul>
+<p>```bash</p>
+<h1 id="example-check-with-curl">Example: Check with curl</h1>
+<p>curl -v -X GET http://localhost:8000/api/v1/users</p>
+<h1 id="if-it-fails-try-post-or-other-methods-if-you-suspect-a-method-mismatch">If it fails, try POST or other methods if you suspect a method mismatch</h1>
+<p>curl -v -X POST -H "Content-Type: application/json" -d '{"name": "Carmen"}' http://localhost:8000/api/v1/users<br />
+```</p>
+</li>
+<li>
+<p><strong>Inspect FastAPI Route Definitions:</strong></p>
+<ul>
+<li><strong>Locate the relevant path operation function:</strong> Find the Python function that <em>should</em> be handling the request.</li>
+<li><strong>Check the decorator:</strong> Does <code>@app.get("/your_path")</code> or <code>@router.post("/another_path")</code> exactly match the client's intended path and method?</li>
+<li><strong>Prefixes for <code>APIRouter</code>:</strong> If you're using <code>APIRouter</code>, ensure the <code>prefix</code> in <code>app.include_router(my_router, prefix="/api/v1")</code> combines correctly with the router's internal paths. For example, a route <code>@router.get("/users")</code> with a <code>prefix="/api/v1"</code> will result in the full path <code>/api/v1/users</code>.</li>
+</ul>
+<p>```python</p>
+<h1 id="mainpy-or-similar">main.py or similar</h1>
+<p>from fastapi import FastAPI, APIRouter</p>
+<p>app = FastAPI()<br />
+router = APIRouter(prefix="/api/v1")</p>
+<p>@router.get("/items") # This route will be accessible at /api/v1/items<br />
+async def read_items():<br />
+    return {"message": "Reading items"}</p>
+<p>@app.get("/health") # This route will be accessible at /health<br />
+async def health_check():<br />
+    return {"status": "ok"}</p>
+<p>app.include_router(router) # Make sure you include the router!<br />
+```</p>
+<p>If a client requests <code>/items</code> instead of <code>/api/v1/items</code>, it will be a 404.</p>
+</li>
+<li>
+<p><strong>Review FastAPI Application Startup Logs:</strong></p>
+<ul>
+<li>When FastAPI starts (usually via Uvicorn), it often logs the registered routes. Look for these messages in your console or server logs. This is a crucial step to confirm what routes your <em>running</em> application actually has.</li>
+</ul>
+<p>```bash</p>
+<h1 id="example-uvicorn-output">Example Uvicorn output</h1>
+<p>INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)<br />
+INFO:     Started reloader process [12345] using statreload<br />
+INFO:     Started server process [67890]<br />
+INFO:     Waiting for application startup.<br />
+INFO:     Application startup complete.</p>
+<h1 id="look-here-for-registered-paths-if-your-app-or-framework-logs-them-explicitly">Look here for registered paths if your app or framework logs them explicitly</h1>
+<h1 id="fastapi-usually-doesnt-log-all-routes-by-default-but-middleware-or-custom">FastAPI usually doesn't log all routes by default, but middleware or custom</h1>
+<h1 id="logging-can-add-this">logging can add this.</h1>
+<p><code>``
+If you want to explicitly see your routes, you can inspect</code>app.routes` at startup.</p>
+</li>
+<li>
+<p><strong>Check for Middleware or Mounting Issues:</strong></p>
+<ul>
+<li><strong>Custom Middleware:</strong> If you have custom ASGI middleware, temporarily disable it to see if the 404 resolves. This helps isolate whether the middleware is altering the path.</li>
+<li><strong><code>app.mount()</code> for Static Files:</strong> If you expect to serve static files (CSS, JS, images) and get a 404, verify that <code>app.mount("/static", StaticFiles(directory="static"), name="static")</code> is correctly configured and the <code>directory</code> path is accurate.</li>
+<li><strong>Sub-applications:</strong> If you're mounting another ASGI application (e.g., a separate FastAPI app, a Gunicorn app), ensure the mount path and the sub-app's routes align.</li>
 </ul>
 </li>
 <li>
-<p><strong>Inspect Your FastAPI Route Definitions:</strong></p>
+<p><strong>Address Trailing Slash Behavior:</strong></p>
 <ul>
-<li><strong>Scan for the Path:</strong> Look through all your <code>app.py</code> or <code>router.py</code> files for decorators that define the requested path. For example, if the error is for <code>GET /api/v1/items</code>, search for <code>@app.get("/api/v1/items")</code> or <code>@router.get("/items")</code> if using a router with a <code>/api/v1</code> prefix.</li>
-<li><strong>Check for Typos:</strong> Are there any subtle spelling mistakes in your route path compared to the requested URL?</li>
-<li><strong>Verify HTTP Method:</strong> Does the decorator's method (e.g., <code>@app.get</code>) match the HTTP method of the incoming request? If you're sending a <code>POST</code> to <code>/items</code> but only have a <code>GET</code> route, that's your problem.</li>
-<li><strong>Path Parameters:</strong> If the route involves path parameters (e.g., <code>/users/{user_id}</code>), ensure the client is providing a value for <code>user_id</code> and that the format matches any type hints you've used (e.g., <code>int</code>).</li>
+<li>By default, FastAPI will redirect <code>/items/</code> to <code>/items</code> (and vice-versa) to match a single defined route. If you've explicitly disabled this (e.g., <code>FastAPI(redirect_slashes=False)</code>), you need to be precise with your client requests. Check if your client is adding or omitting a trailing slash when your route definition expects the opposite.</li>
 </ul>
 </li>
 <li>
-<p><strong>Confirm Router and Sub-Application Mounting:</strong></p>
+<p><strong>Simplify and Isolate:</strong></p>
 <ul>
-<li>If you're using <code>APIRouter</code>, verify that you've correctly included all your routers using <code>app.include_router()</code>.</li>
-<li>Crucially, check the <code>prefix</code> argument in <code>app.include_router()</code>. A mismatch here means your API routes will effectively be at a different base URL than what your client expects. For instance, if you define <code>@router.get("/health")</code> but <code>include_router</code> with <code>prefix="/api"</code>, the endpoint is <code>/api/health</code>.</li>
-</ul>
-</li>
-<li>
-<p><strong>Validate Static File Configuration:</strong></p>
-<ul>
-<li>If the 404 is for an asset like <code>/static/image.png</code>, ensure you have:<br />
-<code>python
-    from fastapi.staticfiles import StaticFiles
-    # ...
-    app.mount("/static", StaticFiles(directory="static"), name="static")</code></li>
-<li>Double-check that the <code>directory</code> argument points to the correct location of your static files relative to your application's root. Also, verify that the <code>"/static"</code> prefix matches what the client is requesting.</li>
-</ul>
-</li>
-<li>
-<p><strong>Examine Your Deployment Environment (if applicable):</strong></p>
-<ul>
-<li><strong>Reverse Proxies:</strong> If your application sits behind Nginx, Caddy, an AWS Application Load Balancer (ALB), or similar, check its configuration. Is it rewriting paths in a way that your FastAPI app doesn't expect? Is it correctly forwarding requests to your FastAPI service?</li>
-<li><strong>Containerization (Docker):</strong> Ensure your Dockerfile's <code>CMD</code> or <code>ENTRYPOINT</code> is correctly starting your FastAPI application. I've sometimes seen issues where the container starts but Uvicorn isn't listening on the correct host (<code>0.0.0.0</code>) or port, leading to external 404s (though often these manifest as connection refused or 5xx from the proxy).</li>
-<li><strong>Serverless (e.g., AWS Lambda + API Gateway):</strong> API Gateway path mapping can be complex. Ensure your Lambda proxy integration is configured correctly, especially if you're using <code>/{proxy+}</code> catch-all routes.</li>
-</ul>
-</li>
-<li>
-<p><strong>Add Logging:</strong></p>
-<ul>
-<li>Temporarily add logging middleware or print statements within your FastAPI application's startup or routing logic (if possible) to see the exact paths FastAPI is aware of, and the exact path of incoming requests. This can be invaluable for debugging.</li>
+<li>If you're still stuck, create a <em>minimal</em> FastAPI application with just the problematic route. Run it in isolation. If it works, gradually add back components from your main application (middleware, routers) until the 404 reappears, pinpointing the conflict.</li>
 </ul>
 </li>
 </ol>
-<div class="highlight"><pre><span></span><code><span class="c1"># Basic logging middleware example (for debugging purposes)</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">starlette.middleware.base</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseHTTPMiddleware</span>
-<span class="kn">import</span><span class="w"> </span><span class="nn">logging</span>
-
-<span class="k">class</span><span class="w"> </span><span class="nc">LogRequestsMiddleware</span><span class="p">(</span><span class="n">BaseHTTPMiddleware</span><span class="p">):</span>
-    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">dispatch</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">request</span><span class="p">,</span> <span class="n">call_next</span><span class="p">):</span>
-        <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Incoming Request: </span><span class="si">{</span><span class="n">request</span><span class="o">.</span><span class="n">method</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">request</span><span class="o">.</span><span class="n">url</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
-        <span class="n">response</span> <span class="o">=</span> <span class="k">await</span> <span class="n">call_next</span><span class="p">(</span><span class="n">request</span><span class="p">)</span>
-        <span class="k">return</span> <span class="n">response</span>
-
-<span class="n">app</span><span class="o">.</span><span class="n">add_middleware</span><span class="p">(</span><span class="n">LogRequestsMiddleware</span><span class="p">)</span>
-<span class="n">logging</span><span class="o">.</span><span class="n">basicConfig</span><span class="p">(</span><span class="n">level</span><span class="o">=</span><span class="n">logging</span><span class="o">.</span><span class="n">INFO</span><span class="p">)</span>
-</code></pre></div>
-
-<p>By methodically going through these steps, you can typically narrow down the cause of the 404 error quite effectively.</p>
 <h2 id="code-examples">Code Examples</h2>
-<p>Here are some concise, copy-paste ready examples illustrating common 404 scenarios and their fixes.</p>
-<p><strong>Scenario 1: Simple Path Mismatch</strong></p>
+<p>Here's a concise example demonstrating common 404 scenarios and a correct setup:</p>
 <div class="highlight"><pre><span></span><code><span class="c1"># main.py</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">fastapi</span><span class="w"> </span><span class="kn">import</span> <span class="n">FastAPI</span>
-
-<span class="n">app</span> <span class="o">=</span> <span class="n">FastAPI</span><span class="p">()</span>
-
-<span class="nd">@app</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"/hello"</span><span class="p">)</span>
-<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">read_hello</span><span class="p">():</span>
-    <span class="k">return</span> <span class="p">{</span><span class="s2">"message"</span><span class="p">:</span> <span class="s2">"Hello, World!"</span><span class="p">}</span>
-
-<span class="nd">@app</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"/items/</span><span class="si">{item_id}</span><span class="s2">"</span><span class="p">)</span>
-<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">read_item</span><span class="p">(</span><span class="n">item_id</span><span class="p">:</span> <span class="nb">int</span><span class="p">):</span>
-    <span class="k">return</span> <span class="p">{</span><span class="s2">"item_id"</span><span class="p">:</span> <span class="n">item_id</span><span class="p">}</span>
-
-<span class="c1"># To run: uvicorn main:app --reload</span>
-</code></pre></div>
-
-<ul>
-<li><strong>Works:</strong> <code>GET http://localhost:8000/hello</code> -&gt; <code>{"message": "Hello, World!"}</code></li>
-<li><strong>404:</strong> <code>GET http://localhost:8000/hallo</code> (typo in path)</li>
-<li><strong>404:</strong> <code>POST http://localhost:8000/hello</code> (wrong HTTP method)</li>
-<li><strong>Works:</strong> <code>GET http://localhost:8000/items/123</code> -&gt; <code>{"item_id": 123}</code></li>
-<li><strong>404:</strong> <code>GET http://localhost:8000/items</code> (missing <code>item_id</code> for this specific path, though you could add a route for <code>/items</code> without a parameter)</li>
-</ul>
-<p><strong>Scenario 2: Using <code>APIRouter</code> with a Prefix</strong></p>
-<div class="highlight"><pre><span></span><code><span class="c1"># routers/users.py</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">fastapi</span><span class="w"> </span><span class="kn">import</span> <span class="n">APIRouter</span>
-
-<span class="n">router</span> <span class="o">=</span> <span class="n">APIRouter</span><span class="p">()</span>
-
-<span class="nd">@router</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"/"</span><span class="p">)</span>
-<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">get_all_users</span><span class="p">():</span>
-    <span class="k">return</span> <span class="p">{</span><span class="s2">"users"</span><span class="p">:</span> <span class="p">[</span><span class="s2">"Alice"</span><span class="p">,</span> <span class="s2">"Bob"</span><span class="p">]}</span>
-
-<span class="nd">@router</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"/</span><span class="si">{user_id}</span><span class="s2">"</span><span class="p">)</span>
-<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">get_user</span><span class="p">(</span><span class="n">user_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
-    <span class="k">return</span> <span class="p">{</span><span class="s2">"user"</span><span class="p">:</span> <span class="n">user_id</span><span class="p">}</span>
-
-<span class="c1"># main.py</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">fastapi</span><span class="w"> </span><span class="kn">import</span> <span class="n">FastAPI</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">routers</span><span class="w"> </span><span class="kn">import</span> <span class="n">users</span> <span class="c1"># Assuming routers/users.py is in the same directory or importable</span>
-
-<span class="n">app</span> <span class="o">=</span> <span class="n">FastAPI</span><span class="p">()</span>
-
-<span class="c1"># Include the router with a prefix</span>
-<span class="n">app</span><span class="o">.</span><span class="n">include_router</span><span class="p">(</span><span class="n">users</span><span class="o">.</span><span class="n">router</span><span class="p">,</span> <span class="n">prefix</span><span class="o">=</span><span class="s2">"/api/v1/users"</span><span class="p">,</span> <span class="n">tags</span><span class="o">=</span><span class="p">[</span><span class="s2">"users"</span><span class="p">])</span>
-
-<span class="c1"># To run: uvicorn main:app --reload</span>
-</code></pre></div>
-
-<ul>
-<li><strong>Works:</strong> <code>GET http://localhost:8000/api/v1/users/</code> -&gt; <code>{"users": ["Alice", "Bob"]}</code></li>
-<li><strong>Works:</strong> <code>GET http://localhost:8000/api/v1/users/john.doe</code> -&gt; <code>{"user": "john.doe"}</code></li>
-<li><strong>404:</strong> <code>GET http://localhost:8000/users/</code> (missing <code>/api/v1</code> prefix)</li>
-<li><strong>404:</strong> <code>GET http://localhost:8000/api/users/</code> (incorrect <code>/v1</code> prefix)</li>
-<li><strong>404:</strong> <code>GET http://localhost:8000/api/v1/user/</code> (typo: <code>/user</code> instead of <code>/users</code>)</li>
-</ul>
-<p><strong>Scenario 3: Static Files</strong></p>
-<div class="highlight"><pre><span></span><code><span class="c1"># main.py</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">fastapi</span><span class="w"> </span><span class="kn">import</span> <span class="n">FastAPI</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">fastapi</span><span class="w"> </span><span class="kn">import</span> <span class="n">FastAPI</span><span class="p">,</span> <span class="n">APIRouter</span><span class="p">,</span> <span class="n">HTTPException</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">fastapi.responses</span><span class="w"> </span><span class="kn">import</span> <span class="n">HTMLResponse</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">fastapi.staticfiles</span><span class="w"> </span><span class="kn">import</span> <span class="n">StaticFiles</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
 
-<span class="n">app</span> <span class="o">=</span> <span class="n">FastAPI</span><span class="p">()</span>
+<span class="n">app</span> <span class="o">=</span> <span class="n">FastAPI</span><span class="p">(</span><span class="n">title</span><span class="o">=</span><span class="s2">"404 Debugging App"</span><span class="p">)</span>
 
-<span class="c1"># Create a 'static' directory and put an 'index.html' inside it</span>
-<span class="c1"># e.g., static/index.html</span>
-<span class="c1"># &lt;html&gt;&lt;body&gt;&lt;h1&gt;Hello Static!&lt;/h1&gt;&lt;/body&gt;&lt;/html&gt;</span>
+<span class="c1"># Define a base router with a prefix</span>
+<span class="n">api_router</span> <span class="o">=</span> <span class="n">APIRouter</span><span class="p">(</span><span class="n">prefix</span><span class="o">=</span><span class="s2">"/api/v1"</span><span class="p">)</span>
+
+<span class="c1"># --- Correctly defined routes ---</span>
+
+<span class="nd">@api_router</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"/items"</span><span class="p">)</span>
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">read_items</span><span class="p">():</span>
+<span class="w">    </span><span class="sd">"""Correctly accessed via GET /api/v1/items"""</span>
+    <span class="k">return</span> <span class="p">{</span><span class="s2">"message"</span><span class="p">:</span> <span class="s2">"List of items"</span><span class="p">}</span>
+
+<span class="nd">@api_router</span><span class="o">.</span><span class="n">post</span><span class="p">(</span><span class="s2">"/items"</span><span class="p">)</span>
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">create_item</span><span class="p">(</span><span class="n">item</span><span class="p">:</span> <span class="nb">dict</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Correctly accessed via POST /api/v1/items with a JSON body"""</span>
+    <span class="k">return</span> <span class="p">{</span><span class="s2">"message"</span><span class="p">:</span> <span class="sa">f</span><span class="s2">"Item '</span><span class="si">{</span><span class="n">item</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">'name'</span><span class="p">,</span><span class="w"> </span><span class="s1">'unknown'</span><span class="p">)</span><span class="si">}</span><span class="s2">' created"</span><span class="p">}</span>
+
+<span class="nd">@app</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"/health"</span><span class="p">)</span>
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">health_check</span><span class="p">():</span>
+<span class="w">    </span><span class="sd">"""Application-level route, accessed via GET /health"""</span>
+    <span class="k">return</span> <span class="p">{</span><span class="s2">"status"</span><span class="p">:</span> <span class="s2">"healthy"</span><span class="p">}</span>
+
+<span class="c1"># Include the API router</span>
+<span class="n">app</span><span class="o">.</span><span class="n">include_router</span><span class="p">(</span><span class="n">api_router</span><span class="p">)</span>
+
+<span class="c1"># --- Static files setup ---</span>
+<span class="c1"># Create a 'static' directory and put an 'index.html' inside it for testing</span>
+<span class="c1"># e.g., static/index.html with content "&lt;h1&gt;Static Page&lt;/h1&gt;"</span>
+<span class="k">if</span> <span class="ow">not</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="s2">"static"</span><span class="p">):</span>
+    <span class="n">os</span><span class="o">.</span><span class="n">makedirs</span><span class="p">(</span><span class="s2">"static"</span><span class="p">)</span>
+    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="s2">"static/index.html"</span><span class="p">,</span> <span class="s2">"w"</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+        <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s2">"&lt;h1&gt;Static Page from FastAPI&lt;/h1&gt;"</span><span class="p">)</span>
 
 <span class="n">app</span><span class="o">.</span><span class="n">mount</span><span class="p">(</span><span class="s2">"/static"</span><span class="p">,</span> <span class="n">StaticFiles</span><span class="p">(</span><span class="n">directory</span><span class="o">=</span><span class="s2">"static"</span><span class="p">),</span> <span class="n">name</span><span class="o">=</span><span class="s2">"static"</span><span class="p">)</span>
 
-<span class="nd">@app</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"/"</span><span class="p">)</span>
-<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">read_root</span><span class="p">():</span>
-    <span class="k">return</span> <span class="p">{</span><span class="s2">"message"</span><span class="p">:</span> <span class="s2">"Welcome to the API"</span><span class="p">}</span>
+<span class="c1"># --- Intentional 404 scenarios (for demonstration) ---</span>
+<span class="c1"># If a client tries to access /api/v1/item (singular) or /api/v1/users (non-existent)</span>
+<span class="c1"># or POST to /health, they will get a 404.</span>
 
-<span class="c1"># To run: uvicorn main:app --reload</span>
+<span class="c1"># To run this example:</span>
+<span class="c1"># 1. Save as main.py</span>
+<span class="c1"># 2. pip install "fastapi[all]" uvicorn</span>
+<span class="c1"># 3. uvicorn main:app --reload</span>
+
+<span class="c1"># Test with curl:</span>
+<span class="c1"># Correct GET: curl http://localhost:8000/api/v1/items</span>
+<span class="c1"># Correct POST: curl -X POST -H "Content-Type: application/json" -d '{"name": "test_item"}' http://localhost:8000/api/v1/items</span>
+<span class="c1"># Correct App-level GET: curl http://localhost:8000/health</span>
+<span class="c1"># Correct Static: curl http://localhost:8000/static/index.html</span>
+
+<span class="c1"># Expected 404s:</span>
+<span class="c1"># Typo in path: curl http://localhost:8000/api/v1/item # 'item' vs 'items'</span>
+<span class="c1"># Non-existent path: curl http://localhost:8000/api/v1/users</span>
+<span class="c1"># Wrong method: curl -X POST http://localhost:8000/health # /health is only GET</span>
+<span class="c1"># Missing prefix: curl http://localhost:8000/items # Missing /api/v1</span>
+<span class="c1"># Incorrect static path: curl http://localhost:8000/static/non_existent.html</span>
 </code></pre></div>
 
-<ul>
-<li><strong>Works:</strong> <code>GET http://localhost:8000/static/index.html</code> -&gt; Serves <code>static/index.html</code></li>
-<li><strong>Works:</strong> <code>GET http://localhost:8000/</code> -&gt; <code>{"message": "Welcome to the API"}</code></li>
-<li><strong>404:</strong> <code>GET http://localhost:8000/index.html</code> (missing <code>/static</code> prefix)</li>
-<li><strong>404:</strong> <code>GET http://localhost:8000/assets/index.html</code> (incorrect prefix, should be <code>/static</code>)</li>
-<li><strong>404:</strong> <code>GET http://localhost:8000/static/nonexistent.js</code> (file <code>nonexistent.js</code> doesn't exist in <code>static</code> directory)</li>
-</ul>
 <h2 id="environment-specific-notes">Environment-Specific Notes</h2>
-<p>The troubleshooting steps remain similar across environments, but certain factors become more prominent:</p>
+<p>The context in which you encounter a 404 can significantly influence your debugging approach.</p>
 <ul>
 <li>
 <p><strong>Local Development:</strong></p>
 <ul>
-<li>Generally the easiest to debug. You have direct access to the code, server logs, and can restart quickly.</li>
-<li>Focus on code typos, <code>APIRouter</code> prefixes, and correct static file paths relative to your project root.</li>
-<li>Ensure Uvicorn is running and accessible on <code>localhost</code> or <code>127.0.0.1</code> and the correct port.</li>
+<li>This is the easiest environment to debug. You have direct access to your code, console output from Uvicorn (which shows errors and potentially registered routes), and you can use a debugger.</li>
+<li><strong>Tip:</strong> If you're using <code>uvicorn main:app --reload</code>, ensure your changes are saved and the reloader picks them up. Sometimes, a syntax error might prevent the app from restarting, leading to old code or an un-routable state.</li>
+<li>My first step here is always to check the exact <code>uvicorn</code> logs and <code>app.routes</code> directly in a debugger if I'm stumped.</li>
 </ul>
 </li>
 <li>
 <p><strong>Docker Containers:</strong></p>
 <ul>
-<li><strong>Port Exposure:</strong> Ensure the Docker container exposes the port your FastAPI app listens on (e.g., <code>EXPOSE 8000</code> in Dockerfile) and that the host machine maps a port to it (<code>docker run -p 8000:8000</code>).</li>
-<li><strong>Host Binding:</strong> FastAPI (via Uvicorn) should listen on <code>0.0.0.0</code> within the container, not <code>127.0.0.1</code>, so it's accessible from outside the container. Your <code>CMD</code> or <code>ENTRYPOINT</code> should be something like <code>uvicorn main:app --host 0.0.0.0 --port 8000</code>.</li>
-<li><strong>File Paths in Container:</strong> Verify that static file directories or configuration files are correctly copied into the container at the paths FastAPI expects (e.g., <code>COPY ./static /app/static</code>).</li>
-<li><strong>Container Logs:</strong> <code>docker logs &lt;container_id&gt;</code> is your best friend for seeing what FastAPI is doing inside the container.</li>
+<li>When running FastAPI in Docker, the application runs in an isolated environment.</li>
+<li><strong>Port Mapping:</strong> Ensure your <code>docker run -p 80:8000 ...</code> or <code>docker-compose.yml</code> port mappings are correct. A common mistake is exposing the container's port but not mapping it to the host, or vice-versa.</li>
+<li><strong>Container Logs:</strong> Use <code>docker logs &lt;container_id&gt;</code> to see the Uvicorn output from inside the container. This is crucial for verifying if your FastAPI app is actually starting up, what routes it <em>thinks</em> it has, and if any startup errors are preventing routing.</li>
+<li><strong><code>docker exec</code>:</strong> Sometimes, I'll <code>docker exec -it &lt;container_id&gt; bash</code> to get a shell inside the container and verify that the application code exists at the expected path and that dependencies are installed.</li>
 </ul>
 </li>
 <li>
-<p><strong>Cloud Deployment (AWS ECS, Kubernetes, Serverless, etc.):</strong></p>
+<p><strong>Cloud Environments (AWS, Azure, GCP):</strong></p>
 <ul>
-<li><strong>Load Balancers/API Gateways:</strong> This is where <code>404 Not Found</code> errors can become tricky. A common scenario is that a load balancer (like AWS ALB or Nginx Ingress in Kubernetes) has a base path (<code>/api/v1</code>) that it <em>strips</em> before forwarding the request to your FastAPI service. Your FastAPI app might then receive <code>/users</code> when it expects <code>/api/v1/users</code>, resulting in a 404. Conversely, if your load balancer doesn't add a prefix your app expects, you'll also get a mismatch.<ul>
-<li><strong>Solution:</strong> Configure your load balancer to correctly rewrite or forward paths, <em>or</em> adjust your FastAPI <code>APIRouter</code> prefixes to match what your application receives after the proxy.</li>
+<li>Cloud deployments add layers of complexity. In my experience, network configuration often masks the true issue.</li>
+<li><strong>Load Balancers (e.g., AWS ALB, Azure Application Gateway, GCP Load Balancing):</strong><ul>
+<li><strong>Path-based Routing:</strong> Many load balancers allow routing based on URL paths. A misconfigured rule can redirect a request to the wrong target group or return a 404 if no rule matches. For example, if your ALB expects <code>/api/*</code> to go to service A, but your service A only has <code>/items</code>, a request to <code>/api/users</code> might get a 404 from the load balancer itself or from a default service.</li>
+<li><strong>Health Checks:</strong> A service might be returning 404s if its health check path (e.g., <code>/health</code>) is failing, causing the load balancer to remove it from the target group.</li>
 </ul>
 </li>
-<li><strong>Kubernetes Ingress Controllers:</strong> Examine your Ingress resource's rules and annotations (<code>nginx.ingress.kubernetes.io/rewrite-target</code>, <code>pathType</code>). A misconfigured <code>path</code> or <code>rewrite-target</code> can lead to the proxy-stripping issue described above.</li>
-<li><strong>Serverless (e.g., AWS Lambda + API Gateway):</strong><ul>
-<li>API Gateway routes (<code>Path</code> or <code>ANY /{proxy+}</code>) must match what your FastAPI-wrapped Lambda function expects.</li>
-<li>If using a non-proxy integration, you'll need explicit method and path mappings which can be prone to <code>404 Not Found</code> if not aligned. I usually recommend <code>Lambda Proxy Integration</code> for FastAPI apps on Lambda as it passes the full request context.</li>
+<li><strong>API Gateways (e.g., AWS API Gateway, Azure API Management, GCP API Gateway):</strong><ul>
+<li><strong>Resource Paths:</strong> API Gateways have their own resource path definitions. If the gateway path (<code>/users</code>) doesn't map correctly to your backend FastAPI path (<code>/api/v1/users</code>), the gateway might return a 404 <em>before</em> it even reaches your application, or your application gets an unexpected path. Pay close attention to proxy integrations (<code>{proxy+}</code>) and base path mappings.</li>
+<li><strong>Stage Variables:</strong> Ensure stage variables that might influence backend URLs are correctly configured.</li>
 </ul>
 </li>
-<li><strong>Environment Variables:</strong> Check if base paths, static file locations, or router prefixes are determined by environment variables that might be set differently in your production cloud environment compared to local development. This is a subtle but common source of differences.</li>
+<li><strong>Serverless (e.g., AWS Lambda + API Gateway, GCP Cloud Functions/Run):</strong><ul>
+<li>When deploying FastAPI via mangum or similar ASGI adapters, the API Gateway configuration is paramount. Ensure your Lambda proxy integration is set up correctly and the proxy path (<code>/{proxy+}</code>) matches how your FastAPI application is designed to receive paths.</li>
+</ul>
+</li>
+<li><strong>Application Logs:</strong> Always check the logs of your running application instances (e.g., CloudWatch Logs for AWS, Azure Monitor, GCP Cloud Logging). These will show the Uvicorn/FastAPI output, just like locally, revealing if the app is starting up correctly and what requests it's actually receiving.</li>
+<li><strong>Firewalls/Security Groups:</strong> While rare to cause a 404 (they usually result in connection timeouts or refused), ensure your security groups and network ACLs allow traffic to reach your application instances or load balancers. A 404 implies the request <em>reached</em> the application, but it didn't know what to do with it.</li>
 </ul>
 </li>
 </ul>
 <h2 id="frequently-asked-questions">Frequently Asked Questions</h2>
-<ul>
-<li>
-<p><strong>Q: Why do I get a 404 for my static files but my API endpoints work?</strong></p>
-<ul>
-<li><strong>A:</strong> This almost always means your <code>app.mount(StaticFiles(...))</code> configuration is incorrect. Double-check the <code>directory</code> path (relative to where your app starts) and the URL <code>prefix</code> (e.g., <code>/static</code>). The client must request the files using that exact prefix.</li>
-</ul>
-</li>
-<li>
-<p><strong>Q: I have <code>@app.get("/users")</code> and <code>@app.get("/users/{user_id}")</code>. Why does <code>/users</code> sometimes return 404?</strong></p>
-<ul>
-<li><strong>A:</strong> While FastAPI is generally smart about route ordering (more specific before more general), a 404 for the general path (<code>/users</code>) when a more specific one exists (<code>/users/{user_id}</code>) usually indicates a subtle typo in the <code>/users</code> route's definition, or a situation where a catch-all route defined <em>after</em> <code>users</code> somehow captures it, or middleware interfering. Ensure the <code>/users</code> route is correctly defined and, if necessary, place it before more general path parameter routes if both are defined.</li>
-</ul>
-</li>
-<li>
-<p><strong>Q: My frontend makes a request to <code>/api/data</code>, but my FastAPI app only has <code>@app.get("/data")</code>. What's wrong?</strong></p>
-<ul>
-<li><strong>A:</strong> Your frontend is sending a request to a path that your backend isn't expecting. You have two main options:<ol>
-<li><strong>Adjust the Backend:</strong> Add <code>/api</code> to your FastAPI routes (e.g., <code>@app.get("/api/data")</code> or use <code>app.include_router(my_router, prefix="/api")</code>).</li>
-<li><strong>Adjust the Frontend/Proxy:</strong> Configure your frontend application or any reverse proxy in front of FastAPI to remove the <code>/api</code> prefix before forwarding the request to your backend.</li>
-</ol>
-</li>
-</ul>
-</li>
-<li>
-<p><strong>Q: Can a 404 mean my server is down?</strong></p>
-<ul>
-<li><strong>A:</strong> No, quite the opposite! A 404 error explicitly means your FastAPI application is running, received the request, and successfully processed it enough to determine that the requested URL path does not correspond to any defined route. If your server were truly down, you would typically receive a "Connection Refused" error, a "Host Unreachable," or potentially a 5xx error from an upstream proxy if it can't reach your server.</li>
-</ul>
-</li>
-<li>
-<p><strong>Q: I'm seeing 404s in production but not locally. What gives?</strong></p>
-<ul>
-<li><strong>A:</strong> This is a classic indicator of environment-specific configuration differences. Focus your investigation on:<ul>
-<li><strong>Reverse Proxy/Load Balancer Configuration:</strong> Path rewrites, base path additions/removals.</li>
-<li><strong>Containerization (<code>CMD</code>/<code>ENTRYPOINT</code>):</strong> How Uvicorn is started, host binding.</li>
-<li><strong>Environment Variables:</strong> Any differences that might alter route prefixes or static file locations.</li>
-<li><strong>Deployment Pipeline:</strong> Ensure the correct code version is deployed. I've had situations where an older, non-compliant version was accidentally deployed.</li>
-</ul>
-</li>
-</ul>
-</li>
-</ul>
+<p><strong>Q: Is a 404 Not Found error a sign that my FastAPI server has crashed?</strong><br />
+<strong>A:</strong> No, quite the opposite. A 404 indicates that your FastAPI server is running and successfully received the request, but it couldn't find a defined route for the specific URL path and HTTP method combination. If the server had crashed, you'd typically see a "Connection refused" or "Internal Server Error" (500) if the server failed after processing the request.</p>
+<p><strong>Q: I'm sure my route is defined correctly in FastAPI, but I still get a 404. What could be wrong?</strong><br />
+<strong>A:</strong> This often points to an issue outside your direct FastAPI code. Double-check client-side typos, ensure the correct HTTP method is being used, verify any <code>APIRouter</code> prefixes, and critically, check any intermediary services like API gateways, load balancers, or reverse proxies that might be altering or misrouting the request path before it reaches your FastAPI application. Also, confirm you've deployed the <em>latest</em> code.</p>
+<p><strong>Q: Can leading or trailing slashes cause a 404?</strong><br />
+<strong>A:</strong> FastAPI, by default, is quite forgiving with trailing slashes. If you have a route <code>/items</code> and a client requests <code>/items/</code>, FastAPI will typically redirect them to <code>/items</code>. However, if you've configured <code>FastAPI(redirect_slashes=False)</code> or have custom middleware, strict adherence to slash usage becomes necessary, and a mismatch could indeed result in a 404.</p>
+<p><strong>Q: Why am I getting a 404 for my static files (CSS, JS, images)?</strong><br />
+<strong>A:</strong> This usually means your <code>app.mount()</code> configuration for <code>StaticFiles</code> is incorrect or missing. Ensure the <code>directory</code> argument points to the correct physical location of your static files on the server and that the <code>path</code> in <code>app.mount("/static", ...)</code> matches what your client is requesting (e.g., <code>/static/my_image.png</code>).</p>
+<p><strong>Q: Could a firewall or security group cause a 404?</strong><br />
+<strong>A:</strong> Not directly. Firewalls and security groups operate at a lower network level. If they block a connection, you'd typically see a connection timeout or a connection refused error, meaning the request never reached your application. A 404 signifies that the request <em>did</em> reach your FastAPI application, which then decided it couldn't fulfill it due to a missing route.</p>
 <h2 id="related-errors">Related Errors</h2>
-<p>*()</p>
     </div>
 
     <!-- ── AdSense placement 2 – bottom of article ───────────────────────── -->
@@ -435,7 +405,7 @@
     <div class="container">
       <p class="footer-logo">⚡ ErrorFix.dev</p>
       <p>Practical, engineer-written guides for real-world software errors.</p>
-      <p style="margin-top:.5rem">Last updated: <time>September 22, 2026</time>.</p>
+      <p style="margin-top:.5rem">Last updated: <time>September 23, 2026</time>.</p>
       <p class="footer-links" style="margin-top:.75rem">
         <!-- ╔══════════════════════════════════════════════════════════════╗ -->
         <!-- ║  AFFILIATE LINKS – replace the href values below            ║ -->
