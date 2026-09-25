@@ -1,216 +1,253 @@
 # jinja2.exceptions.TemplateNotFound: 'X.html'
-> Encountering `jinja2.exceptions.TemplateNotFound: 'X.html'` means Flask cannot locate your template file; this guide explains how to diagnose and fix it.
+> Encountering jinja2.exceptions.TemplateNotFound: 'X.html' means Flask's Jinja2 templating engine couldn't locate your template file; this guide explains how to fix it with practical, step-by-step solutions.
 
 ## What This Error Means
 
-The `jinja2.exceptions.TemplateNotFound` error in Flask indicates that Jinja2, the templating engine Flask uses, was unable to find the specified template file. When you call `render_template('X.html')` in your Flask application, Jinja2 goes looking for a file named `X.html` within a set of configured directories. If it can't find a file matching that name and path, it raises this exception.
+This error, `jinja2.exceptions.TemplateNotFound: 'X.html'`, is one of the most common issues developers encounter when building web applications with Flask. At its core, it signifies that Jinja2, the templating engine Flask uses to render dynamic content into HTML, could not find a file named 'X.html' (or whatever filename you passed) in any of its configured search paths.
 
-This isn't an error about the *content* of your template (e.g., a syntax error within `X.html`), but rather a fundamental failure to *locate* the template file itself. It's akin to a program trying to open a file that simply doesn't exist at the path it's checking.
+When you call `render_template('X.html')` in your Flask view function, you're instructing Jinja2 to locate and process that specific template file. If Jinja2 searches all its designated locations and `X.html` isn't there, or isn't accessible, this `TemplateNotFound` exception is raised, immediately stopping your application's execution and preventing the page from being served.
 
 ## Why It Happens
 
-At its core, this error happens because the path provided to `render_template()` doesn't correctly map to an actual file on the filesystem within Flask's designated template search paths. Flask, by default, expects template files to reside in a directory named `templates` located in the same directory as your main Flask application script (e.g., `app.py`).
-
-When you call `render_template('my_template.html')`, Flask tells Jinja2 to search within this `templates` directory (and any subdirectories therein) for `my_template.html`. If the file is missing, misspelled, or in the wrong place, the `TemplateNotFound` error is thrown. I've often seen this occur when migrating a project, refactoring, or simply overlooking a subtle detail in file placement or naming.
+The fundamental reason for this error is a mismatch between where your Flask application expects to find a template file and its actual location on the filesystem. Flask has a default convention for template locations, but this can be overridden or affected by various factors, leading to the engine looking in the wrong place. In my experience, it's rarely a cryptic issue; almost always, it boils down to a simple, correctable oversight.
 
 ## Common Causes
 
-Based on my experience debugging Flask applications, here are the most frequent reasons for encountering `jinja2.exceptions.TemplateNotFound`:
+Let's break down the typical culprits that lead to this `TemplateNotFound` error:
 
-1.  **Typo in Template Name:** This is the absolute most common cause. A simple misspelling in the `render_template()` call (e.g., `render_template('dashbord.html')` instead of `render_template('dashboard.html')`) will lead to this error. Similarly, a typo in the actual filename will also cause the issue.
-2.  **Incorrect Path in `render_template()`:** If your template is in a subdirectory, you must specify that path. For example, if `dashboard.html` is inside `templates/admin/`, you need to call `render_template('admin/dashboard.html')`, not `render_template('dashboard.html')`. Forgetting the subdirectory path is a frequent mistake.
-3.  **Template File Not in the `templates` Directory:** Flask's default expectation is a directory named `templates/` directly alongside your main Flask application file (e.g., `app.py`). Placing your template files in `static/`, in the root directory, or in any other arbitrary folder without explicit configuration will result in `TemplateNotFound`.
-4.  **`templates` Directory Misplaced or Misnamed:** If the directory containing your templates is named something other than `templates` (e.g., `_templates`, `views`, `html_files`), or if it's not in the correct location relative to your Flask app or Blueprint, Jinja2 won't find it.
-5.  **Case Sensitivity Issues (Especially on Linux/Docker):** While Windows and macOS filesystems are often case-insensitive by default, Linux systems (which are common in production environments like Docker containers or cloud deployments) are strictly case-sensitive. If you have `templates/MyTemplate.html` on your local machine but call `render_template('mytemplate.html')`, it might work locally but fail in production. This one has bitten me multiple times!
-6.  **Blueprint Template Configuration:** When using Flask Blueprints, each Blueprint can have its own `template_folder`. If not explicitly set, it defaults to a `templates` folder inside the Blueprint's directory. Misconfiguring this, or placing Blueprint-specific templates incorrectly, will cause issues.
-7.  **Deployment Packaging Errors:** In production environments (Docker, cloud platforms), the template files might simply not be included in the deployment package, or they might be copied to the wrong location within the deployed artifact.
+1.  **Incorrect Directory Structure:** Flask, by default, expects a directory named `templates` (lowercase and plural) directly inside your application's root folder (where your `app.py` or `wsgi.py` usually resides). If your `templates` folder is named differently, or placed elsewhere, Flask won't find it.
+2.  **Typographical Errors:** This is surprisingly common. A small typo in the template filename (e.g., `index.html` vs. `indx.html`) or in the directory name (`template` vs. `templates`) can easily trigger this error.
+3.  **Missing Template File:** The specified template file simply doesn't exist at all within the expected `templates` directory. This can happen if a file was deleted, not committed to version control, or not included in a deployment package.
+4.  **Incorrect Path in `render_template()`:** If your template `X.html` is inside a subdirectory within `templates` (e.g., `templates/auth/login.html`), you must specify the full path relative to `templates` when calling `render_template()`, like `render_template('auth/login.html')`. Forgetting the subdirectory path is a frequent mistake.
+5.  **`template_folder` Misconfiguration:** When initializing your Flask application, you can explicitly define where your templates are located using the `template_folder` parameter (e.g., `app = Flask(__name__, template_folder='/path/to/my/views')`). If this path is incorrect, relative to your application's working directory, or points to a non-existent location, templates won't be found.
+6.  **Blueprints and Template Paths:** When working with Flask Blueprints, template loading can become slightly more nuanced. If a blueprint has its own `templates` folder, or if you're trying to render a template that's supposed to be global to the main app, the context matters.
+7.  **Case Sensitivity Differences:** While Windows filesystems are generally case-insensitive (meaning `Index.html` and `index.html` are treated as the same file), Linux-based systems (common in production environments like Docker, AWS, Heroku) are strictly case-sensitive. If you develop on Windows and deploy to Linux, a mismatch in capitalization (e.g., `render_template('Index.html')` vs. actual `index.html` file) will lead to this error.
+8.  **Deployment Issues:** Sometimes, the template files simply aren't included in the final deployment package or image (e.g., a Docker image, a serverless function package), leading to the files not being present in the production environment even if they exist locally.
 
 ## Step-by-Step Fix
 
-Here’s a methodical approach to troubleshoot and resolve `jinja2.exceptions.TemplateNotFound`:
+When `jinja2.exceptions.TemplateNotFound` strikes, follow this systematic approach to debug and resolve it:
 
-1.  **Verify the Template Name in `render_template()`:**
-    *   Go to the line where `render_template()` is called and note the exact string being passed (e.g., `'X.html'`).
-    *   Double-check this string for any typos, incorrect capitalization, or missing file extensions.
+1.  **Examine the Exact Error Message:**
+    *   The error message will specify the exact template filename Jinja2 couldn't find (e.g., `'index.html'`). This is your primary clue.
+    *   **Action:** Note down the exact filename requested.
 
-2.  **Locate Your `templates` Folder:**
-    *   In your project structure, find the directory where your Flask application's `app.py` (or equivalent main script) resides.
-    *   Confirm there is a directory named `templates` directly alongside it.
-    *   If using Blueprints, check for a `templates` folder (or configured `template_folder`) within the Blueprint's directory.
+2.  **Verify the `render_template()` Call:**
+    *   Go to the line in your Python code where `render_template()` is called.
+    *   **Is the filename spelled correctly?** E.g., `render_template('dashboard.html')` vs. `render_template('dashbord.html')`.
+    *   **Are you including subdirectories if applicable?** If your template is at `templates/user/profile.html`, the call should be `render_template('user/profile.html')`, not `render_template('profile.html')`.
 
-3.  **Check the Template File's Actual Path:**
-    *   Navigate into the `templates` folder (or the Blueprint's template folder).
-    *   Ensure the file `X.html` (matching the string from `render_template()`) actually exists there, respecting any subdirectories.
-    *   For example, if `render_template('admin/dashboard.html')` is called, ensure the file path is `your_project/templates/admin/dashboard.html`.
+3.  **Check Your `templates` Directory Structure:**
+    *   By default, Flask looks for a directory named `templates` (lowercase, plural) in the same directory as your main Flask application instance (usually `app.py` or the file where `Flask(__name__)` is initialized).
+    *   **Action:** Open your terminal and navigate to your project's root directory.
+        *   Confirm the `templates` folder exists:
+            ```bash
+            ls -F # Or 'dir' on Windows
+            ```
+            You should see `templates/` listed.
+        *   Confirm the requested template file exists inside it, with correct spelling and case:
+            ```bash
+            ls -F templates/
+            ```
+            If your error was `TemplateNotFound: 'auth/login.html'`, then you'd check:
+            ```bash
+            ls -F templates/auth/
+            ```
+            You should see `login.html` (or whatever 'X.html' was) listed.
 
-4.  **Inspect Flask Application Configuration:**
-    *   **For standalone apps:** Ensure your Flask app is initialized correctly, typically with `app = Flask(__name__)`. The `__name__` argument helps Flask correctly locate resources relative to your module.
-    *   **For Blueprints:**
-        *   If your templates are inside the blueprint module's directory (e.g., `my_blueprint/templates/`), ensure the Blueprint is initialized like `bp = Blueprint('my_bp', __name__)`.
-        *   If your blueprint templates are in a custom location, verify the `template_folder` argument: `bp = Blueprint('my_bp', __name__, template_folder='path/to/templates')`.
-
-5.  **Use Flask's Debugging Capabilities (Print `app.template_folder`):**
-    *   To definitively know where Flask is *looking* for templates, print its configured `template_folder`.
-    *   Add this line to your Flask app setup:
+4.  **Review `template_folder` Configuration (If Custom):**
+    *   If you've explicitly configured the `template_folder` when creating your Flask app instance (e.g., `app = Flask(__name__, template_folder='path/to/my_templates')`), this is a common source of error.
+    *   **Action:** Double-check the path provided. Is it correct relative to where your `app.py` runs, or is it an absolute path? I generally prefer using absolute paths for `template_folder` to avoid ambiguity across different execution environments.
         ```python
         import os
-        from flask import Flask, render_template
+        from flask import Flask
 
-        app = Flask(__name__)
-        print(f"Flask is looking for templates in: {os.path.abspath(app.template_folder)}")
-
-        @app.route('/')
-        def index():
-            return render_template('index.html')
-
-        if __name__ == '__main__':
-            app.run(debug=True)
+        basedir = os.path.abspath(os.path.dirname(__file__))
+        app = Flask(__name__, template_folder=os.path.join(basedir, 'my_custom_views'))
         ```
-    *   Run your app and check the console output. This absolute path will tell you exactly where Flask expects to find your `templates` directory. This has often been a lifesaver for me when the expected and actual paths diverge.
+        This ensures the path is always resolved correctly, regardless of the current working directory.
 
-6.  **Check File System Case Sensitivity (Critical for Deployments):**
-    *   If you're developing on Windows/macOS and deploying to Linux (common with Docker, Heroku, AWS, etc.), verify that template filenames and directory names precisely match their casing between `render_template()` calls and the actual filesystem. `MyTemplate.html` is not the same as `mytemplate.html` on Linux. I've wasted hours on this particular subtle difference.
+5.  **Consider Blueprint-Specific Template Paths:**
+    *   If using Flask Blueprints, ensure your blueprint's template handling is correct. If you set `template_folder` for a blueprint, it will look *relative to the blueprint's module directory*.
+    *   **Action:**
+        *   If your blueprint is `my_app/auth/views.py` and you want `my_app/auth/templates/login.html`:
+            ```python
+            auth_bp = Blueprint('auth', __name__, template_folder='templates')
+            # ...
+            return render_template('login.html') # Searches my_app/auth/templates/login.html
+            ```
+        *   If you *don't* set `template_folder` on the blueprint, it will search the main application's `templates` folder. In this case, you might need to specify a subfolder in `render_template()` to keep things organized:
+            ```python
+            auth_bp = Blueprint('auth', __name__)
+            # ...
+            return render_template('auth/login.html') # Searches my_app/templates/auth/login.html
+            ```
 
-7.  **Rebuild/Redeploy (If in Production/Docker):**
-    *   If you've changed template files or folder structures, ensure your build process (e.g., Docker image build, CI/CD pipeline) is correctly picking up these changes and deploying them. Sometimes, a stale build artifact is the culprit.
+6.  **Case Sensitivity Check (Especially for Deployment):**
+    *   Windows (often used for development) treats `FILE.HTML` and `file.html` as the same. Linux (common for deployment) does not.
+    *   **Action:** Ensure the exact casing used in `render_template('X.html')` matches the actual filename on your filesystem. Rename files if necessary to match, or ensure your `render_template` calls are accurate.
+
+7.  **Restart Your Development Server / Redeploy:**
+    *   Sometimes, especially after adding new files, the Flask development server or your deployment environment might not pick up changes immediately due to caching or file watching issues.
+    *   **Action:** A simple restart of `flask run` or redeploying your application can often resolve stubborn `TemplateNotFound` errors.
 
 ## Code Examples
 
-Here are some concise, copy-paste ready examples demonstrating correct template location and usage:
+Here are some common Flask setups and how `TemplateNotFound` can manifest or be avoided.
 
-**1. Basic Flask Application Structure:**
+**1. Standard Flask Application with Correct Structure:**
 
-```
-my_flask_app/
-├── app.py
-└── templates/
-    └── index.html
-```
+This is the most common and recommended setup.
 
-`app.py`:
 ```python
+# app.py
 from flask import Flask, render_template
 
 app = Flask(__name__)
 
 @app.route('/')
-def index():
-    return render_template('index.html') # Correct: 'index.html'
+def home():
+    return render_template('index.html') # This expects templates/index.html
+
+@app.route('/about')
+def about():
+    # This expects templates/about/page.html
+    return render_template('about/page.html')
 
 if __name__ == '__main__':
     app.run(debug=True)
 ```
 
-**2. Template in a Subdirectory:**
+And the expected directory structure:
 
 ```
 my_flask_app/
 ├── app.py
 └── templates/
     ├── index.html
-    └── users/
-        └── profile.html
+    └── about/
+        └── page.html
 ```
 
-`app.py`:
+**2. Flask Application with Custom `template_folder`:**
+
+If your templates are not in the default `templates` directory, you must specify their location.
+
 ```python
+# app.py
+import os
 from flask import Flask, render_template
 
-app = Flask(__name__)
+# Assume templates are in 'views' folder, sibling to app.py
+# Example: my_flask_app/
+#          ├── app.py
+#          └── views/
+#              └── home.html
+basedir = os.path.abspath(os.path.dirname(__file__))
+app = Flask(__name__, template_folder=os.path.join(basedir, 'views'))
 
 @app.route('/')
-def index():
-    return render_template('index.html')
-
-@app.route('/profile')
-def profile():
-    return render_template('users/profile.html') # Correct: 'users/profile.html'
+def home():
+    # Now looks in 'views/home.html'
+    return render_template('home.html')
 
 if __name__ == '__main__':
     app.run(debug=True)
 ```
 
-**3. Using Flask Blueprints with Dedicated Templates:**
+**3. Flask Blueprints with Dedicated Templates:**
 
-```
-my_flask_app/
-├── app.py
-├── auth/
-│   ├── __init__.py  # This defines the blueprint
-│   └── templates/   # Blueprint-specific templates
-│       └── login.html
-└── templates/       # Main app templates
-    └── index.html
-```
+Blueprints can have their own template directories.
 
-`auth/__init__.py`:
 ```python
+# my_flask_app/__init__.py
+from flask import Flask
+
+def create_app():
+    app = Flask(__name__)
+    # Register blueprints
+    from .auth import auth_bp
+    app.register_blueprint(auth_bp, url_prefix='/auth')
+    return app
+
+# my_flask_app/auth/views.py
 from flask import Blueprint, render_template
 
-auth_bp = Blueprint('auth', __name__, template_folder='templates') # default, or explicitly 'templates'
+# Blueprint's template_folder is relative to my_flask_app/auth/
+auth_bp = Blueprint('auth', __name__, template_folder='templates')
 
 @auth_bp.route('/login')
 def login():
-    return render_template('login.html') # Correct: 'login.html' (relative to auth_bp's template_folder)
+    # This will search in my_flask_app/auth/templates/login.html
+    return render_template('login.html')
+
+@auth_bp.route('/register')
+def register():
+    # This would search in my_flask_app/auth/templates/register.html
+    return render_template('register.html')
 ```
 
-`app.py`:
-```python
-from flask import Flask, render_template
-from auth import auth_bp # Import your blueprint
+Expected directory structure for the blueprint example:
 
-app = Flask(__name__)
-app.register_blueprint(auth_bp, url_prefix='/auth')
-
-@app.route('/')
-def index():
-    return render_template('index.html')
-
-if __name__ == '__main__':
-    app.run(debug=True)
+```
+my_flask_app/
+├── __init__.py
+├── auth/
+│   ├── __init__.py
+│   ├── templates/ # Templates for the 'auth' blueprint
+│   │   ├── login.html
+│   │   └── register.html
+│   └── views.py
+└── templates/ # Main application templates (e.g., for 'home' page)
+    └── index.html
 ```
 
 ## Environment-Specific Notes
 
-The `TemplateNotFound` error can manifest differently or be caused by distinct factors depending on your deployment environment.
+The context in which your Flask application runs can significantly impact how template paths are resolved. I've seen this in production when what worked perfectly locally suddenly fails.
 
 *   **Local Development:**
-    Typically, this error on a local machine points directly to a typo, an incorrect path in `render_template()`, or a misplaced `templates` directory relative to your `app.py`. The `app.template_folder` print statement (from Step 5 above) is your best friend here. If `app.py` is in the project root, `templates` should be too. If `app.py` is in `src/`, then `templates` should also be in `src/` (unless you manually configure `template_folder` on `Flask` initialization).
+    *   Usually, the `templates/` folder is placed directly alongside your `app.py`. The `Flask(__name__)` constructor intelligently infers the application root from `__name__`, making relative paths straightforward.
+    *   **Tip:** Always ensure your command line's current working directory (`cwd`) is the project root when running `flask run`. If you launch from a subfolder, relative paths for `template_folder` or even the default `templates/` lookup can break.
 
-*   **Docker:**
-    Docker deployments are a common source of this error. The problem often lies in the `Dockerfile`.
-    1.  **`COPY` Command Issues:** Ensure your `templates` directory (and its contents) are correctly copied into the Docker image at the expected location. For example, if your `templates` directory is at the root of your project, and your app expects it at `/app/templates`, your `Dockerfile` should have something like `COPY templates /app/templates` or a more general `COPY . /app`.
-    2.  **Working Directory (`WORKDIR`):** If your `WORKDIR` in the `Dockerfile` is not where Flask expects the templates relative to your `app.py`, it will fail. Ensure `WORKDIR` is set to the directory containing your `app.py` and `templates` folder.
-    3.  **Permissions:** Less common, but ensure the user running your Flask app inside the container has read permissions on the template files and directories.
+*   **Docker Containers:**
+    *   When building a Docker image for your Flask app, the `COPY` instruction in your `Dockerfile` is crucial. You must ensure that your `templates` directory (and any custom `template_folder` locations) is copied into the correct location *inside* the container, relative to where your Flask application process will run.
+    *   **Common Pitfall:** Forgetting to `COPY` the templates or copying them to an unexpected path.
+    *   **Debugging:** Use `docker exec -it <container_id> ls -F /app` (assuming `/app` is your `WORKDIR`) to inspect the filesystem inside the running container and verify templates are present.
 
-    Example `Dockerfile` snippet:
     ```dockerfile
-    FROM python:3.9-slim-buster
+    # Example Dockerfile snippet
     WORKDIR /app
     COPY requirements.txt .
     RUN pip install -r requirements.txt
-    COPY . . # This copies app.py and templates/ to /app/
+    COPY . . # This line copies your entire project, including templates, into /app
     CMD ["python", "app.py"]
     ```
 
-*   **Cloud Platforms (e.g., AWS Elastic Beanstalk, Heroku, Azure App Service):**
-    These platforms often involve packaging your application for deployment.
-    1.  **Deployment Artifacts:** Ensure your `templates` directory is actually included in the `.zip` file, `git` repository, or whatever deployment bundle you're sending to the cloud provider. I've seen situations where `.dockerignore` or `.gitignore` files inadvertently exclude the templates directory.
-    2.  **Runtime Environment:** Similar to Docker, the path structure on the cloud server matters. The platform typically runs your application from a specific working directory. Verify that your `templates` folder ends up in the correct place relative to your `app.py` within that environment.
-    3.  **Case Sensitivity:** Always double-check case sensitivity, as most cloud platforms use Linux-based servers. This is particularly insidious because it can pass local testing (on Windows/macOS) but fail silently in production until you hit the specific template.
+*   **Cloud Deployments (e.g., AWS Elastic Beanstalk, Heroku, Azure App Service):**
+    *   These platforms typically work by taking your project code (via Git or a deployment package) and running it. The key here is to verify that your `templates` folder (and its contents) are actually included in the *deployed artifact*.
+    *   **Common Pitfall:** Sometimes, `.gitignore` rules or specific build configurations on the platform might inadvertently exclude static files or templates from the final deployment.
+    *   **Debugging:** If the platform offers a remote shell or log access, use it to inspect the deployed filesystem directly. This is where I've most often found that what *should* be there, isn't, due to a build or deployment misconfiguration. Look for deployment logs that indicate which files were included.
+
+*   **WSGI Servers (Gunicorn, uWSGI):**
+    *   When deploying with WSGI servers, they typically launch your Flask application. The `cwd` of the WSGI server process matters. If you've used relative paths for your `template_folder`, these will be resolved relative to the WSGI server's `cwd`.
+    *   **Recommendation:** Always use `os.path.abspath(os.path.dirname(__file__))` to construct absolute paths for `template_folder` if you have any custom configurations, especially when deploying with WSGI servers, to avoid `cwd`-related issues.
 
 ## Frequently Asked Questions
 
-**Q: My template is in `templates/users/dashboard.html` but `render_template('dashboard.html')` fails. Why?**
-**A:** Flask needs the full path relative to the `templates` folder. You should use `render_template('users/dashboard.html')`. Flask doesn't automatically scan all subdirectories recursively without explicit path inclusion.
+**Q: My `templates` folder is in the right place, but I still get the error. What gives?**
+**A:** Double-check the *exact* filename and its casing. Remember, Linux is case-sensitive (`Index.html` is different from `index.html`). Also, verify there are no hidden characters in the filename, and that the file isn't empty or corrupted. Lastly, ensure your `render_template` call correctly specifies any subdirectories (e.g., `render_template('auth/login.html')`).
 
-**Q: I moved my `app.py` file, and now templates don't work. What happened?**
-**A:** Flask's default `template_folder` is determined relative to the location of the module where your `Flask` app instance is created (`__name__`). When you move `app.py`, the base path for `templates/` also shifts. You either need to move your `templates` folder to match the new `app.py` location, or explicitly configure `template_folder` when initializing your `Flask` app: `app = Flask(__name__, template_folder='/path/to/your/templates')`.
+**Q: I'm using an IDE like VS Code or PyCharm. Could it be an IDE issue?**
+**A:** Unlikely. The `TemplateNotFound` error comes from Jinja2 at runtime, independent of your IDE. However, your IDE's run configuration might be launching your Flask application from an unexpected working directory. This could affect how relative paths (like the default `templates/` folder) are resolved. Always verify the actual file system structure and where your app is being executed from.
 
-**Q: How can I use templates from outside the default `templates` folder?**
-**A:** You can specify a custom `template_folder` when initializing your Flask application or Blueprint. For example: `app = Flask(__name__, template_folder='../my_custom_templates')` if `my_custom_templates` is a sibling directory to your app's main directory. Or even an absolute path: `app = Flask(__name__, template_folder=os.path.join(os.path.dirname(__file__), '..', 'assets', 'html'))`.
+**Q: Does it matter if I name my template files `.htm` instead of `.html`?**
+**A:** Jinja2 doesn't care about the file extension itself, as long as the name you pass to `render_template()` precisely matches the actual filename. So, `render_template('my_page.htm')` is perfectly fine if the file is indeed named `my_page.htm`. The `.html` extension is just a widely adopted convention.
 
-**Q: My local development works, but deployment fails with `TemplateNotFound` on a Linux-based server. Why?**
-**A:** This is almost certainly a case sensitivity issue. Linux filesystems are case-sensitive, meaning `MyTemplate.html` is a different file from `mytemplate.html`. Windows and macOS are often case-insensitive by default. Ensure that the exact casing of your template filenames and directory names in your `render_template()` calls matches the actual file system in your deployment environment.
+**Q: Can I put my templates outside the `templates` folder?**
+**A:** Yes, you can. However, you must explicitly tell Flask where they are by setting the `template_folder` parameter in the `Flask` constructor. If not set, Flask defaults to looking for a directory named `templates` (plural, lowercase) inside the application's root directory. For example: `app = Flask(__name__, template_folder='/path/to/my/custom/views')`.
+
+**Q: I'm seeing this error on production but not locally. What should I check first?**
+**A:** This is a classic symptom of a deployment issue. Your first checks should be: 1. Case sensitivity of filenames (Windows vs. Linux), 2. Whether the `templates` folder and its contents were actually included in the deployment package/image, and 3. The current working directory of your Flask application on the production server, especially if you're using relative paths for `template_folder`. Accessing the server's filesystem directly (if possible) is often the fastest way to confirm.
 
 ## Related Errors
