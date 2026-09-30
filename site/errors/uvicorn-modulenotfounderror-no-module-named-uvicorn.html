@@ -126,86 +126,97 @@
     <div class="article-content">
       <h1 id="modulenotfounderror-no-module-named-uvicorn">ModuleNotFoundError: No module named 'uvicorn'</h1>
 <blockquote>
-<p>Encountering "ModuleNotFoundError: No module named 'uvicorn'" means the uvicorn package is not installed in your current Python environment; this guide explains how to fix it.</p>
+<p>Encountering ModuleNotFoundError: No module named 'uvicorn' means Uvicorn is not installed in your current Python environment; this guide explains how to fix it.</p>
 </blockquote>
 <h2 id="what-this-error-means">What This Error Means</h2>
-<p>This error, <code>ModuleNotFoundError: No module named 'uvicorn'</code>, is a clear indicator that the Python interpreter cannot locate the <code>uvicorn</code> package. When you try to run a command like <code>uvicorn main:app --reload</code>, or if your application code attempts to import <code>uvicorn</code> directly, Python searches its configured paths for the module. If it's not found in any of those locations, it raises this specific <code>ModuleNotFoundError</code>. In the context of running FastAPI or Starlette applications, <code>uvicorn</code> is the ASGI server that takes your application code and makes it accessible via HTTP. Without it, your application simply won't start.</p>
+<p>When you see <code>ModuleNotFoundError: No module named 'uvicorn'</code>, it's Python telling you that it cannot find the <code>uvicorn</code> package in the environment where you're trying to run your application. This usually happens when you execute a command like <code>uvicorn main:app --reload</code> or <code>python -m uvicorn main:app --reload</code>, and the Python interpreter simply doesn't have the necessary module available for import.</p>
+<p>Uvicorn is an ASGI server, essential for running modern asynchronous Python web frameworks like FastAPI and Starlette. Without it, your application's entry point, which expects Uvicorn to be present to serve the application, will fail immediately at startup. This isn't a bug in your code, but rather an environmental setup issue.</p>
 <h2 id="why-it-happens">Why It Happens</h2>
-<p>At its core, this error occurs because the <code>uvicorn</code> package has not been installed, or it has been installed in a Python environment that is not currently active or accessible to your shell. Python environments are designed to isolate dependencies, preventing conflicts between different projects. When you encounter this <code>ModuleNotFoundError</code>, it’s usually a mismatch between where you <em>think</em> <code>uvicorn</code> is installed and where Python is actually looking for it. It's a fundamental environmental issue rather than a bug in your application code itself.</p>
+<p>The core reason for this error is that the Python interpreter you're using to run your application does not have the <code>uvicorn</code> package installed or accessible within its <code>sys.path</code>. Python modules are typically installed into specific locations within your Python installation, and if <code>uvicorn</code> isn't in one of those spots for the active interpreter, you get this <code>ModuleNotFoundError</code>. It's a fundamental part of Python's module import system.</p>
+<p>In my experience, this is one of the most common "gotchas" for both new developers and seasoned engineers switching between projects or environments. It's almost always a path or installation issue rather than a code problem.</p>
 <h2 id="common-causes">Common Causes</h2>
-<p>In my experience, encountering <code>ModuleNotFoundError: No module named 'uvicorn'</code> during CLI startup typically boils down to one of the following scenarios:</p>
+<p>This error, while seemingly simple, can stem from several common scenarios:</p>
 <ol>
-<li><strong><code>uvicorn</code> is not installed at all:</strong> This is the most straightforward cause. You've simply forgotten to install the package in your current Python environment. This happens often when setting up a new project or cloning a repository for the first time.</li>
-<li><strong>Incorrect Python environment is active:</strong> You might have multiple Python installations or virtual environments on your system. <code>uvicorn</code> could be installed in one environment (e.g., a virtual environment for Project A) but you're trying to run your application using another environment (e.g., the system-wide Python or a different virtual environment for Project B). The active environment determines which packages are available.</li>
-<li><strong>Virtual environment not activated:</strong> If you're using a virtual environment (which is highly recommended), you might have installed <code>uvicorn</code> into it, but forgotten to activate the environment before attempting to run your application. Without activation, your shell defaults to the system Python, which likely doesn't have <code>uvicorn</code> installed. I've seen this in production-like scenarios where a CI/CD pipeline step might miss the activation command.</li>
-<li><strong><code>uvicorn</code> installed in a different Python version:</strong> Sometimes, you might have Python 3.8 and Python 3.10 installed. If you run <code>pip install uvicorn</code> with Python 3.8's <code>pip</code>, but then try to execute your application with Python 3.10, the module won't be found.</li>
-<li><strong>Path issues (less common for <code>uvicorn</code> CLI startup):</strong> While less frequent for a direct CLI call to <code>uvicorn</code>, if you were importing <code>uvicorn</code> from within a script, and your <code>PYTHONPATH</code> was misconfigured or pointing to an unexpected location, it could lead to similar issues. For CLI usage, it primarily points back to environment activation.</li>
+<li><strong>Uvicorn is simply not installed:</strong> The most straightforward cause. You or your deployment script forgot to run <code>pip install uvicorn</code> (or <code>pip install "uvicorn[standard]"</code>) in the target environment.</li>
+<li><strong>Incorrect Python environment activated:</strong> You might have multiple Python installations on your system (e.g., system Python, Homebrew Python, <code>pyenv</code>, <code>conda</code>, different virtual environments). You might have installed Uvicorn in one environment but are attempting to run your application using another, where Uvicorn is absent. This is particularly prevalent when working with virtual environments and forgetting to <code>source venv/bin/activate</code>.</li>
+<li><strong><code>pip</code> and <code>python</code> mismatch:</strong> Sometimes, <code>pip</code> refers to the installer for one Python version, while <code>python</code> (or <code>python3</code>) refers to a different one. For instance, <code>pip install uvicorn</code> might install to Python 2.x's site-packages, while <code>python3 your_app.py</code> uses Python 3.x, which doesn't see the installed module. Or, you might use <code>pip</code> from your global Python installation, but your <code>python</code> command points to an activated virtual environment where <code>uvicorn</code> hasn't been installed.</li>
+<li><strong>Deployment pipeline issues:</strong><ul>
+<li><strong>Docker:</strong> The <code>Dockerfile</code> might be missing the <code>RUN pip install uvicorn</code> command, or it might be installing into a different Python version than the one used to run the application within the container.</li>
+<li><strong>Cloud Platforms:</strong> Platforms like AWS Elastic Beanstalk, Heroku, Azure App Service, or Google App Engine rely on a <code>requirements.txt</code> file. If <code>uvicorn</code> (or <code>uvicorn[standard]</code>) is missing from this file, or if the platform's build process fails to install dependencies correctly, you'll encounter this error.</li>
+<li><strong>CI/CD:</strong> The CI/CD pipeline might not be setting up the Python environment correctly, or it might be caching dependencies incorrectly, leading to an environment where <code>uvicorn</code> is not present when the application attempts to start.</li>
+</ul>
+</li>
+<li><strong><code>PATH</code> environment variable issues:</strong> Less common for <code>uvicorn</code> specifically, but if <code>uvicorn</code> was installed via <code>pipx</code> or into a custom location not on your system's <code>PATH</code>, the shell might not find the <code>uvicorn</code> executable even if the module is technically installed for <em>a</em> Python interpreter. However, this particular <code>ModuleNotFoundError</code> specifically points to Python's import system, not the shell's <code>PATH</code>.</li>
 </ol>
 <h2 id="step-by-step-fix">Step-by-Step Fix</h2>
-<p>Here's how to systematically troubleshoot and resolve the <code>ModuleNotFoundError: No module named 'uvicorn'</code>:</p>
+<p>Addressing this error typically involves ensuring Uvicorn is correctly installed in the Python environment your application uses.</p>
 <ol>
 <li>
-<p><strong>Verify Your Current Python Environment:</strong><br />
-    First, check which Python interpreter your shell is currently using. This is crucial for understanding where <code>pip</code> will install packages and where Python will look for them.</p>
+<h3 id="verify-your-python-environment">Verify Your Python Environment</h3>
+<p>First, confirm which Python interpreter and <code>pip</code> installer you are currently using. This is crucial, especially if you have multiple Python versions or virtual environments.</p>
 <p><code>bash
 which python
-python --version
-which pip
-pip --version</code><br />
-If <code>which python</code> points to <code>/usr/bin/python</code> or another system-wide path, and you intended to use a virtual environment, you need to activate it first.</p>
+which pip</code><br />
+If you're using a virtual environment, <code>which python</code> should point to something like <code>/path/to/your/venv/bin/python</code>. If it points to a system-wide Python (e.g., <code>/usr/bin/python3</code>), ensure that's where you <em>intend</em> to install Uvicorn.</p>
 </li>
 <li>
-<p><strong>Activate Your Virtual Environment (If Applicable):</strong><br />
-    If you have a virtual environment for your project, activate it. This ensures that any subsequent <code>pip</code> commands install packages into this isolated environment and that your application runs using its Python interpreter.</p>
+<h3 id="activate-your-virtual-environment-if-applicable">Activate Your Virtual Environment (If Applicable)</h3>
+<p>If you're working on a project that uses a virtual environment (which is highly recommended), make sure it's activated.</p>
 <p>```bash</p>
-<h1 id="for-virtualenvvenv">For virtualenv/venv</h1>
-<p>source .venv/bin/activate</p>
-<h1 id="or-if-on-windows-command-prompt">or if on Windows Command Prompt</h1>
-<p>.venv\Scripts\activate.bat</p>
-<h1 id="or-if-on-windows-powershell">or if on Windows PowerShell</h1>
-<p>.venv\Scripts\Activate.ps1</p>
-<h1 id="for-conda-environments">For Conda environments</h1>
-<p>conda activate your_env_name<br />
-<code>``
-After activation, re-run</code>which python<code>and</code>pip --version<code>. You should see paths pointing inside your virtual environment (e.g.,</code>~/my-project/.venv/bin/python`).</p>
-</li>
-<li>
-<p><strong>Install <code>uvicorn</code> (or Reinstall):</strong><br />
-    Once you are certain you are in the correct Python environment, install <code>uvicorn</code>. If you're unsure if it's already installed, <code>pip install</code> will either install it or tell you it's already satisfied. For FastAPI applications, it's often good practice to install <code>uvicorn</code> with the <code>standard</code> or <code>full</code> extras to get additional features like <code>python-multipart</code> for forms.</p>
-<p>```bash<br />
-pip install uvicorn</p>
-<h1 id="for-common-fastapi-setups-consider">For common FastAPI setups, consider:</h1>
-<h1 id="pip-install-uvicornstandard">pip install "uvicorn[standard]"</h1>
-<h1 id="or">or</h1>
-<h1 id="pip-install-uvicornfull">pip install "uvicorn[full]"</h1>
+<h1 id="navigate-to-your-project-directory">Navigate to your project directory</h1>
+<p>cd my-fastapi-project</p>
+<h1 id="activate-the-virtual-environment">Activate the virtual environment</h1>
+<p>source venv/bin/activate</p>
+<h1 id="or-if-using-conda">or if using conda:</h1>
+<h1 id="conda-activate-myenv">conda activate myenv</h1>
 <p><code>``
-If you have a</code>requirements.txt` file, use that:</p>
-<p><code>bash
-pip install -r requirements.txt</code></p>
+After activation, re-run</code>which python<code>and</code>which pip` to confirm they now point inside your virtual environment.</p>
 </li>
 <li>
-<p><strong>Verify <code>uvicorn</code> Installation:</strong><br />
-    You can check if <code>uvicorn</code> is now available in your active environment by listing installed packages or trying to import it.</p>
+<h3 id="install-uvicorn">Install Uvicorn</h3>
+<p>With the correct environment activated, install Uvicorn using <code>pip</code>. For most FastAPI or Starlette projects, you'll want the <code>standard</code> extras which includes <code>websockets</code> support.</p>
+<p><code>bash
+pip install "uvicorn[standard]"</code><br />
+If you only need the basic HTTP server, <code>pip install uvicorn</code> is sufficient, but I generally recommend the <code>standard</code> install to avoid future <code>websockets</code> related <code>ModuleNotFoundError</code> issues down the line if your application starts using them.</p>
+</li>
+<li>
+<h3 id="verify-uvicorn-installation">Verify Uvicorn Installation</h3>
+<p>After installation, you can confirm <code>uvicorn</code> is now visible to your current Python environment:</p>
+<p><code>bash
+pip show uvicorn</code><br />
+This command should output details about the installed <code>uvicorn</code> package, including its version and location. If it shows information, it's installed.</p>
+<p>You can also try a quick Python console test:<br />
+<code>bash
+python -c "import uvicorn; print(uvicorn.__version__)"</code><br />
+If this runs without a <code>ModuleNotFoundError</code>, you're good.</p>
+</li>
+<li>
+<h3 id="run-your-application">Run Your Application</h3>
+<p>Now, attempt to run your application again using the command you were trying previously.</p>
 <p>```bash<br />
-pip freeze | grep uvicorn</p>
-<h1 id="expected-output-uvicornxyz">Expected output: uvicorn==x.y.z</h1>
-<p>```<br />
-You can also try a quick Python import:</p>
-<p><code>bash
-python -c "import uvicorn; print('Uvicorn installed successfully!')"</code><br />
-If this runs without an <code>ImportError</code>, you're good to go.</p>
+uvicorn main:app --reload</p>
+<h1 id="or-if-uvicorn-is-not-in-path-or-you-prefer-explicit-module-execution">Or, if uvicorn is not in PATH or you prefer explicit module execution:</h1>
+<p>python -m uvicorn main:app --reload<br />
+<code>``
+If everything is correctly set up, your application should now start without the</code>ModuleNotFoundError`.</p>
 </li>
 <li>
-<p><strong>Run Your Application:</strong><br />
-    Now, attempt to start your application again using the <code>uvicorn</code> command.</p>
+<h3 id="reinstallupgrade-if-still-having-issues">Reinstall/Upgrade (If Still Having Issues)</h3>
+<p>Occasionally, a corrupted installation or dependency conflict can cause issues. If the problem persists, try uninstalling and reinstalling Uvicorn:</p>
 <p><code>bash
-uvicorn main:app --reload</code><br />
-This sequence typically resolves the <code>ModuleNotFoundError</code> for <code>uvicorn</code>.</p>
+pip uninstall uvicorn
+pip install "uvicorn[standard]"</code></p>
 </li>
 </ol>
 <h2 id="code-examples">Code Examples</h2>
-<p>Here's a minimal example of a FastAPI application and how you'd run it, assuming <code>uvicorn</code> is installed.</p>
-<p><strong>1. <code>main.py</code> (Your FastAPI application):</strong></p>
+<p>Here are some copy-paste ready examples for typical scenarios.</p>
+<h3 id="basic-uvicorn-installation">Basic Uvicorn Installation</h3>
+<p>To get Uvicorn installed in your <em>current</em> Python environment:</p>
+<div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">"uvicorn[standard]"</span>
+</code></pre></div>
+
+<h3 id="running-a-simple-fastapi-app">Running a Simple FastAPI App</h3>
+<p>Assume you have a <code>main.py</code> like this:</p>
 <div class="highlight"><pre><span></span><code><span class="c1"># main.py</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">fastapi</span><span class="w"> </span><span class="kn">import</span> <span class="n">FastAPI</span>
 
@@ -213,95 +224,96 @@ This sequence typically resolves the <code>ModuleNotFoundError</code> for <code>
 
 <span class="nd">@app</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"/"</span><span class="p">)</span>
 <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">read_root</span><span class="p">():</span>
-    <span class="k">return</span> <span class="p">{</span><span class="s2">"message"</span><span class="p">:</span> <span class="s2">"Hello, World!"</span><span class="p">}</span>
+    <span class="k">return</span> <span class="p">{</span><span class="s2">"message"</span><span class="p">:</span> <span class="s2">"Hello from Lena's server!"</span><span class="p">}</span>
 
-<span class="nd">@app</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"/items/</span><span class="si">{item_id}</span><span class="s2">"</span><span class="p">)</span>
-<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">read_item</span><span class="p">(</span><span class="n">item_id</span><span class="p">:</span> <span class="nb">int</span><span class="p">):</span>
-    <span class="k">return</span> <span class="p">{</span><span class="s2">"item_id"</span><span class="p">:</span> <span class="n">item_id</span><span class="p">}</span>
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">"__main__"</span><span class="p">:</span>
+    <span class="kn">import</span><span class="w"> </span><span class="nn">uvicorn</span>
+    <span class="n">uvicorn</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">app</span><span class="p">,</span> <span class="n">host</span><span class="o">=</span><span class="s2">"0.0.0.0"</span><span class="p">,</span> <span class="n">port</span><span class="o">=</span><span class="mi">8000</span><span class="p">)</span>
 </code></pre></div>
 
-<p><strong>2. <code>requirements.txt</code> (Recommended project dependencies):</strong></p>
-<div class="highlight"><pre><span></span><code>fastapi==0.111.0
-uvicorn[standard]==0.30.1
+<p>To run it, first ensure <code>uvicorn</code> and <code>fastapi</code> are installed:</p>
+<div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span>fastapi<span class="w"> </span><span class="s2">"uvicorn[standard]"</span>
 </code></pre></div>
 
-<p><em>(Note: Use the actual versions you need or omit for latest compatible, but specifying is generally better for reproducibility.)</em></p>
-<p><strong>3. Installing dependencies and running the application:</strong></p>
-<div class="highlight"><pre><span></span><code><span class="c1"># 1. Create a virtual environment (if you haven't already)</span>
-python<span class="w"> </span>-m<span class="w"> </span>venv<span class="w"> </span>.venv
-
-<span class="c1"># 2. Activate the virtual environment</span>
-<span class="nb">source</span><span class="w"> </span>.venv/bin/activate<span class="w"> </span><span class="c1"># On Linux/macOS</span>
-<span class="c1"># .venv\Scripts\activate.bat # On Windows CMD</span>
-<span class="c1"># .venv\Scripts\Activate.ps1 # On Windows PowerShell</span>
-
-<span class="c1"># 3. Install the dependencies from requirements.txt</span>
-pip<span class="w"> </span>install<span class="w"> </span>-r<span class="w"> </span>requirements.txt
-
-<span class="c1"># 4. Run your FastAPI application using uvicorn</span>
-uvicorn<span class="w"> </span>main:app<span class="w"> </span>--reload<span class="w"> </span>--port<span class="w"> </span><span class="m">8000</span>
+<p>Then execute:</p>
+<div class="highlight"><pre><span></span><code>uvicorn<span class="w"> </span>main:app<span class="w"> </span>--reload<span class="w"> </span>--port<span class="w"> </span><span class="m">8000</span>
 </code></pre></div>
 
-<p>This will start <code>uvicorn</code> serving your application at <code>http://127.0.0.1:8000</code>.</p>
+<p>Or, if you want to explicitly use the <code>python -m</code> method:</p>
+<div class="highlight"><pre><span></span><code>python<span class="w"> </span>-m<span class="w"> </span>uvicorn<span class="w"> </span>main:app<span class="w"> </span>--reload<span class="w"> </span>--port<span class="w"> </span><span class="m">8000</span>
+</code></pre></div>
+
+<h3 id="using-requirementstxt">Using <code>requirements.txt</code></h3>
+<p>For projects, always use a <code>requirements.txt</code> file to manage dependencies.</p>
+<div class="highlight"><pre><span></span><code># requirements.txt
+fastapi&gt;=0.100.0
+uvicorn[standard]&gt;=0.20.0
+</code></pre></div>
+
+<p>Install all dependencies from the file:</p>
+<div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span>-r<span class="w"> </span>requirements.txt
+</code></pre></div>
+
+<p>This ensures all required packages, including <code>uvicorn</code>, are installed consistently.</p>
 <h2 id="environment-specific-notes">Environment-Specific Notes</h2>
-<p>The cause and fix for <code>ModuleNotFoundError: No module named 'uvicorn'</code> can vary slightly depending on your deployment or development environment.</p>
+<p>The <code>ModuleNotFoundError</code> for Uvicorn often manifests differently depending on your deployment target.</p>
 <h3 id="local-development">Local Development</h3>
-<p>For local development, the primary concern is usually virtual environments. I always recommend using them (<code>venv</code> or <code>conda</code>). If you forget to activate your virtual environment, or you have multiple environments and install <code>uvicorn</code> in the wrong one, you'll hit this error.</p>
+<p>For local development, the key is consistency with virtual environments. I've seen this in production when developers forget to activate their virtual environment before installing or running their app. Always remember:<br />
+1.  Create a virtual environment (<code>python -m venv venv</code>).<br />
+2.  Activate it (<code>source venv/bin/activate</code>).<br />
+3.  Install dependencies (<code>pip install -r requirements.txt</code>).<br />
+4.  Run your app (<code>uvicorn main:app</code>).<br />
+This workflow isolates your project's dependencies, preventing conflicts with other projects or your system Python.</p>
+<h3 id="docker">Docker</h3>
+<p>In a Dockerized environment, the <code>ModuleNotFoundError</code> means your <code>Dockerfile</code> isn't correctly installing <code>uvicorn</code>.</p>
+<p>A robust <code>Dockerfile</code> for a FastAPI application might look like this:</p>
+<div class="highlight"><pre><span></span><code><span class="c"># Use an official Python runtime as a parent image</span>
+<span class="k">FROM</span><span class="w"> </span><span class="s">python:3.10-slim-buster</span>
+
+<span class="c"># Set the working directory in the container</span>
+<span class="k">WORKDIR</span><span class="w"> </span><span class="s">/app</span>
+
+<span class="c"># Copy the requirements file into the container at /app</span>
+<span class="k">COPY</span><span class="w"> </span>requirements.txt<span class="w"> </span>.
+
+<span class="c"># Install any needed packages specified in requirements.txt</span>
+<span class="c"># This specifically ensures uvicorn[standard] is installed</span>
+<span class="k">RUN</span><span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>--no-cache-dir<span class="w"> </span>-r<span class="w"> </span>requirements.txt
+
+<span class="c"># Copy the rest of your application's code into the container</span>
+<span class="k">COPY</span><span class="w"> </span>.<span class="w"> </span>.
+
+<span class="c"># Expose port 8000 for uvicorn</span>
+<span class="k">EXPOSE</span><span class="w"> </span><span class="s">8000</span>
+
+<span class="c"># Run uvicorn when the container launches</span>
+<span class="k">CMD</span><span class="w"> </span><span class="p">[</span><span class="s2">"uvicorn"</span><span class="p">,</span><span class="w"> </span><span class="s2">"main:app"</span><span class="p">,</span><span class="w"> </span><span class="s2">"--host"</span><span class="p">,</span><span class="w"> </span><span class="s2">"0.0.0.0"</span><span class="p">,</span><span class="w"> </span><span class="s2">"--port"</span><span class="p">,</span><span class="w"> </span><span class="s2">"8000"</span><span class="p">]</span>
+</code></pre></div>
+
+<p>I usually confirm <code>requirements.txt</code> explicitly lists <code>uvicorn[standard]</code> and that the <code>pip install</code> command is executed <em>after</em> <code>requirements.txt</code> is copied to prevent caching issues from previous builds if requirements change.</p>
+<h3 id="cloud-platforms-aws-elastic-beanstalk-heroku-azure-app-service-google-app-engine">Cloud Platforms (AWS Elastic Beanstalk, Heroku, Azure App Service, Google App Engine)</h3>
+<p>These platforms typically rely on a <code>requirements.txt</code> file in your project's root directory to determine what Python packages to install during their build process.</p>
 <ul>
-<li><strong>Best Practice:</strong><ol>
-<li>Create a dedicated virtual environment for each project: <code>python -m venv .venv</code></li>
-<li>Activate it: <code>source .venv/bin/activate</code> (or Windows equivalent)</li>
-<li>Install dependencies: <code>pip install -r requirements.txt</code> (ensure <code>uvicorn</code> is in there!)</li>
-<li>Always activate the environment before running <code>uvicorn</code> or any Python scripts for that project.</li>
-<li>Use an IDE (like VS Code or PyCharm) that allows you to easily select and manage your project's virtual environment. This reduces manual activation errors.</li>
-</ol>
-</li>
+<li><strong>AWS Elastic Beanstalk:</strong> It automatically runs <code>pip install -r requirements.txt</code> when deploying Python applications. Ensure <code>uvicorn[standard]</code> is in this file. If you're using a custom <code>Procfile</code> for running your application, ensure it uses the <code>uvicorn</code> command or <code>python -m uvicorn</code>.</li>
+<li><strong>Heroku:</strong> Similar to Elastic Beanstalk, Heroku also uses <code>requirements.txt</code>. Your <code>Procfile</code> should define how to start your web process, e.g., <code>web: uvicorn main:app --host 0.0.0.0 --port $PORT</code>. If your <code>requirements.txt</code> is missing <code>uvicorn</code>, you'll hit this error during runtime.</li>
+<li><strong>Azure App Service / Google App Engine:</strong> Both platforms also look for <code>requirements.txt</code>. For App Service, you might need to specify a startup command in your application settings if you're not using the default <code>gunicorn</code> with <code>uvicorn</code> worker setup. Google App Engine's flexible environment will also use <code>requirements.txt</code>.</li>
 </ul>
-<h3 id="docker-containers">Docker Containers</h3>
-<p>When working with Docker, this error almost always means <code>uvicorn</code> wasn't installed <em>inside the container image</em>. The Python environment inside the container is completely isolated from your host machine.</p>
-<ul>
-<li><strong>Common Fixes:</strong><ul>
-<li><strong>Missing <code>pip install</code>:</strong> Your <code>Dockerfile</code> needs a <code>RUN pip install -r requirements.txt</code> (or similar) command.</li>
-<li><strong>Incorrect <code>requirements.txt</code>:</strong> Ensure <code>uvicorn</code> (and <code>fastapi</code>) are listed in your <code>requirements.txt</code> file and that this file is correctly <code>COPY</code>ied into the Docker image before the <code>pip install</code> command.</li>
-<li><strong>Incorrect Base Image:</strong> If you're building on a very minimal base image, you might need to install <code>pip</code> itself first or ensure the image has a Python environment that works as expected.</li>
-<li>
-<p><strong>Example <code>Dockerfile</code> Snippet:</strong></p>
-<p>```dockerfile<br />
-FROM python:3.10-slim-buster</p>
-<p>WORKDIR /app</p>
-<p>COPY requirements.txt .<br />
-RUN pip install --no-cache-dir -r requirements.txt</p>
-<p>COPY . .</p>
-<p>CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "80"]<br />
-<code>``
-In my experience, forgetting</code>COPY requirements.txt .<code>before</code>RUN pip install` is a frequent oversight that leads to this.</p>
-</li>
-</ul>
-</li>
-</ul>
-<h3 id="cloud-deployment-eg-heroku-aws-elastic-beanstalk-azure-app-service">Cloud Deployment (e.g., Heroku, AWS Elastic Beanstalk, Azure App Service)</h3>
-<p>Cloud platforms that deploy Python applications typically rely on a <code>requirements.txt</code> file to automatically install dependencies during the build/deployment process. This is very similar to the Docker scenario.</p>
-<ul>
-<li><strong>Key Considerations:</strong><ul>
-<li><strong>Missing <code>requirements.txt</code>:</strong> The platform needs this file at the root of your project to know what to install.</li>
-<li><strong><code>uvicorn</code> not in <code>requirements.txt</code>:</strong> Double-check that <code>uvicorn</code> (and any necessary extras like <code>uvicorn[standard]</code>) is listed.</li>
-<li><strong>Deployment Logs:</strong> Always check your deployment logs for the specific cloud provider. They will show you the output of the dependency installation step. If <code>pip install</code> failed for any reason (e.g., network issues during build, incompatible package versions), <code>uvicorn</code> might not be installed.</li>
-<li><strong>Buildpack/Runtime Configuration:</strong> Some platforms (like Heroku) use buildpacks. Ensure you're using the correct Python buildpack and that it's configured to recognize your <code>requirements.txt</code>.</li>
-<li><strong>Start Command:</strong> Ensure your platform's start command explicitly uses <code>uvicorn</code> (e.g., <code>uvicorn main:app --host 0.0.0.0 --port $PORT</code>) and that the platform's runtime environment allows <code>uvicorn</code> to execute.</li>
-</ul>
-</li>
-</ul>
+<p>In all these cases, the fix is to explicitly include <code>uvicorn[standard]</code> in your <code>requirements.txt</code> file and verify that the platform's build logs show a successful installation of all dependencies. I've often seen this error in production when a developer updates an application but forgets to update the <code>requirements.txt</code> or to push the updated <code>requirements.txt</code> along with the code.</p>
 <h2 id="frequently-asked-questions">Frequently Asked Questions</h2>
-<p><strong>Q: What is a virtual environment and why should I use one?</strong><br />
-A: A virtual environment is an isolated Python environment that allows you to manage dependencies for different projects separately. This prevents conflicts where Project A needs <code>uvicorn==0.1.0</code> and Project B needs <code>uvicorn==0.2.0</code>. Using them ensures reproducibility and avoids cluttering your system-wide Python installation.</p>
-<p><strong>Q: I installed <code>uvicorn</code> globally. Why am I still getting this error?</strong><br />
-A: If you installed <code>uvicorn</code> globally (without a virtual environment), it means it's available to your system's default Python interpreter. If you're getting the error, it's highly probable that your application is being run by a <em>different</em> Python interpreter (e.g., one inside an activated virtual environment, or a specific version like <code>python3.10</code> when <code>uvicorn</code> was installed for <code>python3.8</code>). Always verify <code>which python</code> and <code>which pip</code>.</p>
-<p><strong>Q: Can I just run my FastAPI app with <code>python main.py</code> instead of <code>uvicorn main:app</code>?</strong><br />
-A: No, you cannot. <code>uvicorn</code> is an ASGI server. FastAPI applications are ASGI applications, and they require an ASGI server (like Uvicorn, Hypercorn, or Daphne) to run them over HTTP. <code>python main.py</code> would simply execute the Python script, but it wouldn't start a web server to listen for incoming requests.</p>
-<p><strong>Q: How do I specify a particular version of <code>uvicorn</code>?</strong><br />
-A: You can specify the version when installing with <code>pip</code>: <code>pip install uvicorn==0.30.1</code>. It's even better practice to include this in your <code>requirements.txt</code> file for version control and reproducibility across environments.</p>
-<p><strong>Q: Why does <code>uvicorn</code> seem to be missing even after <code>pip install</code> in Docker?</strong><br />
-A: This is usually because your <code>requirements.txt</code> file wasn't correctly copied into the Docker image before the <code>pip install</code> step, or the build context was wrong. Make sure your <code>COPY requirements.txt .</code> command is executed successfully before <code>RUN pip install -r requirements.txt</code> within your <code>Dockerfile</code>. Also, ensure <code>uvicorn</code> is indeed listed in that <code>requirements.txt</code> file.</p>
+<p><strong>Q: <code>uvicorn</code> is installed, <code>pip show uvicorn</code> works, but I still get <code>ModuleNotFoundError</code>!</strong><br />
+<strong>A:</strong> This almost certainly means you have multiple Python environments, and <code>pip show uvicorn</code> is checking one environment, while the <code>python</code> command you're using to run your application is invoking a <em>different</em> Python interpreter. Re-verify <code>which python</code> and <code>which pip</code>. Ensure they point to the <em>same</em> virtual environment or Python installation. For example, if <code>which python</code> returns <code>/usr/bin/python3</code>, but <code>which pip</code> returns <code>/path/to/my/venv/bin/pip</code>, they're mismatched. You need to either activate the virtual environment or install into the system-wide Python using <code>python3 -m pip install "uvicorn[standard]"</code>.</p>
+<p><strong>Q: Should I install Uvicorn globally on my system?</strong><br />
+<strong>A:</strong> Generally, no. It's best practice to use Python virtual environments (<code>venv</code>, <code>conda</code>, <code>pyenv</code>) for each project. This isolates dependencies, prevents conflicts between projects, and keeps your global Python environment clean. Only install globally if you intend to use <code>uvicorn</code> as a system-wide utility for various projects <em>without</em> virtual environments (which is not recommended for development).</p>
+<p><strong>Q: What's the difference between <code>pip install uvicorn</code> and <code>pip install "uvicorn[standard]"</code>?</strong><br />
+<strong>A:</strong> <code>pip install uvicorn</code> installs the base Uvicorn package. <code>pip install "uvicorn[standard]"</code> installs Uvicorn along with its "standard" extras, which currently includes the <code>websockets</code> library. If your FastAPI or Starlette application uses WebSockets, omitting <code>[standard]</code> will lead to a <code>ModuleNotFoundError</code> for <code>websockets</code>. It's good practice to include <code>[standard]</code> unless you're absolutely certain you don't need it.</p>
+<p><strong>Q: My CI/CD pipeline is failing with this error. How do I fix it?</strong><br />
+<strong>A:</strong> Ensure your CI/CD script:<br />
+1.  Creates or activates a Python virtual environment.<br />
+2.  Explicitly runs <code>pip install -r requirements.txt</code> (making sure <code>uvicorn[standard]</code> is in <code>requirements.txt</code>).<br />
+3.  Uses the Python interpreter from that activated environment to run your tests or start your application.<br />
+Check the build logs for any <code>pip</code> installation failures or warnings that might indicate a problem.</p>
+<p><strong>Q: What about <code>python -m uvicorn</code> versus <code>uvicorn</code> directly?</strong><br />
+<strong>A:</strong> <code>uvicorn</code> directly invokes the <code>uvicorn</code> executable script, which is usually created by <code>pip</code> in your virtual environment's <code>bin</code> directory (e.g., <code>venv/bin/uvicorn</code>). <code>python -m uvicorn</code> tells the Python interpreter to run the <code>uvicorn</code> module as a script. Both achieve the same result. I often prefer <code>python -m uvicorn</code> because it explicitly uses the Python interpreter that invoked it, helping to avoid <code>PATH</code> issues if the <code>uvicorn</code> executable isn't correctly linked or found in the shell's <code>PATH</code>. It guarantees the <code>uvicorn</code> module is loaded by <em>that specific</em> Python interpreter.</p>
 <h2 id="related-errors">Related Errors</h2>
     </div>
 
@@ -353,7 +365,7 @@ A: This is usually because your <code>requirements.txt</code> file wasn't correc
     <div class="container">
       <p class="footer-logo">⚡ ErrorFix.dev</p>
       <p>Practical, engineer-written guides for real-world software errors.</p>
-      <p style="margin-top:.5rem">Last updated: <time>September 29, 2026</time>.</p>
+      <p style="margin-top:.5rem">Last updated: <time>September 30, 2026</time>.</p>
       <p class="footer-links" style="margin-top:.75rem">
         <!-- ╔══════════════════════════════════════════════════════════════╗ -->
         <!-- ║  AFFILIATE LINKS – replace the href values below            ║ -->
