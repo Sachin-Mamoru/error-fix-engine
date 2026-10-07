@@ -127,256 +127,272 @@
 <p>Encountering <code>starlette.websockets.WebSocketDisconnect: 1000</code> means a WebSocket connection was closed normally; this guide explains its implications and how to manage it effectively.</p>
 </blockquote>
 <h2 id="what-this-error-means">What This Error Means</h2>
-<p>The <code>starlette.websockets.WebSocketDisconnect: 1000</code> message is often misunderstood as an error, but in reality, it signifies a <em>normal, expected closure</em> of a WebSocket connection. The <code>1000</code> in the message refers to a specific WebSocket close code defined in RFC 6455, indicating "Normal Closure." This means that the client or server (or both) explicitly initiated the disconnection in a clean and anticipated manner.</p>
-<p>Unlike other WebSocket disconnect codes (e.g., <code>1006</code> for "Abnormal Closure" or <code>1001</code> for "Going Away" due to a server or client closing a tab), a <code>1000</code> code suggests that the communication handshake for closing the connection was completed successfully. It's the equivalent of hanging up a phone call politely after the conversation is over, rather than the line suddenly going dead.</p>
-<p>For a DevOps and Cloud specialist, understanding this distinction is crucial. When you see <code>1000</code>, your first instinct shouldn't be to panic and search for a bug. Instead, it should prompt you to confirm whether this closure was intended by your application's logic or your user's behavior. If it was intended, then this "error" is merely an informational event, not a problem requiring a fix.</p>
+<p>When you see <code>starlette.websockets.WebSocketDisconnect: 1000</code> in your FastAPI application logs, it signifies that a WebSocket connection has been closed. Crucially, the code <code>1000</code> indicates a "Normal Closure" as defined by the WebSocket protocol (RFC 6455, Section 7.4.1). Unlike many other <code>WebSocketDisconnect</code> codes (like <code>1006</code> for abnormal closure or <code>1011</code> for internal error), <code>1000</code> is generally <em>not</em> an error. Instead, it's an informational message indicating that the connection terminated gracefully and intentionally, either by the client or the server.</p>
+<p>From a practical standpoint, this means the WebSocket handshake completed successfully, data was potentially exchanged, and then one party initiated a proper closing handshake. This is the expected behavior for any WebSocket connection that needs to end.</p>
 <h2 id="why-it-happens">Why It Happens</h2>
-<p><code>starlette.websockets.WebSocketDisconnect: 1000</code> occurs because either the client or the server, or sometimes an intermediary, decided to end the WebSocket connection gracefully. The key here is "gracefully."</p>
-<p>Here are the primary scenarios I've observed that lead to a <code>1000</code> code:</p>
+<p>The <code>starlette.websockets.WebSocketDisconnect: 1000</code> message occurs because the underlying Starlette (which FastAPI builds upon) WebSocket implementation detects a clean shutdown of the connection. This can happen for several legitimate reasons, and understanding the context is key to determining if it's expected behavior or a symptom of something else.</p>
+<p>In my experience, this message often appears when:</p>
+<ol>
+<li><strong>Client-Initiated Closure:</strong> The client application explicitly closes the WebSocket connection. This is the most common scenario. For example, a user closes the browser tab, navigates away from the page, the JavaScript application calls <code>webSocket.close()</code>, or a mobile app goes into the background and decides to disconnect.</li>
+<li><strong>Server-Initiated Graceful Closure:</strong> The FastAPI server application itself decides to close the connection. This could be due to:<ul>
+<li>A planned server shutdown or restart (e.g., during a deployment).</li>
+<li>The server explicitly calling <code>await websocket.close()</code> after completing a task or due to application logic (e.g., a session timeout).</li>
+</ul>
+</li>
+<li><strong>Application Logic:</strong> Your application might have specific conditions under which it deems a connection no longer necessary and initiates a clean close from either the client or server side.</li>
+</ol>
+<p>It's important to differentiate this from unexpected disconnections, which would typically result in different error codes (e.g., <code>1006</code> for abnormal closure without a closing handshake, often due to network issues or abrupt termination).</p>
+<h2 id="common-causes">Common Causes</h2>
+<p>Let's dive deeper into the specific scenarios that frequently lead to <code>WebSocketDisconnect: 1000</code>:</p>
+<ul>
+<li><strong>User Interaction:</strong><ul>
+<li>A user closing their web browser or a specific tab/window.</li>
+<li>Navigating to a different URL within a single-page application (SPA) where the previous WebSocket connection is no longer needed.</li>
+<li>Explicitly logging out or performing an action that triggers a client-side <code>WebSocket.close()</code>.</li>
+</ul>
+</li>
+<li><strong>Client-Side Application Logic:</strong><ul>
+<li>JavaScript frameworks or libraries automatically closing connections when components unmount or become inactive.</li>
+<li>Mobile applications disconnecting when backgrounded to conserve resources.</li>
+<li>Desktop applications exiting or switching modes that don't require the WebSocket.</li>
+</ul>
+</li>
+<li><strong>Server-Side Application Logic:</strong><ul>
+<li>A FastAPI endpoint explicitly calling <code>await websocket.close()</code> after fulfilling its purpose (e.g., streaming a finite amount of data).</li>
+<li>An internal event triggering a server-side disconnect for a specific client (e.g., user session invalidation).</li>
+</ul>
+</li>
+<li><strong>Deployment and Server Restarts:</strong><ul>
+<li>During a CI/CD pipeline, when a new version of your FastAPI application is deployed, the old instances shut down gracefully. This often involves the server initiating <code>SIGTERM</code> or similar signals, prompting Uvicorn/Gunicorn to close existing connections, leading to <code>1000</code> codes for active WebSockets.</li>
+</ul>
+</li>
+<li><strong>Load Balancer/Proxy Behavior (Indirectly):</strong> While less common for <em>explicit</em> <code>1000</code> codes, sometimes load balancers or proxies have idle timeouts. If a client is inactive and the proxy closes the connection, the client might then send a clean close, or the server might detect the closure. For true idle timeouts, you'd more often see <code>1006</code> or <code>1001</code> if not handled correctly, but a well-configured proxy <em>can</em> facilitate a clean shutdown.</li>
+</ul>
+<h2 id="step-by-step-fix">Step-by-Step Fix</h2>
+<p>Since <code>1000</code> typically indicates a normal closure, the "fix" isn't about correcting an error but rather about <em>understanding</em> and potentially <em>managing</em> these disconnections.</p>
 <ol>
 <li>
-<p><strong>Client-Initiated Normal Closure:</strong></p>
+<p><strong>Acknowledge and Understand:</strong></p>
 <ul>
-<li>The user closes the browser tab or navigates away from the page that established the WebSocket connection.</li>
-<li>The client-side JavaScript code explicitly calls <code>WebSocket.close()</code>. This might happen after the client has received all necessary data, or as part of a logout/disconnect sequence.</li>
+<li>First and foremost, understand that <code>WebSocketDisconnect: 1000</code> is usually a non-error event. Don't immediately treat it as a bug.</li>
+<li>Consider the context: Did a user just navigate away? Was the server redeployed? This initial assessment is critical.</li>
 </ul>
 </li>
 <li>
-<p><strong>Server-Initiated Normal Closure:</strong></p>
+<p><strong>Review Client-Side Closure Logic:</strong></p>
 <ul>
-<li>Your FastAPI application logic explicitly calls <code>websocket.close()</code>. This is common if the server has completed a specific task for that client, or if the client's session has expired, or the server needs to gracefully shed connections before a shutdown.</li>
-<li>The server detects an idle connection and, rather than abruptly terminating it (which might result in a <code>1006</code>), it sends a <code>1000</code> close frame before tearing down resources. This is less common for application servers directly but can happen.</li>
+<li>If you're seeing frequent <code>1000</code> disconnections, check your client-side code (JavaScript, mobile app logic, etc.).</li>
+<li>Are you explicitly calling <code>webSocket.close()</code>? If so, ensure it's at an appropriate time.</li>
+<li>Are there frameworks or libraries that might be closing connections automatically (e.g., React component unmount, Vue <code>beforeDestroy</code>)? Ensure this behavior aligns with your application's needs.</li>
 </ul>
 </li>
 <li>
-<p><strong>Proxy/Load Balancer Initiated Normal Closure:</strong></p>
+<p><strong>Implement Graceful Server Shutdowns:</strong></p>
 <ul>
-<li>While less frequent for <code>1000</code> (idle timeouts from proxies often result in <code>1006</code>), a properly configured load balancer or reverse proxy (like NGINX, HAProxy, or cloud load balancers such as AWS ALB) <em>can</em> gracefully close connections with a <code>1000</code> code. This would typically occur if the proxy's own timeout settings are configured to send a close frame rather than just dropping the connection. I've seen this in production when specific proxy configurations are used for long-lived connections that have an explicit maximum duration.</li>
+<li>When deploying or restarting your FastAPI application, ensure your Uvicorn/Gunicorn setup allows for graceful shutdowns. This gives active WebSocket connections a chance to close properly.</li>
+<li>Uvicorn typically handles <code>SIGTERM</code> by attempting to shut down gracefully, closing open connections. I've found that ensuring a reasonable <code>timeout_graceful_shutdown</code> setting for Gunicorn (if you're using it with Uvicorn workers) is crucial.</li>
+</ul>
+<p>```bash</p>
+<h1 id="example-gunicorn-command-for-graceful-shutdown">Example Gunicorn command for graceful shutdown</h1>
+<p>gunicorn main:app --workers 4 --worker-class uvicorn.workers.UvicornWorker \<br />
+--bind 0.0.0.0:8000 --timeout 60 --graceful-timeout 30<br />
+<code>``
+Here,</code>graceful-timeout` gives workers time to finish requests and close connections.</p>
+</li>
+<li>
+<p><strong>Refine Logging and Monitoring:</strong></p>
+<ul>
+<li>If the volume of <code>1000</code> messages is overwhelming or you need to debug specific connection behaviors, adjust your logging levels.</li>
+<li>You might want to log these disconnections at an <code>INFO</code> or <code>DEBUG</code> level rather than <code>WARNING</code> or <code>ERROR</code> to reduce noise in production.</li>
+<li>Consider adding specific logging within your FastAPI WebSocket endpoint to capture client details (e.g., user ID, session ID) upon disconnect. This can help correlate <code>1000</code> events with user actions.</li>
+</ul>
+<p>```python<br />
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect<br />
+import logging</p>
+<p>logger = logging.getLogger("uvicorn.error") # Or your custom logger</p>
+<p>app = FastAPI()</p>
+<p>@app.websocket("/ws/{client_id}")<br />
+async def websocket_endpoint(websocket: WebSocket, client_id: str):<br />
+    await websocket.accept()<br />
+    logger.info(f"WebSocket connected: {client_id}")<br />
+    try:<br />
+        while True:<br />
+            data = await websocket.receive_text()<br />
+            await websocket.send_text(f"Message text was: {data}")<br />
+    except WebSocketDisconnect as e:<br />
+        # Check for normal closure code<br />
+        if e.code == 1000:<br />
+            logger.info(f"WebSocket normally disconnected: {client_id} (code: {e.code})")<br />
+        else:<br />
+            logger.warning(f"WebSocket disconnected abnormally: {client_id} (code: {e.code}, reason: {e.reason})")<br />
+    except Exception as e:<br />
+        logger.error(f"WebSocket error for {client_id}: {e}")<br />
+    finally:<br />
+        logger.info(f"WebSocket handler finished for {client_id}")<br />
+```</p>
+</li>
+<li>
+<p><strong>Proactive Connection Management (If Unexpectedly High Disconnects):</strong></p>
+<ul>
+<li>If you observe a pattern of clients connecting and immediately disconnecting with <code>1000</code> <em>without</em> apparent user action, it might indicate a client-side bug where it's establishing and closing connections unnecessarily. Review the client's connection lifecycle.</li>
+<li>For very long-lived connections, implementing server-side or client-side heartbeats can help detect truly dead connections proactively, which might prevent eventual <code>1006</code> errors and ensure <code>1000</code> is used for intentional closes.</li>
 </ul>
 </li>
 </ol>
-<p>The underlying mechanism involves a "close frame" being sent by one end, and the other end responding with its own close frame, followed by the TCP connection being torn down. This successful handshake results in the <code>1000</code> code.</p>
-<h2 id="common-causes">Common Causes</h2>
-<p>Delving deeper into the 'why', here are the most common specific scenarios where you might encounter <code>starlette.websockets.WebSocketDisconnect: 1000</code>:</p>
-<ul>
-<li>
-<p><strong>User Interaction:</strong> This is arguably the most frequent cause. A user simply closing their browser tab, navigating to another page, or explicitly logging out of an application will trigger the client-side JavaScript to terminate the WebSocket connection. Since it's an expected client action, the <code>1000</code> code is correct.</p>
-</li>
-<li>
-<p><strong>Client-side Application Logic:</strong> Modern web applications often manage WebSocket lifecycles. If your frontend framework (e.g., React, Vue, Angular) cleans up components, it might explicitly close WebSocket connections associated with those components upon unmounting or before re-rendering. Similarly, a dedicated "disconnect" button in the UI would also trigger this.</p>
-</li>
-<li>
-<p><strong>Server-side Application Logic:</strong> Your FastAPI endpoint might have a condition under which it decides to close the connection. For instance, if a client requests data that is only available for a short period, or if the server detects a change in client permissions requiring a reconnect, it might initiate a <code>websocket.close()</code> with the intention of the client re-establishing later.</p>
-</li>
-<li>
-<p><strong>Server Shutdowns/Restarts:</strong> During a graceful shutdown of your FastAPI application (e.g., when deploying a new version, scaling down, or performing maintenance), the ASGI server (like Uvicorn) will attempt to send close frames to all active WebSocket clients. This ensures clients are notified of the server's intention to disconnect, resulting in <code>1000</code> codes on the client and in your server logs.</p>
-</li>
-<li>
-<p><strong>Short-lived WebSocket Interactions:</strong> Sometimes, WebSockets are used for single-shot, semi-realtime data transfers rather than continuous streams. Once the data exchange is complete, either the client or server might close the connection with <code>1000</code>.</p>
-</li>
-<li>
-<p><strong>Network Equipment/Cloud Provider Timeouts (Graceful):</strong> While usually an abrupt network timeout results in a <code>1006</code> or a silent drop, certain cloud load balancers or firewalls, when configured for very specific, graceful idle timeouts, <em>can</em> send a <code>1000</code> close frame to maintain good network hygiene. I've encountered this occasionally with specific configurations of AWS API Gateway WebSockets where idle connections were gracefully terminated.</p>
-</li>
-</ul>
-<h2 id="step-by-step-fix">Step-by-Step Fix</h2>
-<p>As established, <code>starlette.websockets.WebSocketDisconnect: 1000</code> is often not an "error" to be fixed but an event to be understood and possibly managed. Your "fix" primarily involves verifying if the closure is expected and handling it appropriately in your logging and application logic.</p>
-<h3 id="step-1-determine-if-its-an-actual-problem">Step 1: Determine if it's an Actual Problem</h3>
-<p>Before anything else, ask yourself: <em>Is this <code>1000</code> disconnect occurring under circumstances where the WebSocket should still be active?</em><br />
-*   If a user closes their browser, a <code>1000</code> is expected.<br />
-*   If your server completes a task and then closes the connection, a <code>1000</code> is expected.<br />
-*   If you're seeing <code>1000</code> disconnects after only a few seconds when you expect a long-lived connection, then it <em>might</em> indicate an underlying issue in your application logic or environment setup, even though the close itself was "normal."</p>
-<h3 id="step-2-inspect-client-side-behavior">Step 2: Inspect Client-Side Behavior</h3>
-<p>If you suspect premature <code>1000</code> disconnects, start with the client:<br />
-1.  <strong>Browser Developer Tools:</strong> Open the browser's developer console (F12), go to the "Network" tab, filter by "WS" (WebSockets). Watch the WebSocket connection's lifecycle. Does it connect and then immediately close? Is there any client-side JavaScript error immediately preceding the close?<br />
-2.  <strong>Client-side <code>WebSocket.close()</code> Calls:</strong> Search your client-side codebase for explicit calls to <code>WebSocket.close()</code>. Identify the conditions under which these calls are made. Are they intentional?<br />
-3.  <strong>Client-side Framework Lifecycle:</strong> If you're using a frontend framework, understand its component lifecycle. Is the component that initiates the WebSocket being unmounted or re-rendered in a way that causes an unintentional disconnect?</p>
-<h3 id="step-3-inspect-server-side-logic">Step 3: Inspect Server-Side Logic</h3>
-<p>Next, examine your FastAPI application:<br />
-1.  <strong>Explicit <code>websocket.close()</code>:</strong> Search your server code for <code>await websocket.close()</code>. Identify the conditions leading to these calls. Are they intentional and correctly placed?<br />
-2.  <strong>Application Flow:</strong> Trace the execution path for your WebSocket endpoint. Is there any logic that might prematurely exit the <code>async for</code> loop or the <code>try...except</code> block, leading to an implicit or explicit disconnect?<br />
-<code>python
-    @app.websocket("/ws")
-    async def websocket_endpoint(websocket: WebSocket):
-        await websocket.accept()
-        try:
-            while True:
-                data = await websocket.receive_text()
-                # ... process data ...
-                if data == "terminate": # Example: Server-side logic to close
-                    await websocket.close(code=1000)
-                    break # Exit the loop, allowing normal disconnect
-                await websocket.send_text(f"Message text was: {data}")
-        except WebSocketDisconnect as e:
-            if e.code == 1000:
-                print(f"WebSocket normally disconnected with code {e.code}")
-            else:
-                print(f"WebSocket disconnected with unexpected code {e.code}: {e.reason}")
-        except Exception as e:
-            print(f"An unexpected error occurred: {e}")</code></p>
-<h3 id="step-4-review-proxy-and-load-balancer-configurations">Step 4: Review Proxy and Load Balancer Configurations</h3>
-<p>While <code>1000</code> is less common for load balancer timeouts (which usually result in <code>1006</code>), it's still worth checking if you're experiencing unexpected disconnects.<br />
-1.  <strong>Load Balancer Idle Timeouts:</strong> Check the idle timeout settings on your AWS ALB, GCP Load Balancer, NGINX, or other proxies. Ensure they are sufficiently long for your WebSocket connections. A very short idle timeout could, in some configurations, lead to a graceful disconnect if no application data is exchanged, even if the TCP connection is alive.<br />
-2.  <strong>WebSocket Headers:</strong> Ensure your proxies are correctly forwarding WebSocket upgrade headers (<code>Upgrade</code> and <code>Connection</code>). Incorrect configuration here typically leads to <code>400</code> errors or connection failures, not <code>1000</code> disconnects, but it's a good general check.<br />
-<code>nginx
-    # Example NGINX configuration for WebSockets
-    location /ws {
-        proxy_pass http://your_upstream_fastapi_server;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_read_timeout 86400s; # Adjust as needed for long-lived connections
-        proxy_send_timeout 86400s;
-    }</code></p>
-<h3 id="step-5-implement-robust-logging-for-context">Step 5: Implement Robust Logging for Context</h3>
-<p>Don't just log <code>WebSocketDisconnect</code>. Log the <code>code</code> and <code>reason</code>, and add contextual information. This is critical for distinguishing between expected and unexpected closures.<br />
-*   <strong>Log Client ID:</strong> If your application assigns a unique ID to each client, log it.<br />
-*   <strong>Log Session State:</strong> Log relevant information about the client's session or what they were doing when the disconnect occurred.<br />
-*   <strong>Use appropriate log levels:</strong> A <code>1000</code> can often be <code>INFO</code> or <code>DEBUG</code>, while a <code>1006</code> might be <code>WARNING</code> or <code>ERROR</code>.</p>
 <h2 id="code-examples">Code Examples</h2>
-<p>Here are some concise, copy-paste ready code examples for handling WebSockets in FastAPI and a basic client.</p>
-<h3 id="fastapi-websocket-endpoint-with-graceful-disconnect-handling">FastAPI WebSocket Endpoint with Graceful Disconnect Handling</h3>
-<p>This example shows a simple WebSocket echo server that explicitly closes the connection after a specific message and handles disconnects.</p>
-<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">fastapi</span><span class="w"> </span><span class="kn">import</span> <span class="n">FastAPI</span><span class="p">,</span> <span class="n">WebSocket</span><span class="p">,</span> <span class="n">WebSocketDisconnect</span>
+<p>Here are some concise, copy-paste ready examples for both server and client illustrating graceful WebSocket closures.</p>
+<h3 id="fastapi-server-endpoint">FastAPI Server Endpoint</h3>
+<p>This example shows a basic FastAPI WebSocket endpoint that logs disconnections, differentiating between normal and abnormal closures.</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># main.py</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">fastapi</span><span class="w"> </span><span class="kn">import</span> <span class="n">FastAPI</span><span class="p">,</span> <span class="n">WebSocket</span><span class="p">,</span> <span class="n">WebSocketDisconnect</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">fastapi.responses</span><span class="w"> </span><span class="kn">import</span> <span class="n">HTMLResponse</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">logging</span>
+
+<span class="c1"># Configure logging for better visibility</span>
+<span class="n">logging</span><span class="o">.</span><span class="n">basicConfig</span><span class="p">(</span><span class="n">level</span><span class="o">=</span><span class="n">logging</span><span class="o">.</span><span class="n">INFO</span><span class="p">)</span>
+<span class="n">logger</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s2">"my_fastapi_app"</span><span class="p">)</span>
 
 <span class="n">app</span> <span class="o">=</span> <span class="n">FastAPI</span><span class="p">()</span>
 
-<span class="c1"># Configure basic logging</span>
-<span class="n">logging</span><span class="o">.</span><span class="n">basicConfig</span><span class="p">(</span><span class="n">level</span><span class="o">=</span><span class="n">logging</span><span class="o">.</span><span class="n">INFO</span><span class="p">,</span>
-                    <span class="nb">format</span><span class="o">=</span><span class="s1">'</span><span class="si">%(asctime)s</span><span class="s1"> - </span><span class="si">%(levelname)s</span><span class="s1"> - </span><span class="si">%(message)s</span><span class="s1">'</span><span class="p">)</span>
+<span class="n">html</span> <span class="o">=</span> <span class="s2">"""</span>
+<span class="s2">&lt;!DOCTYPE html&gt;</span>
+<span class="s2">&lt;html&gt;</span>
+<span class="s2">    &lt;head&gt;</span>
+<span class="s2">        &lt;title&gt;WebSocket Test&lt;/title&gt;</span>
+<span class="s2">    &lt;/head&gt;</span>
+<span class="s2">    &lt;body&gt;</span>
+<span class="s2">        &lt;h1&gt;WebSocket Client&lt;/h1&gt;</span>
+<span class="s2">        &lt;form action="" onsubmit="sendMessage(event)"&gt;</span>
+<span class="s2">            &lt;input type="text" id="messageText" autocomplete="off"/&gt;</span>
+<span class="s2">            &lt;button&gt;Send&lt;/button&gt;</span>
+<span class="s2">        &lt;/form&gt;</span>
+<span class="s2">        &lt;ul id='messages'&gt;</span>
+<span class="s2">        &lt;/ul&gt;</span>
+<span class="s2">        &lt;button onclick="closeConnection()"&gt;Close Connection&lt;/button&gt;</span>
+<span class="s2">        &lt;script&gt;</span>
+<span class="s2">            var ws = null;</span>
+<span class="s2">            var client_id = Date.now();</span>
+<span class="s2">            document.addEventListener('DOMContentLoaded', (event) =&gt; {</span>
+<span class="s2">                ws = new WebSocket(`ws://localhost:8000/ws/$</span><span class="si">{client_id}</span><span class="s2">`);</span>
+<span class="s2">                ws.onopen = (event) =&gt; {</span>
+<span class="s2">                    var messages = document.getElementById('messages');</span>
+<span class="s2">                    var item = document.createElement('li');</span>
+<span class="s2">                    item.textContent = `Connected to server (Client ID: $</span><span class="si">{client_id}</span><span class="s2">)`;</span>
+<span class="s2">                    messages.appendChild(item);</span>
+<span class="s2">                };</span>
+<span class="s2">                ws.onmessage = (event) =&gt; {</span>
+<span class="s2">                    var messages = document.getElementById('messages');</span>
+<span class="s2">                    var item = document.createElement('li');</span>
+<span class="s2">                    item.textContent = event.data;</span>
+<span class="s2">                    messages.appendChild(item);</span>
+<span class="s2">                };</span>
+<span class="s2">                ws.onclose = (event) =&gt; {</span>
+<span class="s2">                    var messages = document.getElementById('messages');</span>
+<span class="s2">                    var item = document.createElement('li');</span>
+<span class="s2">                    item.textContent = `Disconnected from server (Code: $</span><span class="si">{event.code}</span><span class="s2">, Reason: $</span><span class="si">{event.reason}</span><span class="s2">)`;</span>
+<span class="s2">                    messages.appendChild(item);</span>
+<span class="s2">                    ws = null; // Clear WebSocket instance</span>
+<span class="s2">                };</span>
+<span class="s2">                ws.onerror = (error) =&gt; {</span>
+<span class="s2">                    var messages = document.getElementById('messages');</span>
+<span class="s2">                    var item = document.createElement('li');</span>
+<span class="s2">                    item.textContent = `WebSocket Error: $</span><span class="si">{error}</span><span class="s2">`;</span>
+<span class="s2">                    messages.appendChild(item);</span>
+<span class="s2">                };</span>
+<span class="s2">            });</span>
 
-<span class="nd">@app</span><span class="o">.</span><span class="n">websocket</span><span class="p">(</span><span class="s2">"/ws"</span><span class="p">)</span>
-<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">websocket_endpoint</span><span class="p">(</span><span class="n">websocket</span><span class="p">:</span> <span class="n">WebSocket</span><span class="p">):</span>
-    <span class="n">client_id</span> <span class="o">=</span> <span class="nb">id</span><span class="p">(</span><span class="n">websocket</span><span class="p">)</span> <span class="c1"># Simple unique ID for the client</span>
+<span class="s2">            function sendMessage(event) {</span>
+<span class="s2">                var input = document.getElementById("messageText");</span>
+<span class="s2">                if (ws &amp;&amp; ws.readyState === WebSocket.OPEN) {</span>
+<span class="s2">                    ws.send(input.value);</span>
+<span class="s2">                    input.value = '';</span>
+<span class="s2">                } else {</span>
+<span class="s2">                    alert("WebSocket is not connected or closing.");</span>
+<span class="s2">                }</span>
+<span class="s2">                event.preventDefault();</span>
+<span class="s2">            }</span>
+
+<span class="s2">            function closeConnection() {</span>
+<span class="s2">                if (ws) {</span>
+<span class="s2">                    ws.close(1000, "Client initiated close"); // Explicitly close with code 1000</span>
+<span class="s2">                    ws = null;</span>
+<span class="s2">                }</span>
+<span class="s2">            }</span>
+<span class="s2">        &lt;/script&gt;</span>
+<span class="s2">    &lt;/body&gt;</span>
+<span class="s2">&lt;/html&gt;</span>
+<span class="s2">"""</span>
+
+<span class="nd">@app</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"/"</span><span class="p">)</span>
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">get</span><span class="p">():</span>
+    <span class="k">return</span> <span class="n">HTMLResponse</span><span class="p">(</span><span class="n">html</span><span class="p">)</span>
+
+<span class="nd">@app</span><span class="o">.</span><span class="n">websocket</span><span class="p">(</span><span class="s2">"/ws/</span><span class="si">{client_id}</span><span class="s2">"</span><span class="p">)</span>
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">websocket_endpoint</span><span class="p">(</span><span class="n">websocket</span><span class="p">:</span> <span class="n">WebSocket</span><span class="p">,</span> <span class="n">client_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
     <span class="k">await</span> <span class="n">websocket</span><span class="o">.</span><span class="n">accept</span><span class="p">()</span>
-    <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Client </span><span class="si">{</span><span class="n">client_id</span><span class="si">}</span><span class="s2"> connected."</span><span class="p">)</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">"WebSocket connected for client: </span><span class="si">{</span><span class="n">client_id</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
     <span class="k">try</span><span class="p">:</span>
         <span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
-            <span class="n">message</span> <span class="o">=</span> <span class="k">await</span> <span class="n">websocket</span><span class="o">.</span><span class="n">receive_text</span><span class="p">()</span>
-            <span class="k">if</span> <span class="n">message</span> <span class="o">==</span> <span class="s2">"bye"</span><span class="p">:</span>
-                <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Client </span><span class="si">{</span><span class="n">client_id</span><span class="si">}</span><span class="s2"> sent 'bye'. Closing connection normally."</span><span class="p">)</span>
-                <span class="k">await</span> <span class="n">websocket</span><span class="o">.</span><span class="n">send_text</span><span class="p">(</span><span class="s2">"Goodbye!"</span><span class="p">)</span>
-                <span class="k">await</span> <span class="n">websocket</span><span class="o">.</span><span class="n">close</span><span class="p">(</span><span class="n">code</span><span class="o">=</span><span class="mi">1000</span><span class="p">)</span> <span class="c1"># Explicit normal closure</span>
-                <span class="k">break</span> <span class="c1"># Exit the loop after closing</span>
-            <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Client </span><span class="si">{</span><span class="n">client_id</span><span class="si">}</span><span class="s2"> sent: </span><span class="si">{</span><span class="n">message</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
-            <span class="k">await</span> <span class="n">websocket</span><span class="o">.</span><span class="n">send_text</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Server received: </span><span class="si">{</span><span class="n">message</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+            <span class="n">data</span> <span class="o">=</span> <span class="k">await</span> <span class="n">websocket</span><span class="o">.</span><span class="n">receive_text</span><span class="p">()</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Received message from </span><span class="si">{</span><span class="n">client_id</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">data</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+            <span class="k">await</span> <span class="n">websocket</span><span class="o">.</span><span class="n">send_text</span><span class="p">(</span><span class="sa">f</span><span class="s2">"You said: </span><span class="si">{</span><span class="n">data</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
     <span class="k">except</span> <span class="n">WebSocketDisconnect</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
         <span class="k">if</span> <span class="n">e</span><span class="o">.</span><span class="n">code</span> <span class="o">==</span> <span class="mi">1000</span><span class="p">:</span>
-            <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Client </span><span class="si">{</span><span class="n">client_id</span><span class="si">}</span><span class="s2"> disconnected normally (code 1000). Reason: </span><span class="si">{</span><span class="n">e</span><span class="o">.</span><span class="n">reason</span><span class="w"> </span><span class="ow">or</span><span class="w"> </span><span class="s1">'No specific reason'</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Client </span><span class="si">{</span><span class="n">client_id</span><span class="si">}</span><span class="s2"> disconnected normally (code: </span><span class="si">{</span><span class="n">e</span><span class="o">.</span><span class="n">code</span><span class="si">}</span><span class="s2">, reason: </span><span class="si">{</span><span class="n">e</span><span class="o">.</span><span class="n">reason</span><span class="si">}</span><span class="s2">)"</span><span class="p">)</span>
         <span class="k">else</span><span class="p">:</span>
-            <span class="n">logging</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Client </span><span class="si">{</span><span class="n">client_id</span><span class="si">}</span><span class="s2"> disconnected with unexpected code </span><span class="si">{</span><span class="n">e</span><span class="o">.</span><span class="n">code</span><span class="si">}</span><span class="s2">. Reason: </span><span class="si">{</span><span class="n">e</span><span class="o">.</span><span class="n">reason</span><span class="w"> </span><span class="ow">or</span><span class="w"> </span><span class="s1">'No specific reason'</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Client </span><span class="si">{</span><span class="n">client_id</span><span class="si">}</span><span class="s2"> disconnected with code: </span><span class="si">{</span><span class="n">e</span><span class="o">.</span><span class="n">code</span><span class="si">}</span><span class="s2">, reason: </span><span class="si">{</span><span class="n">e</span><span class="o">.</span><span class="n">reason</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
     <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
-        <span class="n">logging</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Client </span><span class="si">{</span><span class="n">client_id</span><span class="si">}</span><span class="s2"> experienced an unexpected error: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">"</span><span class="p">,</span> <span class="n">exc_info</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="sa">f</span><span class="s2">"An unexpected error occurred with client </span><span class="si">{</span><span class="n">client_id</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
     <span class="k">finally</span><span class="p">:</span>
-        <span class="n">logging</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Client </span><span class="si">{</span><span class="n">client_id</span><span class="si">}</span><span class="s2"> handler finished."</span><span class="p">)</span>
-
-<span class="c1"># To run this: uvicorn your_module_name:app --reload</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">"WebSocket handler ending for client: </span><span class="si">{</span><span class="n">client_id</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
 </code></pre></div>
 
-<h3 id="client-side-javascript-for-normal-closure">Client-Side JavaScript for Normal Closure</h3>
-<p>This JavaScript snippet demonstrates how a client can connect, send messages, and then explicitly close the connection normally.</p>
-<div class="highlight"><pre><span></span><code><span class="c1">// client.js</span>
-<span class="kd">const</span><span class="w"> </span><span class="nx">ws</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="ow">new</span><span class="w"> </span><span class="nx">WebSocket</span><span class="p">(</span><span class="s2">"ws://localhost:8000/ws"</span><span class="p">);</span>
-
-<span class="nx">ws</span><span class="p">.</span><span class="nx">onopen</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="nx">event</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="nx">console</span><span class="p">.</span><span class="nx">log</span><span class="p">(</span><span class="s2">"WebSocket connected!"</span><span class="p">);</span>
-<span class="w">    </span><span class="nx">ws</span><span class="p">.</span><span class="nx">send</span><span class="p">(</span><span class="s2">"Hello from client!"</span><span class="p">);</span>
-<span class="p">};</span>
-
-<span class="nx">ws</span><span class="p">.</span><span class="nx">onmessage</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="nx">event</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="nx">console</span><span class="p">.</span><span class="nx">log</span><span class="p">(</span><span class="s2">"Message from server:"</span><span class="p">,</span><span class="w"> </span><span class="nx">event</span><span class="p">.</span><span class="nx">data</span><span class="p">);</span>
-<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nx">event</span><span class="p">.</span><span class="nx">data</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="s2">"Server received: close_me"</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
-<span class="w">        </span><span class="nx">console</span><span class="p">.</span><span class="nx">log</span><span class="p">(</span><span class="s2">"Received 'close_me', client initiating normal close."</span><span class="p">);</span>
-<span class="w">        </span><span class="nx">ws</span><span class="p">.</span><span class="nx">close</span><span class="p">(</span><span class="mf">1000</span><span class="p">,</span><span class="w"> </span><span class="s2">"Client requested normal shutdown"</span><span class="p">);</span><span class="w"> </span><span class="c1">// Explicit normal closure</span>
-<span class="w">    </span><span class="p">}</span>
-<span class="p">};</span>
-
-<span class="nx">ws</span><span class="p">.</span><span class="nx">onclose</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="nx">event</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nx">event</span><span class="p">.</span><span class="nx">wasClean</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
-<span class="w">        </span><span class="nx">console</span><span class="p">.</span><span class="nx">log</span><span class="p">(</span><span class="sb">`WebSocket closed cleanly, code=</span><span class="si">${</span><span class="nx">event</span><span class="p">.</span><span class="nx">code</span><span class="si">}</span><span class="sb">, reason=</span><span class="si">${</span><span class="nx">event</span><span class="p">.</span><span class="nx">reason</span><span class="si">}</span><span class="sb">`</span><span class="p">);</span>
-<span class="w">    </span><span class="p">}</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="p">{</span>
-<span class="w">        </span><span class="c1">// e.g. server process killed or network down</span>
-<span class="w">        </span><span class="nx">console</span><span class="p">.</span><span class="nx">error</span><span class="p">(</span><span class="s1">'WebSocket connection died unexpectedly'</span><span class="p">);</span>
-<span class="w">    </span><span class="p">}</span>
-<span class="p">};</span>
-
-<span class="nx">ws</span><span class="p">.</span><span class="nx">onerror</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="nx">error</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="nx">console</span><span class="p">.</span><span class="nx">error</span><span class="p">(</span><span class="s2">"WebSocket Error:"</span><span class="p">,</span><span class="w"> </span><span class="nx">error</span><span class="p">);</span>
-<span class="p">};</span>
-
-<span class="c1">// Example: send a message after 3 seconds</span>
-<span class="nx">setTimeout</span><span class="p">(()</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="nx">ws</span><span class="p">.</span><span class="nx">send</span><span class="p">(</span><span class="s2">"This is another message."</span><span class="p">);</span>
-<span class="p">},</span><span class="w"> </span><span class="mf">3000</span><span class="p">);</span>
-
-<span class="c1">// Example: client explicitly closing after 6 seconds</span>
-<span class="nx">setTimeout</span><span class="p">(()</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="nx">console</span><span class="p">.</span><span class="nx">log</span><span class="p">(</span><span class="s2">"Client explicitly sending 'bye' to server."</span><span class="p">);</span>
-<span class="w">    </span><span class="nx">ws</span><span class="p">.</span><span class="nx">send</span><span class="p">(</span><span class="s2">"bye"</span><span class="p">);</span><span class="w"> </span><span class="c1">// Server will close connection after this</span>
-<span class="p">},</span><span class="w"> </span><span class="mf">6000</span><span class="p">);</span>
-
-<span class="c1">// Example: Client-side logic for closing without server interaction</span>
-<span class="nx">setTimeout</span><span class="p">(()</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nx">ws</span><span class="p">.</span><span class="nx">readyState</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="nx">WebSocket</span><span class="p">.</span><span class="nx">OPEN</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
-<span class="w">        </span><span class="nx">console</span><span class="p">.</span><span class="nx">log</span><span class="p">(</span><span class="s2">"Client explicitly closing the connection after 9 seconds if still open."</span><span class="p">);</span>
-<span class="w">        </span><span class="nx">ws</span><span class="p">.</span><span class="nx">close</span><span class="p">(</span><span class="mf">1000</span><span class="p">,</span><span class="w"> </span><span class="s2">"Client timed out interaction"</span><span class="p">);</span>
-<span class="w">    </span><span class="p">}</span>
-<span class="p">},</span><span class="w"> </span><span class="mf">9000</span><span class="p">);</span>
-</code></pre></div>
-
+<p>To run this:<br />
+1.  Save the code as <code>main.py</code>.<br />
+2.  Install FastAPI and Uvicorn: <code>pip install "fastapi[all]" uvicorn</code><br />
+3.  Run the server: <code>uvicorn main:app --reload</code><br />
+4.  Open <code>http://localhost:8000</code> in your browser.<br />
+5.  Send messages, then click "Close Connection" or simply close the browser tab. Observe the server logs. You should see <code>Client &lt;ID&gt; disconnected normally (code: 1000, reason: Client initiated close)</code> or similar.</p>
 <h2 id="environment-specific-notes">Environment-Specific Notes</h2>
-<p>The interpretation and management of <code>WebSocketDisconnect: 1000</code> can vary slightly based on your deployment environment.</p>
+<p>The interpretation and management of <code>WebSocketDisconnect: 1000</code> can vary slightly across different deployment environments.</p>
 <ul>
 <li>
 <p><strong>Local Development:</strong></p>
 <ul>
-<li>In a local environment (e.g., <code>uvicorn main:app --reload</code>), you're typically connecting directly to your FastAPI application.</li>
-<li><code>1000</code> disconnects here are almost always due to explicit client actions (closing browser tab, JavaScript <code>ws.close()</code>) or explicit server actions (<code>websocket.close()</code>).</li>
-<li>Troubleshooting is straightforward as there are no intermediate proxies complicating matters. You can easily test client and server logic in isolation.</li>
+<li>This is the easiest environment to debug. Disconnections are usually direct consequences of your client-side actions (browser refresh, tab close) or server restarts.</li>
+<li>Logs are immediately visible in your terminal, making it straightforward to correlate client behavior with server-side disconnect events.</li>
 </ul>
 </li>
 <li>
-<p><strong>Docker:</strong></p>
+<p><strong>Docker Containers:</strong></p>
 <ul>
-<li>When running FastAPI in Docker, the primary consideration is correct port mapping and network configuration.</li>
-<li>Ensure your <code>docker run</code> command or <code>docker-compose.yml</code> file correctly exposes the port your Uvicorn server is listening on.</li>
-<li>If you're using a reverse proxy (like NGINX) <em>within</em> Docker or as a separate container, make sure its configuration handles WebSocket upgrade headers correctly as detailed in Step 4.</li>
-<li><code>1000</code> disconnects in a Dockerized environment generally mirror local development, unless the Docker network itself is unstable (less common for <code>1000</code> codes).</li>
+<li>When stopping a Docker container running your FastAPI application (e.g., <code>docker stop &lt;container_id&gt;</code>), Docker sends a <code>SIGTERM</code> signal.</li>
+<li>A well-behaved Uvicorn or Gunicorn process inside the container will catch <code>SIGTERM</code> and attempt a graceful shutdown, leading to <code>1000</code> codes for active WebSocket connections as it closes them.</li>
+<li>If <code>docker kill</code> is used or the process doesn't handle <code>SIGTERM</code> correctly, you might see <code>1006</code> (Abnormal Closure) instead, as the connection is abruptly severed. Ensure your container's entrypoint or <code>CMD</code> allows the Python process to receive and handle <code>SIGTERM</code>.</li>
 </ul>
 </li>
 <li>
-<p><strong>Cloud (AWS, GCP, Azure):</strong></p>
+<p><strong>Cloud Environments (AWS, GCP, Azure):</strong></p>
 <ul>
-<li><strong>Load Balancers (AWS ALB, GCP Load Balancer, Azure Application Gateway):</strong> This is where things get more complex. These services are critical for routing and managing connections.<ul>
-<li>Ensure your load balancer listener is configured to pass WebSocket traffic. For example, on AWS ALB, you'd typically use HTTP/HTTPS listeners and ensure proper target group configurations.</li>
-<li><strong>Idle Timeouts:</strong> Load balancers <em>will</em> have idle timeouts. If a WebSocket connection remains idle for longer than the configured timeout, the load balancer will eventually close it. While often resulting in a <code>1006</code> (abnormal closure) due to an abrupt drop, some configurations <em>can</em> initiate a <code>1000</code> close if the LB sends a proper close frame. In my experience, AWS ALBs and API Gateway (for WebSocket APIs) are particularly sensitive to idle timeouts. Always ensure these are set generously for long-lived WebSocket connections.</li>
-<li><strong>Health Checks:</strong> Misconfigured health checks can cause your application instances to be deemed unhealthy and taken out of rotation, leading to active connections being terminated. This is usually more abrupt than <code>1000</code>, but worth noting.</li>
-</ul>
-</li>
-<li><strong>Reverse Proxies (NGINX, Envoy, Caddy on EC2/GCE/VMs):</strong> If you're running your own NGINX or similar proxy in a cloud VM, its configuration is paramount.<ul>
-<li>Verify the <code>proxy_http_version 1.1</code>, <code>proxy_set_header Upgrade $http_upgrade</code>, and <code>proxy_set_header Connection "upgrade"</code> directives are correctly set.</li>
-<li>Adjust <code>proxy_read_timeout</code> and <code>proxy_send_timeout</code> to accommodate your expected WebSocket connection duration. A <code>1000</code> from NGINX would indicate it explicitly closed the connection, perhaps due to a gracefully handled timeout or specific configuration.</li>
-</ul>
-</li>
-<li><strong>Serverless (AWS Lambda with API Gateway, GCP Cloud Functions):</strong><ul>
-<li>Direct long-lived WebSockets are not typically handled directly by serverless functions. Instead, services like AWS API Gateway's WebSocket API manage the persistent connection, and events (like <code>connect</code>, <code>message</code>, <code>disconnect</code>) trigger your Lambda/Cloud Function.</li>
-<li>In this setup, <code>WebSocketDisconnect: 1000</code> would primarily refer to the API Gateway's management of the connection being closed normally by the client. Your function might receive a <code>disconnect</code> event, but the <code>starlette.websockets.WebSocketDisconnect</code> error itself would be less relevant to your <em>FastAPI</em> function, as the FastAPI layer is generally not directly managing the raw WebSocket connection at this level.</li>
-</ul>
-</li>
+<li><strong>Load Balancers:</strong> Cloud load balancers (e.g., AWS ALB, GCP Load Balancer, Azure Application Gateway) handle routing WebSocket traffic. They often have idle timeouts. While a <code>1000</code> typically comes from an explicit close, if a load balancer terminates an idle connection <em>without</em> a clean WebSocket close handshake, you'd typically see <code>1006</code>. If your client is configured to send a clean close <em>before</em> the LB timeout, then <code>1000</code> is possible.</li>
+<li><strong>Container Orchestration (E.g., Kubernetes - GKE, EKS, AKS):</strong> When pods are scaled down, redeployed, or evicted, Kubernetes sends <code>SIGTERM</code> to the container's main process. Similar to Docker, a graceful shutdown strategy for your application within the pod is critical to ensure <code>1000</code> (normal closure) rather than <code>1006</code> (abnormal closure) or other unexpected errors. Configure <code>terminationGracePeriodSeconds</code> in your deployment manifest to give your application enough time to close connections. I've seen issues in production when this period is too short for long-lived WebSocket connections.</li>
+<li><strong>Serverless (E.g., AWS Lambda, GCP Cloud Functions with API Gateway):</strong> While direct WebSockets are less common in traditional serverless functions (which are request-response based), platforms like AWS API Gateway support WebSocket APIs. Disconnections here are managed by the gateway, and client-side closes would still result in a <code>1000</code> if the gateway correctly relays the close frame. The challenge is more about persistent connection management on the serverless side rather than the <code>1000</code> code itself.</li>
 </ul>
 </li>
 </ul>
 <h2 id="frequently-asked-questions">Frequently Asked Questions</h2>
-<p><strong>Q: Is <code>starlette.websockets.WebSocketDisconnect: 1000</code> always an error?</strong><br />
-<strong>A:</strong> No, almost universally, it is <em>not</em> an error. It indicates a normal, graceful closure of the WebSocket connection, either initiated by the client or the server. You should treat it as an informational event unless it occurs unexpectedly based on your application's logic or user's behavior.</p>
-<p><strong>Q: How do I distinguish between an expected <code>1000</code> and one that indicates an underlying problem?</strong><br />
-<strong>A:</strong> Context is key. If a user closes their browser tab, a <code>1000</code> is expected. If your server deliberately closes a connection, it's expected. If, however, you're building a chat application and clients are frequently getting <code>1000</code> disconnects after only a few seconds without any user interaction or server-side reason, then it suggests a problem (e.g., faulty client-side logic, an intermediate proxy aggressively closing connections, or an unintended server-side close). Robust logging with contextual information (user ID, session state) is essential.</p>
-<p><strong>Q: Can a load balancer or reverse proxy cause a <code>1000</code> disconnect?</strong><br />
-<strong>A:</strong> Yes, potentially. While abrupt proxy timeouts usually manifest as <code>1006</code> (abnormal closure) or silent drops, a load balancer or proxy that is <em>configured to gracefully manage idle connections</em> might send a <code>1000</code> close frame before terminating the underlying TCP connection. This means it's still a "normal" close from the WebSocket protocol's perspective, even if the application didn't explicitly request it.</p>
-<p><strong>Q: Should I <code>raise</code> or <code>log</code> this specific error?</strong><br />
-<strong>A:</strong> You should almost always <em>log</em> it, typically at an <code>INFO</code> or <code>DEBUG</code> level, rather than <code>raise</code> it. Re-raising <code>WebSocketDisconnect: 1000</code> would treat an expected event as an exception, potentially cluttering your error monitoring systems and obscuring real problems. Only <code>raise</code> if you have specific, highly critical application logic that considers <em>any</em> disconnect (even a <code>1000</code>) at a specific point to be an exceptional fault.</p>
-<p><strong>Q: What if I need my WebSocket connection to stay open indefinitely?</strong><br />
-<strong>A:</strong> Even "indefinite" connections are subject to timeouts. You'll need to implement a "heartbeat" or "ping-pong" mechanism both client-side and server-side. Periodically send small frames (e.g., every 30-60 seconds) to ensure the connection remains active and doesn't get terminated by idle timeouts from proxies, load balancers, or the network stack itself. This keeps the connection "alive" and prevents unexpected <code>1000</code> or <code>1006</code> disconnects due to inactivity.</p>
+<p><strong>Q: Is <code>WebSocketDisconnect: 1000</code> always a good thing?</strong><br />
+A: Generally, yes. It means the WebSocket connection was closed gracefully, as per the protocol. It's an informational event rather than an error that needs fixing.</p>
+<p><strong>Q: How can I distinguish between an intentional client close and a server restart?</strong><br />
+A: Implement detailed logging. On the client side, log when <code>WebSocket.close()</code> is called. On the server side, within your <code>WebSocketDisconnect</code> exception handler, log the client ID and the reason. For server restarts, your application's startup/shutdown logs should indicate when processes are being terminated, helping you correlate disconnections with deployments.</p>
+<p><strong>Q: Could a high volume of <code>1000</code> disconnects indicate a problem?</strong><br />
+A: Potentially. While <code>1000</code> is a normal close, if you're seeing a rapid connect-disconnect cycle for many clients, it might point to a client-side bug (e.g., incorrectly re-establishing connections, or connecting to a service it immediately realizes it doesn't need). Review client application logic for such patterns.</p>
+<p><strong>Q: What if I'm getting other codes like <code>1001</code>, <code>1006</code>, or <code>1011</code>?</strong><br />
+A: Those codes <em>do</em> typically indicate problems.<br />
+*   <code>1001</code>: Going Away (client leaving, e.g., browser navigating).<br />
+*   <code>1006</code>: Abnormal Closure (no close frame sent, often network issues, abrupt client/server termination). This one often requires investigation.<br />
+*   <code>1011</code>: Internal Error (server-side issue preventing fulfillment of request).<br />
+Each of these warrants a deeper dive into client or server logs and network conditions.</p>
 <h2 id="related-errors">Related Errors</h2>
     </div>
 
@@ -428,7 +444,7 @@
     <div class="container">
       <p class="footer-logo">⚡ ErrorFix.dev</p>
       <p>Practical, engineer-written guides for real-world software errors.</p>
-      <p style="margin-top:.5rem">Last updated: <time>October 06, 2026</time>.</p>
+      <p style="margin-top:.5rem">Last updated: <time>October 07, 2026</time>.</p>
       <p class="footer-links" style="margin-top:.75rem">
         <!-- ╔══════════════════════════════════════════════════════════════╗ -->
         <!-- ║  AFFILIATE LINKS – replace the href values below            ║ -->
