@@ -1,198 +1,192 @@
 # django.core.exceptions.ImproperlyConfigured: Requested setting X, but settings are not configured.
-> Encountering django.core.exceptions.ImproperlyConfigured means Django's settings are not loaded or accessible; this guide explains how to fix it.
+> Encountering `django.core.exceptions.ImproperlyConfigured` means Django's core settings haven't been properly loaded, preventing it from accessing crucial configuration values; this guide explains how to fix it.
 
-As a Senior Full-Stack Engineer, I’ve encountered my fair share of cryptic errors, and `ImproperlyConfigured` is one of Django's more fundamental — and frustrating — ones when you're just getting started or debugging a deployment issue. This error signifies a core problem: Django can't figure out where its settings are, or something is preventing it from loading them properly. It's like a car engine that won't start because it can't find its fuel line.
+## What This Error Means
 
-### What This Error Means
+When you encounter `django.core.exceptions.ImproperlyConfigured: Requested setting X, but settings are not configured.`, it indicates that your Django application attempted to access a configuration setting (represented by `X`) before Django's settings module was properly loaded and initialized. Django relies on a central settings object that holds all the configuration for your project – database connections, installed apps, secret key, and so on. This error is fundamentally about Django not knowing *where* to find those settings or *how* to load them when a setting is requested. It’s a foundational issue, usually occurring early in the application's lifecycle.
 
-At its heart, `django.core.exceptions.ImproperlyConfigured: Requested setting X, but settings are not configured.` means that Django's global settings object, which holds all the configuration for your project (database connections, installed apps, `SECRET_KEY`, etc.), has not been successfully loaded. When Django tries to access *any* setting (represented by 'X' in the error message, it could be `DEBUG`, `SECRET_KEY`, or anything else), it first checks if the settings are configured. If they're not, it raises this exception.
+In my experience, this isn't just a generic "something is wrong with settings" message; it specifically points to the *absence* of a configured settings module, or a failure to initialize it, rather than an error *within* the `settings.py` file itself (though a syntax error in `settings.py` can certainly lead to this indirect outcome).
 
-This isn't an error about a *specific* setting being incorrect (like `ImproperlyConfigured: The SECRET_KEY setting must not be empty.`). Instead, it's about the entire settings module itself failing to load or be recognized by the Django environment.
+## Why It Happens
 
-### Why It Happens
+Django needs to know which Python module contains its settings. By default, it looks for the `DJANGO_SETTINGS_MODULE` environment variable, which should point to your project's settings file (e.g., `myproject.settings`). If this variable is not set, is set incorrectly, or if Django's internal setup routine (`django.setup()`) isn't called, then any attempt to access a setting will trigger this `ImproperlyConfigured` exception.
 
-Django needs to know which Python module contains your project's settings. It typically determines this in one of two ways:
+Common scenarios where this pops up include:
 
-1.  **The `DJANGO_SETTINGS_MODULE` environment variable:** This is the most common and robust way. It should point to your settings file, e.g., `myproject.settings`.
-2.  **Explicitly specified in `manage.py` or `wsgi.py` / `asgi.py`:** These files usually contain a call to `os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'myproject.settings')`.
+1.  **Direct script execution:** Running a Python script that imports Django components without first configuring the Django environment.
+2.  **Missing `DJANGO_SETTINGS_MODULE`:** The environment variable isn't set in your shell, container, or cloud environment.
+3.  **Incorrect `DJANGO_SETTINGS_MODULE` value:** The path specified in the environment variable doesn't correctly lead to your `settings.py` file.
+4.  **`django.setup()` not called:** For scripts that aren't run via `manage.py` or `wsgi.py`, you need to explicitly call `django.setup()` after setting `DJANGO_SETTINGS_MODULE`.
+5.  **Circular imports or syntax errors within `settings.py`:** While less common for this *specific* error message, a fatal error during the import of `settings.py` could prevent it from being properly configured.
 
-If neither of these mechanisms correctly points to a valid and importable Python module, or if that module itself has syntax errors or unresolvable imports during its loading phase, Django throws the `ImproperlyConfigured` exception.
+## Common Causes
 
-### Common Causes
+Let's dive into the typical culprits I've encountered when debugging this error:
 
-Based on my experience, this error typically stems from one of a few common scenarios:
+*   **Running stand-alone scripts:** If you write a custom Python script that needs to interact with your Django models or other parts of your Django project, and you run it directly (e.g., `python my_script.py`), it won't automatically load your Django settings like `manage.py` does. You need to explicitly set `DJANGO_SETTINGS_MODULE` and call `django.setup()`.
+*   **Misconfigured environment variables:** This is incredibly common in production deployments. Whether it's a Docker container, a serverless function, or a traditional VM, if `DJANGO_SETTINGS_MODULE` isn't correctly passed into the environment where your Django application runs, this error will occur. I've seen this in production when a `Dockerfile` didn't correctly `ENV` the variable or a cloud platform's environment configuration was overlooked.
+*   **Incorrect project structure or renaming:** Sometimes, projects get refactored, or the root directory changes. If your `DJANGO_SETTINGS_MODULE` is still pointing to `myproject.settings` but your project folder is now `new_name.settings`, or the `settings.py` file has moved, Django won't find it.
+*   **Gunicorn/uWSGI configuration:** When deploying with application servers like Gunicorn or uWSGI, the command you use to start the server must include the correct `DJANGO_SETTINGS_MODULE` or load it from the environment. A common mistake is assuming it will be picked up automatically.
+*   **Interactive Python shell (non-Django shell):** If you open a standard `python` shell and try to import `django.conf.settings` without first setting up the Django environment, you'll hit this. The `python manage.py shell` command handles all this setup for you.
 
-*   **Missing or Incorrect `DJANGO_SETTINGS_MODULE`:** This is by far the most frequent culprit. The environment variable isn't set, is misspelled, or points to a non-existent or incorrect module path (e.g., `myproject.settings` instead of `my_project.settings`). I've seen this particularly often when migrating a project to a new server or setting up a development environment from scratch.
-*   **Running Django commands from the wrong directory:** If you execute `python manage.py runserver` from a directory other than your project's root (the one containing `manage.py`), Python might not be able to find your `myproject` package and, consequently, `myproject.settings`.
-*   **Syntax errors or circular imports within `settings.py`:** A simple syntax error in your `settings.py` file, or a complex circular dependency between modules imported into `settings.py`, can prevent the module from loading correctly. Python will raise an `ImportError` or `SyntaxError` during the settings module's import, which Django then wraps into `ImproperlyConfigured`.
-*   **Issues in `wsgi.py` or `asgi.py`:** In a production environment, your web server (like Gunicorn or uWSGI) loads your Django application via `wsgi.py` or `asgi.py`. If the `os.environ.setdefault()` call in these files is incorrect or missing, the server won't know where to find your settings.
-*   **Python Path Problems:** Even if `DJANGO_SETTINGS_MODULE` is correctly set, if your Python interpreter cannot find your project package on its `PYTHONPATH`, it won't be able to import `myproject.settings`. This often happens when working with complex project structures or virtual environments that aren't properly activated.
+## Step-by-Step Fix
 
-### Step-by-Step Fix
+Here's a systematic approach to resolve the `ImproperlyConfigured` error:
 
-Here’s a systematic approach I use to troubleshoot this error:
-
-1.  **Verify `DJANGO_SETTINGS_MODULE` (The Primary Suspect):**
-    *   **Local Development:**
-        *   Check your shell's environment variable:
-            ```bash
-            # For Linux/macOS
-            echo $DJANGO_SETTINGS_MODULE
-            # For Windows Command Prompt
-            echo %DJANGO_SETTINGS_MODULE%
-            # For Windows PowerShell
-            Get-Item Env:DJANGO_SETTINGS_MODULE
-            ```
-        *   Ensure the output is exactly `your_project_name.settings` (replace `your_project_name` with the actual name of your project's main package, which contains `settings.py`). If it's empty, incorrect, or misspelled, set it:
-            ```bash
-            # For Linux/macOS
-            export DJANGO_SETTINGS_MODULE=your_project_name.settings
-            # For Windows Command Prompt
-            set DJANGO_SETTINGS_MODULE=your_project_name.settings
-            # For Windows PowerShell
-            $env:DJANGO_SETTINGS_MODULE="your_project_name.settings"
-            ```
-        *   *Self-Correction:* If you are running `manage.py`, it implicitly sets `DJANGO_SETTINGS_MODULE`. If the error occurs with `manage.py`, the issue might be one of the following steps. If you are using `django-admin` directly, you might need to specify it: `django-admin <command> --settings=your_project_name.settings`.
-    *   **Production (`wsgi.py` / `asgi.py`):** Open `your_project_name/wsgi.py` (or `asgi.py`) and confirm the `os.environ.setdefault()` line:
+1.  **Verify `DJANGO_SETTINGS_MODULE` is set and correct.**
+    The most frequent cause is this environment variable either being absent or pointing to the wrong location.
+    *   **Check in your shell:**
+        ```bash
+        echo $DJANGO_SETTINGS_MODULE
+        ```
+        It should output something like `myproject.settings` (replace `myproject` with your actual project's root module name). If it's empty or incorrect, you need to set it.
+    *   **Check in your `manage.py` file:** Open your project's `manage.py`. Near the top, you'll see a line like:
         ```python
-        import os
-        from django.core.wsgi import get_wsgi_application
-
-        os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'your_project_name.settings') # <--- Check this line
-
-        application = get_wsgi_application()
+        os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'myproject.settings')
         ```
-        Make sure `your_project_name.settings` exactly matches your project's structure.
+        This is the canonical path. Ensure your `DJANGO_SETTINGS_MODULE` environment variable matches this module path.
 
-2.  **Ensure Correct Execution Context:**
-    *   Always run `python manage.py <command>` from the project's root directory – the one that directly contains `manage.py`. Navigating into subdirectories and trying to run it from there will often cause Python to lose track of your project's module path.
-    *   If you're using `django-admin`, ensure your current directory or `PYTHONPATH` allows Python to find your `myproject` package.
+2.  **Ensure `django.setup()` is called for stand-alone scripts.**
+    If you're running a Python script outside of `manage.py` (e.g., a custom cron job, a data import script), you must manually initialize Django.
+    ```python
+    import os
+    import django
 
-3.  **Inspect `settings.py` for Syntax Errors or Import Issues:**
-    *   Open `your_project_name/settings.py` and carefully review it for any typos, unmatched parentheses, missing colons, or other syntax errors. Even a seemingly minor mistake can prevent the file from being parsed.
-    *   If you're importing other modules into `settings.py`, check those modules for errors or circular dependencies. A quick way to test if your settings file itself is the problem (independent of Django) is to try importing it directly from the Python shell in your project root:
-        ```bash
-        # From your project root directory (where manage.py is)
-        python
-        >>> import your_project_name.settings
-        ```
-        If this command fails with an `ImportError` or `SyntaxError`, you've pinpointed the problem to the `settings.py` file or its dependencies. The traceback from this direct import will be more specific than Django's generic `ImproperlyConfigured`.
+    os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'myproject.settings')
+    django.setup()
 
-4.  **Check `PYTHONPATH`:**
-    *   If step 3 fails, it might be a `PYTHONPATH` issue. Python needs to know where to find the `your_project_name` package. Typically, being in the project root handles this. If not, you might need to manually add your project's parent directory to `PYTHONPATH`.
-    *   From your project root, you can check your Python path:
-        ```bash
-        python -c "import sys; print(sys.path)"
-        ```
-        Ensure the directory containing your `your_project_name` package (usually the current working directory or its parent) is listed.
+    # Now you can import and use Django models, settings, etc.
+    from django.conf import settings
+    print(settings.BASE_DIR)
+    ```
+    This sequence tells Django where to find its settings and then initializes the application registry.
 
-5.  **Restart Processes:** After making changes to environment variables or `settings.py`, always restart your Django development server, `manage.py` command, or production web server (e.g., Gunicorn, uWSGI). Environment variables are often loaded only once when a process starts.
+3.  **Confirm `settings.py` exists at the specified path.**
+    Double-check that the file `myproject/settings.py` (or whatever `DJANGO_SETTINGS_MODULE` points to) actually exists relative to your project's Python path. A typo in the environment variable or a changed file structure is a common oversight.
 
-### Code Examples
+4.  **Review `wsgi.py` for correct setup in web deployments.**
+    For web servers (Gunicorn, uWSGI, Apache + mod\_wsgi, Nginx + uWSGI), Django applications are typically served via a `wsgi.py` file. This file *must* correctly set `DJANGO_SETTINGS_MODULE` and retrieve the application object.
+    ```python
+    # myproject/wsgi.py
+    import os
 
-Here are some concise, copy-paste ready examples for common scenarios:
+    from django.core.wsgi import get_wsgi_application
 
-**1. Setting `DJANGO_SETTINGS_MODULE` in a Bash Shell:**
+    os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'myproject.settings')
+
+    application = get_wsgi_application()
+    ```
+    Ensure this file matches your project's actual settings module path. The `get_wsgi_application()` call implicitly triggers `django.setup()`.
+
+5.  **Test with `python manage.py shell` or `runserver`.**
+    If `python manage.py shell` or `python manage.py runserver` works correctly, but your custom script or deployment isn't, it strongly points to an environment variable or `django.setup()` issue in your specific execution context. These `manage.py` commands handle the settings setup automatically.
+
+## Code Examples
+
+Here are concise, copy-paste ready examples for the most common scenarios.
+
+**1. Setting `DJANGO_SETTINGS_MODULE` in your shell (temporary for current session):**
 
 ```bash
-# Navigate to your project's root directory (where manage.py is)
-cd /path/to/your/project/root
-
-# Set the environment variable
-export DJANGO_SETTINGS_MODULE=myproject.settings
-
-# Now run your Django command
-python manage.py runserver
-# Or if using django-admin for some reason
-django-admin shell
+export DJANGO_SETTINGS_MODULE='myproject.settings'
+python manage.py runserver # This should now work, assuming myproject/settings.py exists
 ```
 
-**2. Standard `wsgi.py` Configuration:**
+**2. Integrating `django.setup()` in a custom script:**
 
 ```python
-# myproject/wsgi.py
+# my_custom_script.py
 import os
-import sys
+import django
+from django.conf import settings
+from myapp.models import MyModel # Example: import your model
+
+# IMPORTANT: Set this BEFORE calling django.setup()
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'myproject.settings')
+django.setup() # Initialize Django's app registry and settings
+
+print(f"Django BASE_DIR: {settings.BASE_DIR}")
+print(f"DEBUG is: {settings.DEBUG}")
+
+# Now perform your Django-related operations
+if __name__ == "__main__":
+    try:
+        first_object = MyModel.objects.first()
+        if first_object:
+            print(f"First MyModel object: {first_object.name}")
+        else:
+            print("No MyModel objects found.")
+    except Exception as e:
+        print(f"Error accessing model: {e}")
+```
+
+**3. Standard `wsgi.py` for web deployments:**
+
+```python
+# myproject/wsgi.py (This is usually auto-generated by Django)
+import os
 
 from django.core.wsgi import get_wsgi_application
-
-# Add the project's parent directory to the Python path if necessary for production
-# This ensures Python can find 'myproject'
-# sys.path.append('/path/to/your/project_parent_directory') 
-# sys.path.append('/path/to/your/project_root') 
 
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'myproject.settings')
 
 application = get_wsgi_application()
 ```
 
-**3. Explicitly Specifying Settings for `django-admin`:**
+**4. Gunicorn command example (ensure `DJANGO_SETTINGS_MODULE` is set):**
 
 ```bash
-# You might need this if using django-admin outside a manage.py context
-django-admin check --settings=myproject.settings
+# Option 1: Set as an env var before running Gunicorn
+export DJANGO_SETTINGS_MODULE='myproject.settings'
+gunicorn myproject.wsgi:application --bind 0.0.0.0:8000
+
+# Option 2: Pass as an argument (less common, but works)
+gunicorn --env DJANGO_SETTINGS_MODULE=myproject.settings myproject.wsgi:application --bind 0.0.0.0:8000
 ```
 
-### Environment-Specific Notes
+## Environment-Specific Notes
 
-The `ImproperlyConfigured` error often behaves differently across various environments due to how environment variables and application startup are handled.
+The manifestation and solution for this error can vary slightly depending on your deployment environment.
 
-*   **Local Development:** This is typically about your shell's environment variables or your current working directory when executing `manage.py`. Ensure your virtual environment is activated, and you're in the project's root folder. In my experience, forgetting to activate the virtual environment or being in the wrong directory are the most common local causes.
-*   **Docker:** In Docker, you must explicitly set `DJANGO_SETTINGS_MODULE` either in your `Dockerfile` using the `ENV` instruction or in your `docker-compose.yml` under the `environment` section for your service. If you're building a new image, ensure the `ENV` variable is set *before* any commands that rely on Django settings.
-    ```yaml
-    # docker-compose.yml example
-    version: '3.8'
-    services:
-      web:
-        build: .
-        environment:
-          - DJANGO_SETTINGS_MODULE=myproject.settings # Crucial for Docker Compose
-        command: gunicorn myproject.wsgi:application --bind 0.0.0.0:8000
-        ports:
-          - "8000:8000"
-        volumes:
-          - .:/app
-    ```
+*   **Local Development:**
+    Often, this happens when you're experimenting with stand-alone scripts or trying to import Django components in an interactive Python session without using `manage.py shell`. The fix is usually to manually set `DJANGO_SETTINGS_MODULE` and call `django.setup()` in your script, as detailed above. If `manage.py runserver` or `shell` works, focus on how your custom script deviates. I've often seen junior engineers try to run a script by `python myscript.py` instead of `python manage.py shell < myscript.py` for management commands, or forgetting the `os.environ.setdefault` and `django.setup()` calls entirely.
+
+*   **Docker:**
+    In a Dockerized environment, the `DJANGO_SETTINGS_MODULE` *must* be correctly set within the container's environment. This is typically done via an `ENV` instruction in your `Dockerfile` or by passing it with the `-e` flag during `docker run`.
     ```dockerfile
-    # Dockerfile example
-    FROM python:3.9-slim-buster
-    WORKDIR /app
-    COPY requirements.txt .
-    RUN pip install -r requirements.txt
-    COPY . .
-
-    ENV DJANGO_SETTINGS_MODULE=myproject.settings # Crucial for Dockerfile
-
-    EXPOSE 8000
-    CMD ["gunicorn", "--bind", "0.0.0.0:8000", "myproject.wsgi:application"]
+    # Dockerfile excerpt
+    ENV DJANGO_SETTINGS_MODULE myproject.settings
+    # ...
+    CMD ["gunicorn", "myproject.wsgi:application", "--bind", "0.0.0.0:8000"]
     ```
-*   **Cloud (Heroku, AWS ECS, GCP App Engine):** Cloud providers often have specific interfaces for setting environment variables.
-    *   **Heroku:** Use `heroku config:set DJANGO_SETTINGS_MODULE=myproject.settings`. Ensure this is done before deployment or that your `Procfile` references a `wsgi.py` that sets it.
-    *   **AWS ECS/Fargate:** You set environment variables directly in your Task Definition. This is a common place I've seen `ImproperlyConfigured` crop up in production, often due to a forgotten or misconfigured variable during a new service rollout.
-    *   **GCP App Engine:** Environment variables are set in your `app.yaml` file under the `env_variables` section.
-    Regardless of the platform, the principle is the same: the runtime environment must have `DJANGO_SETTINGS_MODULE` correctly defined and pointing to an accessible settings module. Always check your application logs for startup errors; they'll often point directly to the misconfiguration.
+    Ensure that any custom entrypoint scripts or `CMD` directives that launch your Django application are aware of this environment variable. Forgetting it in the `Dockerfile` is a classic, easily overlooked mistake.
 
-### Frequently Asked Questions
+*   **Cloud Platforms (e.g., Heroku, AWS Elastic Beanstalk, Google Cloud Run):**
+    These platforms usually provide a way to configure environment variables for your deployed application. You'll need to locate the specific section in your platform's dashboard or configuration files (e.g., `Procfile` for Heroku, `container_commands` or `environment` in `.ebextensions` for Elastic Beanstalk, or container environment variables for Cloud Run).
+    *   **Heroku `Procfile`:**
+        ```
+        web: gunicorn myproject.wsgi --log-file - --env DJANGO_SETTINGS_MODULE=myproject.settings
+        ```
+        Or, more commonly, set `DJANGO_SETTINGS_MODULE` directly in Heroku's config vars.
+    *   **AWS Elastic Beanstalk:** You'd configure this in the Elastic Beanstalk console under "Configuration" -> "Software" -> "Environment properties".
+    *   **Google Cloud Run:** When deploying, you can specify environment variables, including `DJANGO_SETTINGS_MODULE`.
 
-**Q: My `DJANGO_SETTINGS_MODULE` is correctly set, but I still get the error. What gives?**
-**A:** Even if the environment variable is set, Python might not be able to *find* the module. Ensure your project root (the directory containing `manage.py`) is either your current working directory when executing Django commands, or that it's correctly added to `PYTHONPATH`. I've seen this trip up developers who try to run commands from a `scripts` subdirectory, for instance. A direct `python -c "import your_project_name.settings"` from the project root is the ultimate test here.
+    The key across all these is ensuring the environment variable is present and correct *at runtime* within the application's process. I've personally spent hours tracking down misspellings or overlooked environment variable settings on cloud platforms.
 
-**Q: I'm getting this error when running `pytest` for my Django app. How do I fix it?**
-**A:** Pytest needs to be aware of your Django settings. You typically use `pytest-django` and configure it either in `pytest.ini` or by setting `DJANGO_SETTINGS_MODULE` in your test runner script or environment. A common `pytest.ini` setup looks like:
-```ini
-# pytest.ini
-[pytest]
-DJANGO_SETTINGS_MODULE = myproject.settings
-python_files = tests.py test_*.py *_tests.py
-```
+## Frequently Asked Questions
 
-**Q: Why does this happen in production but not on my local machine?**
-**A:** This is a classic "works on my machine" scenario. Production environments often have stricter environment variable handling and different `PYTHONPATH` setups. Locally, your IDE or shell might implicitly handle paths. In production, you *must* explicitly set `DJANGO_SETTINGS_MODULE` via environment variables (e.g., in a Dockerfile, `docker-compose.yml`, or cloud provider's config). Also, verify the `wsgi.py` or `asgi.py` file in your production build; it’s a frequent culprit.
+**Q: Can a syntax error in `settings.py` cause this error?**
+**A:** While the `ImproperlyConfigured` message specifically indicates that settings aren't *configured*, a severe syntax error that prevents `settings.py` from being imported at all could indirectly lead to this. More often, a syntax error results in a `SyntaxError` or `ImportError` that occurs *during* the attempt to load `settings.py`, but before Django tries to access a setting.
 
-**Q: Can this error be caused by a missing `SECRET_KEY`?**
-**A:** Indirectly. While the `ImproperlyConfigured` exception for `SECRET_KEY` usually gives a more specific message (e.g., `ImproperlyConfigured: The SECRET_KEY setting must not be empty.`), if your `settings.py` file *fails to load at all* due to an error in how `SECRET_KEY` is defined (e.g., trying to read from a non-existent file or environment variable in a way that crashes the settings module import), it could manifest as the general "settings are not configured" error. Always ensure critical settings are robustly handled.
+**Q: Why does `X` change in `Requested setting X`?**
+**A:** `X` represents the *first* setting Django attempted to access when it realized its settings were not configured. This could be `SECRET_KEY`, `DEBUG`, `ALLOWED_HOSTS`, or any other core setting that Django requires early in its initialization process. It doesn't necessarily indicate an issue with that specific setting, but rather the overall settings loading mechanism.
 
-**Q: What if I have multiple settings files (e.g., `base.py`, `dev.py`, `prod.py`)?**
-**A:** You need to point `DJANGO_SETTINGS_MODULE` to the specific settings file you want to use, e.g., `myproject.settings.dev` or `myproject.settings.prod`. The error indicates that *none* of them are being found or loaded correctly. Ensure the specified path is accurate and Python can import it (e.g., `myproject.settings.dev` requires a `dev.py` file inside the `myproject/settings/` directory, and `myproject/settings/__init__.py` to make `settings` a package).
+**Q: I'm sure `DJANGO_SETTINGS_MODULE` is set correctly, but it still fails. What next?**
+**A:** If you're confident in the environment variable, double-check that your Python environment (e.g., virtual environment) is active and that your project's root directory is on the `PYTHONPATH` if `myproject` isn't directly importable from your current working directory. Also, confirm there are no circular imports within your `settings.py` or modules it imports that could cause an import deadlock.
 
-### Related Errors
+**Q: Does `django.setup()` need to be called in `wsgi.py`?**
+**A:** No, `django.core.wsgi.get_wsgi_application()` implicitly calls `django.setup()`, so you don't need to add it explicitly in a standard `wsgi.py` file.
+
+## Related Errors
+
+*(none)*
