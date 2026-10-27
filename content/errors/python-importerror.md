@@ -1,231 +1,254 @@
 # Python ImportError: cannot import name 'X' from 'Y'
-> This common Python ImportError indicates that a specific object or function cannot be found in the module it's being imported from; this guide explains how to fix it effectively.
+> Encountering Python ImportError: cannot import name 'X' from 'Y' means Python could not find the specified 'X' within module 'Y'; this guide explains how to fix it.
 
 ## What This Error Means
 
-When you encounter the `ImportError: cannot import name 'X' from 'Y'`, it signifies that the Python interpreter successfully located and loaded the module `Y`, but it failed to find a specific name `X` within that module's namespace. In simpler terms, Python knows where `Y` is, but it can't find the particular function, class, or variable `X` that you're trying to pull out of it.
+When you encounter `ImportError: cannot import name 'X' from 'Y'`, Python is telling you that while it successfully located and loaded the module `Y`, it then failed to find a specific name, `X`, within that module. This is distinct from a `ModuleNotFoundError`, which would indicate that Python couldn't even find module `Y` itself. Here, `Y` is present, but `X` isn't where Python expects it to be, or isn't exposed in a way that allows it to be imported.
 
-This isn't a `ModuleNotFoundError`, which would mean `Y` itself couldn't be found. Instead, it's a more granular issue where the container (`Y`) exists, but the expected item (`X`) is missing from it. This error typically occurs during the program's startup phase as Python resolves its import graph, preventing the application or a specific feature from running.
+In practical terms, you're trying to use something that the `Y` module is supposed to provide, but it's either not there, not named correctly, or not accessible through the `from Y import X` syntax.
 
 ## Why It Happens
 
-Python's import mechanism works by searching for modules in a predefined list of directories (found in `sys.path`). Once `Y` is located and loaded, its contents are scanned to expose names (variables, functions, classes) that can be imported by other modules. This error arises when the name `X` that you've specified in your `from Y import X` statement isn't present among the names that `Y` has made available.
+This error primarily occurs because Python's importer mechanism, after locating `Y`, iterates through its contents (its namespace) looking for an identifier matching `X`. When it fails to find `X` within `Y`'s `__dict__` or `__all__` attributes, or through its standard member access, it raises this specific `ImportError`.
 
-From a practical standpoint, this usually points to a discrepancy between what you *expect* to be in module `Y` and what's *actually* there. It's a symbol resolution problem, where the symbolic link you're trying to create (from your current module to `X` in `Y`) simply doesn't have a valid target. I've seen this in production when a dependency was updated, or when code was refactored without updating all its callers.
+From my experience, this usually boils down to a mismatch between what you *think* is in `Y` and what *actually* is. It's a common oversight, especially in larger projects or when refactoring.
 
 ## Common Causes
 
-In my experience, this error almost always boils down to one of a few common scenarios:
+Let's break down the most frequent culprits I've run into with this error:
 
-1.  **Typo or Case Sensitivity Mismatch in `X`:** This is by far the most frequent culprit. Python is case-sensitive, so `MyFunction` is entirely different from `myfunction`. A simple spelling mistake can also cause `X` to be unfindable.
-2.  **`X` Does Not Exist in `Y`:** The name `X` might have been removed, renamed, or never existed in `Y` to begin with. This often happens after refactoring existing code or when upgrading third-party libraries where APIs have changed.
-3.  **Incorrect Module `Y` Being Imported:** Sometimes, Python finds a module `Y` but it's not the `Y` you intended. This could be due to `PYTHONPATH` issues, conflicting package names, or remnants of old files causing a different, perhaps older, version of `Y` to be loaded. That older `Y` might not contain `X`.
-4.  **Circular Imports:** While often leading to `AttributeError` during runtime, a circular import can sometimes manifest as an `ImportError` if `X` isn't fully defined when its importing module tries to access it. For example, if `moduleA` imports `X` from `moduleB`, and `moduleB` imports something from `moduleA`, `X` might not be in `moduleB`'s namespace yet when `moduleA` tries to import it.
-5.  **Missing `__init__.py` or Incorrect Package Structure:** For Python to treat a directory as a package, it traditionally needs an `__init__.py` file (though Python 3.3+ introduced implicit namespace packages). If `Y` is part of a package and the structure is incorrect, or `__init__.py` is missing where it's expected, Python might not properly expose submodules or their contents.
-6.  **Dependency Version Mismatch:** If `Y` is a third-party library, the version installed in your environment might not contain `X`, or `X` might have been renamed or deprecated in that specific version. Your local environment might have a different version than your deployment target.
-7.  **Relative Import Issues:** When using relative imports (e.g., `from .submodule import X`), if the script is run directly or the package structure isn't correctly understood by Python, the relative path might fail to resolve `Y` correctly, leading to `X` not being found in the perceived `Y`.
+1.  **Typo in the Name 'X':** This is the simplest and most common cause. A simple spelling mistake or incorrect casing (remember Python is case-sensitive) for `X` means Python won't find it.
+2.  **'X' Does Not Exist in 'Y':** You might be trying to import a name that was removed, renamed, or never existed in `Y` in the first place. Sometimes developers assume certain functionalities are available in a module when they're actually located elsewhere or require a different import path.
+3.  **Incorrect Relative Import:** When using relative imports (e.g., `from . import X` or `from ..sub_module import X`), an incorrect path can lead Python to look for `X` in the wrong place within your package structure. This is particularly tricky in packages with complex directory layouts.
+4.  **`__init__.py` Issues in Packages:** If `Y` is a package (a directory containing `__init__.py`), `X` might be a module or variable *inside* that package, but not explicitly exposed by `Y`'s `__init__.py`. For `from Y import X` to work, `X` must be directly available in the `Y` package's namespace, often achieved by `from .sub_module import X` within `Y/__init__.py`.
+5.  **Circular Imports:** Module `A` imports `B`, and `B` imports `A`. If `A` tries to import `X` from `B` *before* `B` has fully defined `X` (because `B` is waiting for `A` to finish loading), you can get this error. This is a subtle and often difficult-to-diagnose issue, especially in larger applications.
+6.  **Name Shadowing or Scope Issues:** Less common, but sometimes a local variable or a different import within `Y` might be shadowing the intended `X`, making it inaccessible from the `Y` module's top-level namespace.
+7.  **Different Python Environments/Dependencies:** You might have `Y` installed in one environment (e.g., your system Python) but be running your code in another (e.g., a virtual environment) where `Y` is a different version or not correctly installed, leading to `X` being missing. I've seen this in production when deployment environments have subtly different `pip freeze` outputs.
+8.  **Missing `__all__` in `__init__.py` (less common cause):** While `__all__` primarily affects `from Y import *` behavior, a poorly configured `__all__` could, in rare specific cases involving meta-importing, lead to confusion, though it's not the direct cause for `from Y import X` failures usually.
 
 ## Step-by-Step Fix
 
-Troubleshooting this error requires a systematic approach, often starting with the most obvious checks.
+Here's my systematic approach to debugging and fixing this `ImportError`.
 
-1.  **Verify the Name (`X`) and Module (`Y`)'s Source:**
-    *   **Double-Check Spelling and Case:** Go directly to the file `Y.py` (or the `__init__.py` of package `Y`) and visually confirm that `X` is spelled exactly as it appears in your `import` statement, including case. For example, `myFunction` is not `myfunction`.
-    *   **Confirm Existence:** Does `X` actually exist in `Y`? Look for a `def X(...)`, `class X(...)`, or `X = ...` definition. If it's a function or class, is it globally defined at the module level? If it's imported into `Y` from *another* module, ensure `Y` is actually importing and re-exporting it properly.
-    *   **Interactive Inspection:** The most robust way to check is using a Python interactive shell.
-        ```bash
-        $ python
-        >>> import Y_module_name_here # Replace Y_module_name_here with the actual module name
-        >>> dir(Y_module_name_here)
-        # Look for 'X' in the list of names. If it's there, great! If not, that's your problem.
-        >>> help(Y_module_name_here.X_name_here) # If you find it, you can inspect it further
-        ```
-        If `import Y_module_name_here` itself fails with `ModuleNotFoundError`, then Python isn't finding `Y` where it expects, which could lead to this error if a *different* `Y` is being picked up.
+### 1. Verify Spelling and Case of 'X'
 
-2.  **Inspect the Module Path and Location:**
-    *   **Where is Python finding `Y`?** After importing `Y` in an interactive session, you can check its file path:
-        ```python
-        >>> import Y_module_name_here
-        >>> print(Y_module_name_here.__file__)
-        ```
-        Is this the `Y.py` file you're actually editing and expecting to be loaded? If not, investigate your `sys.path` and `PYTHONPATH` environmental variable.
-    *   **Check `sys.path`:** The `sys.path` variable lists directories Python searches for modules.
-        ```python
-        >>> import sys
-        >>> print(sys.path)
-        ```
-        Ensure the directory containing your `Y` module is listed, or a parent directory if `Y` is part of a package.
+This is always my first check. Open the `Y` module's source code and visually confirm that `X` is spelled correctly and matches its case exactly. Python is case-sensitive (`myFunction` is different from `MyFunction`).
 
-3.  **Review Package Structure and `__init__.py`:**
-    *   If `Y` is part of a larger package (e.g., `from my_package.Y import X`), ensure that all directories up to `my_package` (and `Y` itself, if it's a subpackage) contain `__init__.py` files. While Python 3.3+ supports implicit namespace packages, explicitly providing `__init__.py` is often clearer and avoids issues, especially with older codebases or specific build tools.
+```python
+# Assuming you're trying to import 'my_function' from 'my_module.py'
+# my_module.py:
+# def my_function():
+#     pass
+#
+# Incorrect import:
+# from my_module import MyFunction # <-- Raises ImportError
+# Correct import:
+from my_module import my_function
+```
 
-4.  **Look for Circular Imports:**
-    *   Examine the modules involved. Does `Y` import anything from the module that is trying to import `X` from `Y`? If `A` imports from `B`, and `B` imports from `A`, you might have a circular dependency. Python executes modules sequentially. If `A` tries to import `X` from `B` before `B` has fully defined `X` (because `B` is waiting for `A` to finish loading), `X` won't be in `B`'s namespace yet.
-    *   **Resolution:** Refactor your code to break the cycle. Often, this means moving common definitions or interfaces into a third, independent module that both `A` and `B` can import from.
+### 2. Inspect the Contents of Module 'Y'
 
-5.  **Reinstall/Update Dependencies:**
-    *   If `Y` is a third-party library, the version you have installed might be outdated or incorrect.
-    *   **Upgrade:** `pip install --upgrade Y_module_name_here`
-    *   **Reinstall from `requirements.txt`:** If using `requirements.txt`, reinstall all dependencies to ensure consistency: `pip install -r requirements.txt`.
-    *   **Check library documentation:** Verify if `X` exists in the version of `Y` you're using.
+If spelling isn't the issue, directly inspect what's available in `Y`. You can do this interactively:
+
+```python
+import Y # Or from Y_parent import Y if Y is a submodule
+print(dir(Y))
+```
+This will print a list of all names (functions, classes, variables) that are accessible directly from `Y`. Look for `X` in this list. If `X` isn't there, then Python is right – it can't find it.
+
+Alternatively, you can open `Y`'s source file and read it directly. If `Y` is a compiled library or built-in, this isn't possible, but `dir(Y)` will still work.
+
+### 3. Review Your Package Structure and `__init__.py`
+
+If `Y` is part of a Python package (a directory containing `__init__.py`), ensure that `X` is properly exposed.
+
+**Scenario:** You have a package `my_package` like this:
+```
+my_package/
+├── __init__.py
+└── submodule.py
+```
+And `submodule.py` contains `def my_function(): pass`.
+
+If you try `from my_package import my_function`, this will fail unless `my_package/__init__.py` explicitly exposes `my_function`.
+
+**Fix:** Add the following to `my_package/__init__.py`:
+```python
+# my_package/__init__.py
+from .submodule import my_function
+```
+Now, `from my_package import my_function` will work.
+
+### 4. Correct Relative Imports
+
+If you're using `from . import X` or `from ..another_module import X`, double-check your dot notation.
+*   `.` refers to the current package.
+*   `..` refers to the parent package.
+*   `...` refers to the grandparent package, and so on.
+
+Ensure the relative path correctly points to the module where `X` is defined. This error often appears when refactoring and moving files around without updating relative import paths.
+
+### 5. Address Circular Imports
+
+This is trickier. If `A` imports `B` and `B` imports `A`, Python might try to import `X` from `B` before `B` has fully initialized, leading to `X` not being defined yet.
+
+**Symptoms:** The error might not always point directly to `X` but appear deeply nested in the traceback.
+
+**Fixes:**
+*   **Refactor:** The best solution is to restructure your code to break the circular dependency. Can `X` be moved to a third, common module that both `A` and `B` can import without creating a cycle?
+*   **Lazy Imports:** In some cases, you can defer an import until it's actually needed, often within a function, to break the immediate cycle, though this can make code harder to reason about.
+
+```python
+# Example of a circular import scenario
+# A.py
+# from B import some_func_from_B
+#
+# def func_A():
+#     some_func_from_B()
+#
+# B.py
+# from A import func_A # B tries to import func_A before A finishes defining some_func_from_B
+#
+# def some_func_from_B():
+#     print("B")
+#     func_A()
+```
+
+### 6. Check Your Python Environment and `PYTHONPATH`
+
+Ensure you're running your code with the correct Python interpreter and that your environment variables, especially `PYTHONPATH`, are set up as expected. If you're using virtual environments, activate the correct one.
+
+```bash
+# Verify the active Python interpreter
+which python
+# Check installed packages in the current environment
+pip freeze
+# Inspect PYTHONPATH (if set)
+echo $PYTHONPATH
+```
+I've spent hours debugging `ImportErrors` only to realize I was running against the wrong virtual environment or a system-wide Python that lacked a crucial package.
+
+### 7. Reinstall/Update the Module
+
+If `Y` is a third-party library, a corrupted installation or a version mismatch can sometimes cause names to be missing. Try reinstalling it:
+
+```bash
+pip uninstall Y
+pip install Y
+```
+If you suspect a version issue, specify the version: `pip install Y==1.2.3`.
 
 ## Code Examples
 
-Here are a few common scenarios that trigger this `ImportError` and how to fix them.
+### Example 1: Simple Typo
 
-**Scenario 1: Typo in the name being imported (`X`)**
-
+Let's say `my_library.py` contains:
 ```python
-# my_utilities.py
+# my_library.py
 def calculate_sum(a, b):
     return a + b
+```
 
-class MyHelper:
-    pass
-
+And you try to import it like this:
+```python
 # main.py
-from my_utilities import calculates_sum # Typo: 'calculates_sum' instead of 'calculate_sum'
-from my_utilities import Myhelper # Typo: 'Myhelper' instead of 'MyHelper'
-
-result = calculates_sum(1, 2)
+from my_library import calculateSum # Incorrect casing
+# Output: ImportError: cannot import name 'calculateSum' from 'my_library'
 ```
 
-**Output:**
-```
-ImportError: cannot import name 'calculates_sum' from 'my_utilities'
-```
-
-**Fix:** Correct the spelling to match the definition in `my_utilities.py`.
-
+**Fix:** Correct the casing:
 ```python
-# main.py (Fixed)
-from my_utilities import calculate_sum
-from my_utilities import MyHelper
-
+# main.py
+from my_library import calculate_sum # Correct
 result = calculate_sum(1, 2)
+print(result) # Output: 3
 ```
 
-**Scenario 2: `X` does not exist in `Y` (or is not exposed)**
+### Example 2: Missing Name in `__init__.py`
 
+Consider this package structure:
+```
+my_app/
+├── __init__.py
+└── api/
+    ├── __init__.py
+    └── endpoints.py
+```
+`endpoints.py` contains:
 ```python
-# database_models.py
-class User:
-    def __init__(self, name):
-        self.name = name
-
-def get_db_connection():
-    # Placeholder for a DB connection
-    return "DB Connection Object"
-
-# services.py
-from database_models import get_user_by_id # 'get_user_by_id' does not exist in database_models.py
-
-def fetch_user_data(user_id):
-    conn = get_user_by_id() # This line will never be reached due to import error
-    # ...
-```
-
-**Output:**
-```
-ImportError: cannot import name 'get_user_by_id' from 'database_models'
-```
-
-**Fix:** Add `get_user_by_id` to `database_models.py` or import an existing name.
-
-```python
-# database_models.py (Fixed)
-class User:
-    def __init__(self, name):
-        self.name = name
-
-def get_db_connection():
-    return "DB Connection Object"
-
-def get_user_by_id(user_id):
-    # Logic to fetch user
-    return User(f"User {user_id}")
-
-# services.py (Fixed)
-from database_models import get_user_by_id
-
-def fetch_user_data(user_id):
-    user = get_user_by_id(user_id)
-    # ...
-```
-
-**Scenario 3: Case sensitivity with classes**
-
-```python
-# helpers.py
-class DataProcessor:
+# my_app/api/endpoints.py
+class UserEndpoint:
     pass
-
-# app.py
-from helpers import dataprocessor # Incorrect: 'dataprocessor' (lowercase)
-
-processor = dataprocessor()
 ```
 
-**Output:**
-```
-ImportError: cannot import name 'dataprocessor' from 'helpers'
-```
-
-**Fix:** Use the correct casing.
-
+If you try to import `UserEndpoint` directly from `my_app.api`:
 ```python
-# app.py (Fixed)
-from helpers import DataProcessor
+# main.py
+from my_app.api import UserEndpoint
+# Output: ImportError: cannot import name 'UserEndpoint' from 'my_app.api'
+```
+This fails because `UserEndpoint` is defined in `endpoints.py`, not directly in `my_app/api/__init__.py`.
 
-processor = DataProcessor()
+**Fix:** Expose `UserEndpoint` in `my_app/api/__init__.py`:
+```python
+# my_app/api/__init__.py
+from .endpoints import UserEndpoint
+```
+Now, the import will work:
+```python
+# main.py
+from my_app.api import UserEndpoint # Correct
+user_api = UserEndpoint()
 ```
 
 ## Environment-Specific Notes
 
-The nuances of resolving `ImportError` can change significantly based on your execution environment.
+The `ImportError: cannot import name 'X' from 'Y'` can manifest differently depending on your deployment environment.
 
 ### Local Development
 
-*   **Virtual Environments (`venv`, `conda`):** Always use virtual environments. They isolate project dependencies, preventing conflicts and ensuring consistent package versions. If you get this error locally, double-check that your IDE (VS Code, PyCharm) is configured to use the correct virtual environment's interpreter.
-*   **`PYTHONPATH`:** While convenient for quick tests, manually setting `PYTHONPATH` can sometimes lead to ambiguity or unintended module loading. Prefer standard package installation (`pip install -e .`) for local packages or ensure your project's root is correctly on `sys.path`.
-*   **Relative vs. Absolute Imports:** Be mindful of how you're running your script. Running `python my_package/main.py` directly from the parent directory might behave differently than running `python -m my_package.main` (which properly treats `my_package` as a module). Relative imports (`from . import X`) are sensitive to the current module's position within a package.
+On your local machine, the primary concerns are:
+*   **Virtual Environments:** Always ensure your virtual environment is activated (`source .venv/bin/activate`). Running `pip install` outside the active venv is a common cause for missing imports.
+*   **`PYTHONPATH`:** If you're manually managing import paths, confirm that `PYTHONPATH` correctly includes the root of your project or any custom module directories. Use `export PYTHONPATH=$PYTHONPATH:/path/to/my/project_root` in your shell, but for complex projects, I prefer editable installs (`pip install -e .`).
+*   **IDE Configuration:** Modern IDEs like VS Code or PyCharm often manage virtual environments for you. Double-check that your project interpreter is correctly configured within the IDE settings.
 
 ### Docker
 
-*   **`COPY` and `WORKDIR`:** Ensure your `Dockerfile` correctly copies all necessary source files and sets the `WORKDIR` to the appropriate directory within your container. A common mistake is copying files incorrectly, or having a `WORKDIR` that doesn't place your modules on Python's path.
-    ```dockerfile
-    # Example Dockerfile snippet
-    WORKDIR /app
-    COPY requirements.txt .
-    RUN pip install -r requirements.txt
-    COPY . . # Make sure all code, including my_module.py, is copied
-    CMD ["python", "main.py"]
-    ```
-*   **Dependency Installation:** Verify `pip install -r requirements.txt` ran successfully within the container. A missed dependency or a failed install can lead to a third-party `Y` not being available, and thus `X` not being found.
-*   **Container Inspection:** If in doubt, shell into the running container (`docker exec -it <container_id> bash`) and try to import the module interactively. Check `sys.path` within the container.
+When dealing with Docker, the context of the build and runtime environment is crucial:
+*   **`COPY` Instructions:** Ensure your Python source files are correctly copied into the Docker image at the right location relative to where Python expects to find them. If `Y` or `X` is missing, it might be that the files were never copied, or copied to an unexpected path.
+*   **`WORKDIR`:** The `WORKDIR` in your `Dockerfile` affects the implicit `PYTHONPATH`. If your application code is at `/app` and `Y` is in `/app/src/Y`, but your `WORKDIR` is `/app`, then `from src.Y import X` is correct. If `WORKDIR` is `/app/src`, then `from Y import X` would be correct.
+*   **Image Rebuilds:** If you change your Python code, you *must* rebuild your Docker image. Docker layers can cache old versions of your code, leading to an `ImportError` if `X` was added or removed in a code change. Always remember `docker build --no-cache .` if you're pulling your hair out.
+*   **Entrypoint/Command:** Ensure your Docker `ENTRYPOINT` or `CMD` executes your Python application in a way that respects the module structure inside the container.
 
-### Cloud (AWS Lambda, Google Cloud Functions, Azure Functions)
+### Cloud Environments (AWS Lambda, GCP Cloud Functions)
 
-*   **Deployment Package Structure:** Cloud functions often require specific package structures. You might need to zip your code and all its dependencies. Ensure that `__init__.py` files are included and that the `Y.py` file (or its containing package) is at the root or within a structure the cloud runtime expects. I've had many sleepless nights debugging missing `__init__.py` files in Lambda deployments.
-*   **Runtime Environment:** The Python version and pre-installed libraries on a cloud platform might differ from your local setup. Ensure your `requirements.txt` specifies exact versions and that the platform supports them. `X` might exist in `Y` locally, but not in the version of `Y` installed in the cloud environment.
-*   **Layers (AWS Lambda):** If you're using Lambda Layers, ensure the layer is correctly configured and that its contents are properly unpacked and added to the function's `PYTHONPATH`. Missing or corrupted layer files can easily lead to `ImportError`.
+Serverless functions introduce their own set of challenges:
+*   **Deployment Packages:** When deploying code to AWS Lambda, GCP Cloud Functions, Azure Functions, etc., you often create a deployment package (a zip file). Ensure that all necessary modules and packages (`Y` and any modules that define `X`) are included in this zip file and placed at the root or within a `lib/` directory if required by the runtime.
+*   **Layers (AWS Lambda):** If `Y` is a common dependency, you might use Lambda Layers. Verify that the layer is correctly attached to your function and that `Y` is packaged within the layer in a way that Python can find it (e.g., `python/lib/python3.x/site-packages/Y`).
+*   **Dependencies:** Ensure that your `requirements.txt` (or equivalent) accurately reflects all dependencies. Sometimes, a dependency of `Y` might be missing, leading to `Y` failing to load `X` correctly.
+*   **Pathing:** Cloud runtimes often have specific expectations for where your code resides on the execution path. For example, in Lambda, your main handler file must be at the root of the deployment package. If your file `Y.py` is inside `src/` but your handler points directly to `Y.handler_function`, it won't find `Y` itself.
 
 ## Frequently Asked Questions
 
-**Q: Does this error mean the file `Y.py` doesn't exist?**
-A: Not directly. This `ImportError` specifically means that Python found and loaded `Y` (the module or package), but couldn't find the *name* `X` inside it. If `Y.py` itself couldn't be found, you'd typically encounter a `ModuleNotFoundError` first.
+**Q: Is `ImportError: cannot import name 'X' from 'Y'` the same as `ModuleNotFoundError: No module named 'Y'`?**
+**A:** No, they are distinct. `ModuleNotFoundError` means Python could not find the module `Y` at all. `ImportError: cannot import name 'X' from 'Y'` means Python *found* module `Y`, but it couldn't find the specific name `X` *inside* `Y`.
 
-**Q: I'm sure `X` exists in `Y`. What else could it be?**
-A: If you're absolutely certain `X` is defined in `Y.py`, meticulously check for:
-1.  **Case sensitivity:** Python is strict. `MyFunction` is not `myfunction`.
-2.  **The *correct* `Y.py`:** Use `Y.__file__` in an interactive session to confirm which `Y.py` Python is actually loading. You might have an old copy or a conflicting module name elsewhere on `sys.path`.
-3.  **Circular imports:** If `Y` itself depends on the module trying to import `X` from `Y`, `X` might not be fully defined yet when the import attempt happens.
-4.  **`X` isn't globally accessible:** `X` might be defined inside a function or class in `Y.py`, making it locally scoped and not available for direct import.
+**Q: Can a typo in `__init__.py` cause this error?**
+**A:** Yes, absolutely. If `__init__.py` intends to expose `X` from a submodule (e.g., `from .sub import X`) but has a typo in `sub` or `X`, or if it tries to import `X` but `X` is never defined in the submodule, you will get this `ImportError`.
 
-**Q: Can this be a Python version issue?**
-A: Yes. If `X` is a feature, function, or class that was introduced in a newer version of a library `Y`, or deprecated/removed in an older version, using an incompatible Python environment or `Y` library version will result in this error. Always check the library's documentation for the specific version you're using.
+**Q: How can I check `sys.path` to debug import issues?**
+**A:** You can print `sys.path` from within your Python script or an interactive session:
+```python
+import sys
+print(sys.path)
+```
+This list tells Python where to look for modules. The first entry is usually the current directory of the script being run.
 
-**Q: What about `from .Y import X` vs `from Y import X`?**
-A: `from Y import X` is an absolute import, meaning Python searches `sys.path` for a top-level module named `Y`. `from .Y import X` is a relative import, which means `Y` is expected to be a submodule or sibling module relative to the *current* module. Incorrect usage of relative imports (e.g., trying to run a file with relative imports directly as a script) can lead to Python failing to correctly identify `Y`, and subsequently `X` not being found. It's often safer to stick to absolute imports where possible for clarity, especially in top-level application code.
+**Q: Does casing matter when importing names?**
+**A:** Yes, Python is case-sensitive. `MyFunction` is entirely different from `myfunction` or `my_function`. Always ensure the casing of `X` in your `from Y import X` statement exactly matches the definition within the `Y` module.
+
+**Q: What if I'm trying to import a module directly using `from package import module`?**
+**A:** In this case, `Y` is the package and `X` is the module. If you get `cannot import name 'module' from 'package'`, it means the `package/__init__.py` file does not explicitly expose `module` in its namespace, or `module.py` doesn't exist within `package/`. You might need to add `from . import module` to `package/__init__.py` or simply use `import package.module`.
 
 ## Related Errors
+*(none)*
