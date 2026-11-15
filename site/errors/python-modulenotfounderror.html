@@ -124,208 +124,215 @@
     <div class="article-content">
       <h1 id="python-modulenotfounderror-no-module-named-x">Python ModuleNotFoundError: No module named 'X'</h1>
 <blockquote>
-<p>Encountering Python's ModuleNotFoundError means your code can't find an imported module; this guide explains how to fix it.</p>
+<p>Encountering Python <code>ModuleNotFoundError: No module named 'X'</code> means your script can't find an imported module; this guide explains how to fix it by ensuring it's installed in the correct Python environment.</p>
 </blockquote>
 <h2 id="what-this-error-means">What This Error Means</h2>
-<p>The <code>ModuleNotFoundError: No module named 'X'</code> is Python's way of telling you that it cannot locate a module (or package) that your code is attempting to import. When you write <code>import some_module</code> or <code>from some_package import some_function</code>, Python searches a specific set of directories for a file or directory named <code>some_module</code> or <code>some_package</code>. If it doesn't find it, this error is raised. It's a fundamental error indicating that a core dependency for your script or application is missing from Python's search path.</p>
+<p>The <code>ModuleNotFoundError: No module named 'X'</code> is a common Python runtime error indicating that the Python interpreter attempted to <code>import</code> a module named <code>'X'</code> but could not locate it within its list of known module search paths. In simpler terms, your script asked for a specific piece of functionality (a module), but Python couldn't find the file or package that provides it. This isn't a syntax error; your code's structure is likely correct. Instead, it's an environmental issue related to how Python finds and loads external code.</p>
 <h2 id="why-it-happens">Why It Happens</h2>
-<p>This error occurs because Python's interpreter, at runtime, is unable to find the module you're trying to use within its <code>sys.path</code>. The <code>sys.path</code> is a list of directory names that the interpreter searches for modules. Typically, this list includes standard library paths, site-packages directories (where third-party packages are installed), and the directory of the script being executed. The problem boils down to one simple fact: the module your code needs is not present in any of the locations Python is configured to look.</p>
+<p>At its core, this error occurs because the module you are trying to import is either not installed at all, or it is not installed in the <em>specific Python environment</em> your script is currently using. Python maintains a list of directories, known as <code>sys.path</code>, where it looks for modules. When an <code>import</code> statement is executed, Python scans these directories in order. If <code>'X'</code> is not found in any of those locations, the <code>ModuleNotFoundError</code> is raised.</p>
+<p>In my experience, this usually boils down to a mismatch between where you <em>think</em> a module is installed and where Python is actually looking for it. Modern Python development heavily relies on virtual environments, which isolate project dependencies. While incredibly useful, they can also be a source of confusion if not managed correctly.</p>
 <h2 id="common-causes">Common Causes</h2>
-<p>In my experience, this error usually stems from one of a few common scenarios:</p>
-<ul>
-<li><strong>Module Not Installed:</strong> The most frequent cause. You've written <code>import requests</code>, but you haven't run <code>pip install requests</code>.</li>
-<li><strong>Incorrect Python Environment:</strong> You have multiple Python installations or virtual environments, and you've installed the module in one environment but are running your script with another. This is particularly common in local development setups or CI/CD pipelines.</li>
-<li><strong>Typo in Module Name:</strong> A simple but frustrating mistake. You might have <code>import requets</code> instead of <code>import requests</code>, or incorrect casing like <code>import Requests</code>.</li>
-<li><strong>Missing from <code>requirements.txt</code>:</strong> In collaborative projects or deployments, a dependency might have been forgotten in the <code>requirements.txt</code> file, leading to successful local builds but failures in new environments.</li>
-<li><strong>Package Structure Issues:</strong> For custom local modules, Python might not be able to find them if they are not in the same directory as the script, or if the package structure isn't correctly set up (e.g., missing <code>__init__.py</code> files in older Python versions, or an incorrect <code>PYTHONPATH</code>).</li>
-<li><strong>IDE/Editor Configuration:</strong> Your IDE (like VS Code or PyCharm) might be configured to use a different Python interpreter than the one you're using from your terminal, leading to confusion about which packages are available.</li>
-</ul>
+<p>Here are the most frequent reasons I've encountered for this error:</p>
+<ol>
+<li><strong>Module Not Installed:</strong> The most straightforward cause. The module <code>'X'</code> simply hasn't been installed in <em>any</em> Python environment on your system.</li>
+<li><strong>Incorrect Python Environment Active:</strong> You have multiple Python installations or virtual environments, and the module <code>'X'</code> is installed in one, but your script is being run by another. This is perhaps the leading cause of frustration for newcomers and experienced engineers alike when jumping between projects.</li>
+<li><strong>Typos in Module Name:</strong> The module name used in your <code>import</code> statement (<code>import X</code>) doesn't match the package name you installed via <code>pip</code> (e.g., <code>pip install some-package</code> but you try <code>import somepackage</code>). Sometimes, the package name on PyPI differs from the module name imported.</li>
+<li><strong>Missing <code>requirements.txt</code> Installation:</strong> In project deployments or when onboarding a new developer, the <code>requirements.txt</code> file (or equivalent, like <code>Pipfile</code>, <code>pyproject.toml</code>) might not have been installed using <code>pip install -r requirements.txt</code>.</li>
+<li><strong><code>PYTHONPATH</code> Issues:</strong> For custom modules that aren't installed via <code>pip</code> (e.g., local utility modules within a complex project structure), Python needs to know where to find them. This often involves correctly setting the <code>PYTHONPATH</code> environment variable, or ensuring the module's parent directory is implicitly added to <code>sys.path</code>.</li>
+<li><strong>Broken or Corrupted Installation:</strong> Less common, but sometimes a <code>pip install</code> can fail partially, or a package can become corrupted.</li>
+<li><strong>Deployment Environment Mismatch:</strong> In production environments (Docker, cloud functions, CI/CD pipelines), the build process might not have correctly installed dependencies, or the base image might lack necessary system libraries that a Python package depends on.</li>
+<li><strong>IDE/Editor Environment Misconfiguration:</strong> Your Integrated Development Environment (IDE) or text editor might be configured to use a different Python interpreter than the one you're using in your terminal.</li>
+</ol>
 <h2 id="step-by-step-fix">Step-by-Step Fix</h2>
-<p>Here's a systematic approach to diagnose and resolve <code>ModuleNotFoundError</code>:</p>
-<h3 id="1-verify-the-module-name">1. Verify the Module Name</h3>
-<p>First, double-check the spelling and casing of the module in your <code>import</code> statement. Python module names are case-sensitive. For example, <code>import Pandas</code> will fail if the package is <code>pandas</code>.</p>
-<h3 id="2-identify-your-active-python-interpreter-and-environment">2. Identify Your Active Python Interpreter and Environment</h3>
-<p>It's crucial to know <em>which</em> Python interpreter is running your script and <em>which</em> environment it belongs to.</p>
+<p>Let's walk through a systematic approach to diagnose and resolve this issue.</p>
 <ol>
 <li>
-<p><strong>Check <code>which python</code> or <code>which python3</code></strong>: This tells you the path to the Python executable.<br />
+<p><strong>Verify Your Active Python Environment:</strong><br />
+    First, confirm which Python interpreter and <code>pip</code> installation you are using. This is crucial.<br />
 <code>bash
     which python
-    # Expected output might be: /usr/local/bin/python
-    # Or for a virtual environment: /Users/lucas/myproject/venv/bin/python</code><br />
-    If you're using <code>python3</code>, ensure you check <code>which python3</code>.</p>
+    python --version
+    which pip
+    pip --version</code><br />
+    Pay close attention to the paths. If you see <code>/usr/bin/python</code> and <code>/usr/local/bin/pip</code>, but you expect to be in a virtual environment like <code>~/my_project/venv/bin/python</code>, then you're likely using the wrong environment.</p>
 </li>
 <li>
-<p><strong>Verify the <code>pip</code> associated with that Python</strong>:<br />
+<p><strong>Activate Your Virtual Environment (If Applicable):</strong><br />
+    If your project uses a virtual environment (which it almost certainly should!), ensure it's activated before running your script or installing packages.<br />
 <code>bash
-    python -m pip --version
-    # Expected output: pip 23.2.1 from /Users/lucas/myproject/venv/lib/python3.9/site-packages/pip (python 3.9)</code><br />
-    The path after "from" should align with your Python executable's environment. If <code>pip</code> is associated with a different Python version or environment, you've found a mismatch.</p>
+    # Assuming your virtual environment is named 'venv' in the project root
+    source venv/bin/activate</code><br />
+    After activation, re-run the <code>which python</code> and <code>which pip</code> commands. The paths should now point to your virtual environment's <code>bin</code> directory.</p>
+</li>
+<li>
+<p><strong>Check if the Module is Already Installed:</strong><br />
+    Once your desired environment is active, check if the module is actually present.<br />
+<code>bash
+    pip list | grep &lt;module_name_you_are_importing&gt;
+    # or more specifically
+    pip show &lt;module_name_you_are_importing_or_package_name&gt;</code><br />
+    For example, if you see <code>import requests</code>, you'd check <code>pip show requests</code>. If it's installed, <code>pip show</code> will give you details like its version and location. If <code>grep</code> or <code>show</code> return nothing, it's not installed in <em>this</em> environment.</p>
+</li>
+<li>
+<p><strong>Install the Missing Module:</strong><br />
+    If the module isn't installed, install it using <code>pip</code> within your active environment. Remember to use the <em>package name</em> as found on PyPI, not necessarily the module name you <code>import</code>.<br />
+<code>bash
+    pip install &lt;package_name&gt;</code><br />
+    For example, for <code>import requests</code>, you'd run <code>pip install requests</code>. For <code>import pandas</code>, you'd run <code>pip install pandas</code>.</p>
+</li>
+<li>
+<p><strong>Install from <code>requirements.txt</code>:</strong><br />
+    If your project has a <code>requirements.txt</code> file, use it to install all dependencies. This is the best practice for reproducibility.<br />
+<code>bash
+    pip install -r requirements.txt</code><br />
+    After installation, try running your script again.</p>
+</li>
+<li>
+<p><strong>Verify <code>PYTHONPATH</code> for Custom Modules:</strong><br />
+    If <code>'X'</code> is a local module or package within your project that isn't installed via <code>pip</code>, ensure its containing directory is on Python's <code>sys.path</code>. One common way to do this is by setting the <code>PYTHONPATH</code> environment variable.<br />
+    Let's say your project structure is:<br />
+<code>my_project/
+    ├── src/
+    │   ├── main.py
+    │   └── utils/
+    │       └── helper.py
+    └── other_script.py</code><br />
+    If <code>main.py</code> tries to <code>import utils.helper</code>, this typically works if <code>src</code> is in the <code>PYTHONPATH</code> or if <code>main.py</code> is run from <code>my_project</code> root (implicitly adding <code>my_project</code> to path).<br />
+    If <code>other_script.py</code> in <code>my_project</code> tries <code>import src.utils.helper</code>, you might need:<br />
+<code>bash
+    export PYTHONPATH=$PYTHONPATH:/path/to/my_project
+    # Then run your script
+    python other_script.py</code><br />
+    I've seen this in production when developers forget to properly configure <code>PYTHONPATH</code> for custom libraries not managed by <code>pip</code>.</p>
+</li>
+<li>
+<p><strong>Address Typos:</strong><br />
+    Double-check your <code>import</code> statements. Is it <code>import requests</code> or <code>import request</code>? A simple typo can lead to this error. Also, confirm the actual package name on PyPI. Sometimes, <code>pip install python-dotenv</code> but you <code>import dotenv</code>.</p>
+</li>
+<li>
+<p><strong>Restart IDE or Shell:</strong><br />
+    Occasionally, changes to your environment (like activating a virtual environment or setting <code>PYTHONPATH</code>) might not be immediately picked up by your IDE or terminal session. A quick restart of your IDE or opening a new terminal window can sometimes resolve lingering issues.</p>
 </li>
 </ol>
-<h3 id="3-activate-your-virtual-environment-if-applicable">3. Activate Your Virtual Environment (If Applicable)</h3>
-<p>If you're working on a project that uses a virtual environment (and you absolutely should be!), ensure it's activated. This is the most common reason I see this error crop up in local development.</p>
-<div class="highlight"><pre><span></span><code><span class="c1"># Assuming your virtual environment is named 'venv'</span>
-<span class="nb">source</span><span class="w"> </span>venv/bin/activate
-<span class="c1"># On Windows, using cmd.exe:</span>
-<span class="c1"># .\venv\Scripts\activate.bat</span>
-<span class="c1"># On Windows, using PowerShell:</span>
-<span class="c1"># .\venv\Scripts\Activate.ps1</span>
-</code></pre></div>
-
-<p>After activation, your shell prompt usually changes to indicate the active environment (e.g., <code>(venv) lucas@machine</code>). Now, repeat step 2 to confirm you're using the correct Python and pip.</p>
-<h3 id="4-install-the-missing-module">4. Install the Missing Module</h3>
-<p>Once you're confident you're in the correct environment, install the module using <code>pip</code>. Replace <code>module_name</code> with the actual name of the module causing the error (e.g., <code>requests</code>, <code>pandas</code>, <code>numpy</code>).</p>
-<div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span>module_name
-<span class="c1"># Example:</span>
-pip<span class="w"> </span>install<span class="w"> </span>requests
-</code></pre></div>
-
-<p>If your project uses a <code>requirements.txt</code> file, it's best practice to install all dependencies from there:</p>
-<div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span>-r<span class="w"> </span>requirements.txt
-</code></pre></div>
-
-<p>This ensures all necessary packages are installed to the active environment.</p>
-<h3 id="5-confirm-installation">5. Confirm Installation</h3>
-<p>After installation, you can verify that the module is now available in your active environment.</p>
-<div class="highlight"><pre><span></span><code>pip<span class="w"> </span>list
-<span class="c1"># Or to search for a specific package:</span>
-pip<span class="w"> </span>show<span class="w"> </span>requests
-</code></pre></div>
-
-<p>This will list all installed packages and their versions within the active environment. If <code>module_name</code> appears in <code>pip list</code>, it should now be discoverable.</p>
-<h3 id="6-check-syspath-and-pythonpath">6. Check <code>sys.path</code> and <code>PYTHONPATH</code></h3>
-<p>For advanced scenarios or custom modules, Python's search path might need adjustment.</p>
-<ul>
-<li><strong><code>sys.path</code></strong>: You can inspect this from within a Python interpreter:<br />
-<code>python
-    import sys
-    print(sys.path)</code><br />
-    This shows the directories Python searches. If your custom module isn't in one of these, Python won't find it.</li>
-<li><strong><code>PYTHONPATH</code></strong>: This environment variable allows you to extend <code>sys.path</code> with additional directories. If you need Python to find modules in a non-standard location, you can set <code>PYTHONPATH</code>. Be cautious with this, as it can sometimes lead to unexpected conflicts.<br />
-<code>bash
-    # Add a directory to PYTHONPATH
-    export PYTHONPATH=$PYTHONPATH:/path/to/your/custom_modules</code><br />
-    I've seen <code>PYTHONPATH</code> misused, causing modules from different projects to interfere. It's generally better to rely on virtual environments and proper package installation.</li>
-</ul>
-<h3 id="7-reconfigure-your-ideeditor">7. Reconfigure Your IDE/Editor</h3>
-<p>If you're running your code from an IDE, ensure it's configured to use the <em>correct</em> Python interpreter for your project.</p>
-<ul>
-<li><strong>PyCharm</strong>: Go to <code>File &gt; Settings/Preferences &gt; Project: [Your Project Name] &gt; Python Interpreter</code>. Select the interpreter associated with your virtual environment.</li>
-<li><strong>VS Code</strong>: Use <code>Ctrl+Shift+P</code> (or <code>Cmd+Shift+P</code> on Mac) and search for "Python: Select Interpreter". Choose the one pointing to your virtual environment's <code>python</code> executable.</li>
-</ul>
 <h2 id="code-examples">Code Examples</h2>
-<p>Let's illustrate with a simple example using the <code>requests</code> library.</p>
-<p><strong>Scenario 1: Module Not Installed</strong></p>
-<p><code>myapp.py</code>:</p>
-<div class="highlight"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">requests</span>
+<p><strong>Problematic Code (example <code>my_app.py</code>):</strong></p>
+<div class="highlight"><pre><span></span><code><span class="c1"># my_app.py</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">requests</span>
 
 <span class="k">def</span><span class="w"> </span><span class="nf">fetch_data</span><span class="p">(</span><span class="n">url</span><span class="p">):</span>
     <span class="n">response</span> <span class="o">=</span> <span class="n">requests</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">url</span><span class="p">)</span>
+    <span class="n">response</span><span class="o">.</span><span class="n">raise_for_status</span><span class="p">()</span> <span class="c1"># Raise HTTPError for bad responses (4xx or 5xx)</span>
     <span class="k">return</span> <span class="n">response</span><span class="o">.</span><span class="n">json</span><span class="p">()</span>
 
 <span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">"__main__"</span><span class="p">:</span>
-    <span class="n">data</span> <span class="o">=</span> <span class="n">fetch_data</span><span class="p">(</span><span class="s2">"https://api.github.com/users/octocat"</span><span class="p">)</span>
-    <span class="nb">print</span><span class="p">(</span><span class="n">data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"name"</span><span class="p">))</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">data</span> <span class="o">=</span> <span class="n">fetch_data</span><span class="p">(</span><span class="s2">"https://jsonplaceholder.typicode.com/todos/1"</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Fetched data: </span><span class="si">{</span><span class="n">data</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"An error occurred: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
 </code></pre></div>
 
-<p>If you run <code>python myapp.py</code> <em>without</em> <code>requests</code> installed in your active environment, you'll get:</p>
+<p><strong>Scenario:</strong> You try to run <code>python my_app.py</code> but get:</p>
 <div class="highlight"><pre><span></span><code>Traceback (most recent call last):
-  File "myapp.py", line 1, in &lt;module&gt;
+  File "my_app.py", line 1, in &lt;module&gt;
     import requests
 ModuleNotFoundError: No module named 'requests'
 </code></pre></div>
 
-<p><strong>The Fix:</strong><br />
-1.  Activate your virtual environment:<br />
+<p><strong>Fix:</strong></p>
+<ol>
+<li>
+<p><strong>Activate virtual environment (if not already):</strong><br />
 <code>bash
-    source venv/bin/activate</code><br />
-2.  Install <code>requests</code>:<br />
+    source venv/bin/activate</code></p>
+</li>
+<li>
+<p><strong>Install the missing module:</strong><br />
 <code>bash
-    pip install requests</code><br />
-3.  Run your script again:<br />
+    pip install requests</code></p>
+</li>
+<li>
+<p><strong>Run your script again:</strong><br />
 <code>bash
-    python myapp.py</code><br />
-    This time it should run successfully and print "The Octocat".</p>
-<p><strong>Scenario 2: Typo in Module Name</strong></p>
-<p><code>myapp_typo.py</code>:</p>
-<div class="highlight"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">request</span> <span class="c1"># Typo: should be 'requests'</span>
-
-<span class="k">def</span><span class="w"> </span><span class="nf">fetch_data</span><span class="p">(</span><span class="n">url</span><span class="p">):</span>
-    <span class="n">response</span> <span class="o">=</span> <span class="n">request</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">url</span><span class="p">)</span> <span class="c1"># This will also fail if 'request' were somehow installed</span>
-    <span class="k">return</span> <span class="n">response</span><span class="o">.</span><span class="n">json</span><span class="p">()</span>
-
-<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">"__main__"</span><span class="p">:</span>
-    <span class="n">data</span> <span class="o">=</span> <span class="n">fetch_data</span><span class="p">(</span><span class="s2">"https://api.github.com/users/octocat"</span><span class="p">)</span>
-    <span class="nb">print</span><span class="p">(</span><span class="n">data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"name"</span><span class="p">))</span>
+    python my_app.py</code><br />
+    Output:<br />
+<code>Fetched data: {'userId': 1, 'id': 1, 'title': 'delectus aut autem', 'completed': False}</code></p>
+</li>
+</ol>
+<p><strong>Using <code>requirements.txt</code>:</strong></p>
+<p>Create a <code>requirements.txt</code> file in your project root:</p>
+<div class="highlight"><pre><span></span><code># requirements.txt
+requests==2.31.0
 </code></pre></div>
 
-<p>Running this will yield:</p>
-<div class="highlight"><pre><span></span><code>Traceback (most recent call last):
-  File "myapp_typo.py", line 1, in &lt;module&gt;
-    import request
-ModuleNotFoundError: No module named 'request'
-</code></pre></div>
-
-<p><strong>The Fix:</strong> Correct the spelling in your code:</p>
-<div class="highlight"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">requests</span> <span class="c1"># Corrected spelling</span>
-<span class="c1"># ... rest of your code</span>
+<p>Then, install all dependencies:</p>
+<div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span>-r<span class="w"> </span>requirements.txt
 </code></pre></div>
 
 <h2 id="environment-specific-notes">Environment-Specific Notes</h2>
-<p>The <code>ModuleNotFoundError</code> manifests slightly differently across various deployment environments. Understanding these nuances is key.</p>
-<h3 id="cloud-environments-aws-lambda-gcp-cloud-functions-azure-functions">Cloud Environments (AWS Lambda, GCP Cloud Functions, Azure Functions)</h3>
-<p>In serverless or FaaS (Functions-as-a-Service) environments, your code and its dependencies are packaged together and deployed. The most common pitfall I've encountered is missing dependencies in the deployment package.</p>
+<p>This error is incredibly common across different deployment strategies, each with its own nuances.</p>
+<h3 id="cloud-aws-lambda-google-cloud-functions-azure-functions">Cloud (AWS Lambda, Google Cloud Functions, Azure Functions)</h3>
+<p>When deploying to serverless platforms, your Python environment is often custom-built. You don't get a standard Linux server.</p>
 <ul>
-<li><strong>AWS Lambda Layers:</strong> For larger or shared dependencies, use Lambda Layers. Ensure your layer includes the module and is correctly linked to your function. Otherwise, include all dependencies directly in your deployment ZIP.</li>
-<li><strong>GCP Cloud Functions:</strong> Dependencies are defined in a <code>requirements.txt</code> file at the root of your function's directory. Cloud Functions will install these during deployment. If a module is missing, it usually means it wasn't specified in <code>requirements.txt</code> or there was a build error during deployment.</li>
-<li><strong>Packaging:</strong> Make sure that when you zip your code for deployment, you're including the <code>site-packages</code> directory (or equivalent) generated by <code>pip install -t . -r requirements.txt</code> if you're packaging directly, or that your build process properly collects all dependencies. I've often forgotten to include all necessary packages in the deployment zip when manually preparing packages, leading to this error at runtime.</li>
+<li><strong>AWS Lambda:</strong> You typically package your code and its dependencies into a <code>.zip</code> file. A common mistake is zipping <code>requests</code> into <code>my_package.zip</code> when <code>requests</code> should be at the root of the <code>.zip</code> or in a specific layer.<br />
+    Correct way for local dependencies:<br />
+<code>bash
+    # Assuming 'package/' contains your python files and 'requirements.txt'
+    pip install -r requirements.txt -t package/
+    cd package/
+    zip -r ../deployment_package.zip .
+    # Add your Lambda handler script to the root of the zip
+    zip -g ../deployment_package.zip lambda_handler.py</code><br />
+    Alternatively, use Lambda Layers for common libraries.</li>
+<li><strong>Google Cloud Functions / Azure Functions:</strong> These platforms often provide a <code>requirements.txt</code> based dependency management. Ensure your <code>requirements.txt</code> is correct and deployed alongside your function code. They will typically run <code>pip install -r requirements.txt</code> during deployment. If a dependency requires a specific system library (e.g., <code>psycopg2</code> needs <code>libpq-dev</code>), you might need to use a custom runtime or a base image with those libraries.</li>
 </ul>
-<h3 id="docker-containers">Docker Containers</h3>
-<p>Docker provides excellent isolation, but this also means you must explicitly build your dependencies into the image.</p>
-<p>A common <code>Dockerfile</code> pattern looks like this:</p>
-<div class="highlight"><pre><span></span><code><span class="c"># Use a specific Python base image</span>
-<span class="k">FROM</span><span class="w"> </span><span class="s">python:3.9-slim-buster</span>
-
-<span class="c"># Set the working directory in the container</span>
-<span class="k">WORKDIR</span><span class="w"> </span><span class="s">/app</span>
-
-<span class="c"># Copy only the requirements file first to leverage Docker layer caching</span>
-<span class="k">COPY</span><span class="w"> </span>requirements.txt<span class="w"> </span>.
-
-<span class="c"># Install Python dependencies</span>
-<span class="k">RUN</span><span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>--no-cache-dir<span class="w"> </span>-r<span class="w"> </span>requirements.txt
-
-<span class="c"># Copy the rest of your application code</span>
-<span class="k">COPY</span><span class="w"> </span>.<span class="w"> </span>.
-
-<span class="c"># Define the command to run your application</span>
-<span class="k">CMD</span><span class="w"> </span><span class="p">[</span><span class="s2">"python"</span><span class="p">,</span><span class="w"> </span><span class="s2">"your_app.py"</span><span class="p">]</span>
-</code></pre></div>
-
-<p>If you get <code>ModuleNotFoundError</code> inside a Docker container:<br />
-1.  <strong>Check <code>requirements.txt</code></strong>: Ensure <em>all</em> necessary modules are listed.<br />
-2.  <strong>Rebuild Image</strong>: If you've modified <code>requirements.txt</code>, you <em>must</em> rebuild your Docker image: <code>docker build -t my-app .</code>.<br />
-3.  <strong>Correct <code>WORKDIR</code> and <code>COPY</code> paths</strong>: Ensure your application code (especially custom modules) is correctly copied into the container's <code>WORKDIR</code> and that <code>sys.path</code> within the container can find it. This is a classic "works on my machine" issue if dependencies aren't built into the image.</p>
-<h3 id="local-development-environments">Local Development Environments</h3>
-<p>As discussed, virtual environments are paramount.</p>
+<h3 id="docker">Docker</h3>
+<p>Docker is excellent for creating reproducible environments, but <code>ModuleNotFoundError</code> can still occur if your <code>Dockerfile</code> isn't set up correctly.</p>
 <ul>
-<li><strong>Always activate your <code>venv</code></strong>: Before running any <code>pip</code> command or your Python script, activate the environment.</li>
-<li><strong>Consistent <code>pip</code> and <code>python</code></strong>: Ensure the <code>pip</code> you use for installing packages belongs to the <code>python</code> interpreter you use to run your script. <code>python -m pip install</code> is a good habit to ensure this.</li>
+<li>
+<p><strong>Correct <code>Dockerfile</code> pattern:</strong><br />
+    ```dockerfile<br />
+    # Use an official Python runtime as a parent image<br />
+    FROM python:3.9-slim-buster</p>
+<h1 id="set-the-working-directory-in-the-container">Set the working directory in the container</h1>
+<p>WORKDIR /app</p>
+<h1 id="install-any-needed-packages-specified-in-requirementstxt">Install any needed packages specified in requirements.txt</h1>
+<p>COPY requirements.txt .<br />
+RUN pip install --no-cache-dir -r requirements.txt</p>
+<h1 id="copy-the-rest-of-your-application-code">Copy the rest of your application code</h1>
+<p>COPY . .</p>
+<h1 id="define-environment-variable-if-needed-eg-for-custom-modules">Define environment variable if needed (e.g., for custom modules)</h1>
+<h1 id="env-pythonpathapp">ENV PYTHONPATH=/app</h1>
+<h1 id="run-the-application">Run the application</h1>
+<p>CMD ["python", "your_app.py"]<br />
+<code>``
+A common Docker mistake is to</code>COPY . .<code>*before*</code>pip install -r requirements.txt<code>. If</code>requirements.txt<code>changes, Docker's cache won't be invalidated, and new dependencies won't be installed. Copying</code>requirements.txt<code>first leverages Docker's layer caching. Another issue I've observed is</code>pip install<code>using a different Python interpreter inside the container if not careful (e.g., if you install</code>python<code>explicitly without specifying a version and get</code>python2<code>instead of</code>python3`).</p>
+</li>
+</ul>
+<h3 id="local-development">Local Development</h3>
+<p>Local development often uses virtual environments.</p>
+<ul>
+<li><strong><code>venv</code> / <code>virtualenv</code>:</strong> Always activate your virtual environment (<code>source venv/bin/activate</code>) before installing packages or running your scripts. Forgetting this means you're likely installing into or running from your global Python installation.</li>
+<li><strong>Conda:</strong> If you use Anaconda/Miniconda, ensure your correct conda environment is activated (<code>conda activate my_env</code>). <code>pip install</code> commands will then install into that specific conda environment.</li>
+<li><strong>IDE Integration:</strong> Many IDEs (PyCharm, VS Code) have excellent virtual environment integration. Make sure your IDE is configured to use the correct project interpreter. If your IDE's terminal is using one interpreter and its run configuration another, you'll encounter this error.</li>
 </ul>
 <h2 id="frequently-asked-questions">Frequently Asked Questions</h2>
-<p><strong>Q: I installed the module, but I'm still getting <code>ModuleNotFoundError</code>. What gives?</strong><br />
-A: This almost always means you've installed the module into one Python environment but are running your script with a different one. Carefully re-run Step 2 and 3 of the "Step-by-Step Fix" to ensure your active environment matches where you installed the package. Check your IDE's configuration if applicable.</p>
-<p><strong>Q: Why do I need virtual environments? Can't I just install everything globally?</strong><br />
-A: While you <em>can</em> install everything globally, it's highly discouraged. Virtual environments isolate project dependencies, preventing conflicts between different projects that might require different versions of the same package. I've seen countless hours wasted troubleshooting dependency hell in production environments due to global installations. They make your development repeatable and predictable.</p>
-<p><strong>Q: My custom local module isn't found. What's wrong?</strong><br />
-A: Ensure your custom module is in a directory that's part of Python's <code>sys.path</code> or is a sub-package within a recognized package. If it's a separate file, make sure it's in the same directory as your main script. For packages, verify that <code>__init__.py</code> files are present in each directory of the package (less critical in Python 3.3+ but good practice). Sometimes, you might need to add the parent directory of your custom module to <code>PYTHONPATH</code> or <code>sys.path</code> explicitly, though this is often an indicator of needing to structure your project as a proper installable package.</p>
-<p><strong>Q: How do <code>sys.path</code> and <code>PYTHONPATH</code> relate to each other?</strong><br />
-A: <code>PYTHONPATH</code> is an environment variable that, when set, tells Python to add specified directories to its <code>sys.path</code> <em>before</em> Python searches its default locations. Think of <code>PYTHONPATH</code> as a way to customize <code>sys.path</code> from outside your script.</p>
-<p><strong>Q: Can I ignore this error?</strong><br />
-A: No. A <code>ModuleNotFoundError</code> is a critical error. Your code is explicitly trying to use functionality from the missing module, and it simply won't work without it. You must resolve it for your application to run correctly.</p>
+<p><strong>Q: What's the difference between <code>pip</code> and <code>pip3</code>?</strong><br />
+<strong>A:</strong> <code>pip</code> historically referred to the <code>pip</code> for Python 2. In modern systems, <code>pip</code> usually symlinks to <code>pip3</code> (for Python 3). However, if you have both Python 2 and Python 3 installed, <code>pip</code> might still point to the Python 2 version, while <code>pip3</code> explicitly points to the Python 3 version. It's best practice to use <code>python3 -m pip install &lt;package&gt;</code> to ensure you're using the <code>pip</code> associated with your Python 3 interpreter.</p>
+<p><strong>Q: Why does <code>pip install</code> work but I still get the error?</strong><br />
+<strong>A:</strong> This almost always means you've installed the module into one Python environment (e.g., your global Python) but your script is being run by a <em>different</em> Python environment (e.g., an inactive virtual environment or an IDE configured with a different interpreter). Double-check <code>which python</code> and <code>which pip</code> after activation to confirm.</p>
+<p><strong>Q: Should I use <code>sudo pip install</code>?</strong><br />
+<strong>A:</strong> <strong>Generally, no.</strong> Using <code>sudo pip install</code> installs packages globally into your system's Python installation, which can lead to permission issues, conflict with system packages, and make it difficult to manage project-specific dependencies. Always prefer using virtual environments and <code>pip install</code> without <code>sudo</code>. The only exception might be on certain embedded systems or highly specific production setups where virtual environments are not practical.</p>
+<p><strong>Q: How do I manage dependencies for multiple projects?</strong><br />
+<strong>A:</strong> Use virtual environments! For each project, create a new virtual environment (e.g., <code>python3 -m venv venv</code>), activate it, and install project-specific dependencies. This isolates your projects and prevents dependency conflicts.</p>
+<p><strong>Q: What if 'X' is a local module, not from PyPI?</strong><br />
+<strong>A:</strong> If 'X' is a module you've written yourself within your project, ensure that the directory containing 'X' (or its parent package) is discoverable by Python. This means it should either be in the same directory as the script running, in a directory added to <code>sys.path</code> (via <code>PYTHONPATH</code> or other means), or properly installed as an editable package (<code>pip install -e .</code>) if it's a larger local library.</p>
 <h2 id="related-errors">Related Errors</h2>
-<p><em>(none)</em></p>
+<ul>
+<li><code>ImportError: cannot import name 'Y' from 'X'</code> (This means the module 'X' was found, but the specific object 'Y' you tried to import from it could not be located.)</li>
+<li><code>SyntaxError: invalid syntax</code> (Not directly related, but sometimes a badly formed import statement can lead to syntax issues before the <code>ModuleNotFoundError</code> is even reached.)</li>
+<li><code>FileNotFoundError</code> (Typically for data files, not Python modules themselves, but can be confused by new users who expect modules to be found like files.)</li>
+</ul>
     </div>
 
     <!-- ── AdSense placement 2 – bottom of article ───────────────────────── -->
@@ -392,7 +399,7 @@ A: No. A <code>ModuleNotFoundError</code> is a critical error. Your code is expl
     <div class="container">
       <p class="footer-logo">⚡ ErrorFix.dev</p>
       <p>Practical, engineer-written guides for real-world software errors.</p>
-      <p style="margin-top:.5rem">Last updated: <time>November 14, 2026</time>.</p>
+      <p style="margin-top:.5rem">Last updated: <time>November 15, 2026</time>.</p>
       <p class="footer-links" style="margin-top:.75rem">
         <!-- ╔══════════════════════════════════════════════════════════════╗ -->
         <!-- ║  AFFILIATE LINKS – replace the href values below            ║ -->
