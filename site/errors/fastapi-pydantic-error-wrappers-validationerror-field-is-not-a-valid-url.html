@@ -126,274 +126,206 @@
     <div class="article-content">
       <h1 id="pydanticerror_wrappersvalidationerror-field-is-not-a-valid-url">pydantic.error_wrappers.ValidationError: field is not a valid URL</h1>
 <blockquote>
-<p>Encountering pydantic.error_wrappers.ValidationError: field is not a valid URL means a string intended for a URL field does not meet valid URL format requirements; this guide explains how to fix it.</p>
+<p>Encountering <code>pydantic.error_wrappers.ValidationError: field is not a valid URL</code> means your provided string doesn't conform to a valid URL format as expected by Pydantic; this guide explains how to fix it.</p>
 </blockquote>
 <h2 id="what-this-error-means">What This Error Means</h2>
-<p>This specific Pydantic validation error, <code>field is not a valid URL</code>, indicates that data provided to your FastAPI application, intended for a Pydantic model field typed as a URL, does not conform to Pydantic's (and by extension, the underlying <code>urllib</code> or similar library's) definition of a valid URL.</p>
-<p>In a FastAPI context, Pydantic handles the parsing and validation of request bodies, query parameters, path parameters, and response models. When you define a field in your Pydantic model using types like <code>pydantic.HttpUrl</code> or <code>pydantic.AnyUrl</code>, you're telling Pydantic to apply strict URL format checks. If the incoming string for that field fails these checks, Pydantic raises this <code>ValidationError</code>, which FastAPI then translates into a <code>422 Unprocessable Entity</code> HTTP response, providing details about the validation failure.</p>
-<p>This error is fundamentally about data integrity. Pydantic is ensuring that the data your application receives for a URL field is actually shaped like a URL, preventing malformed or potentially risky strings from entering your business logic.</p>
+<p>This error message, <code>pydantic.error_wrappers.ValidationError: field is not a valid URL</code>, indicates that Pydantic, the data validation library underpinning FastAPI, has rejected a string value because it doesn't meet the criteria for a well-formed URL. When you define a Pydantic model (which FastAPI uses for request bodies, query parameters, etc.) and specify a field's type as <code>HttpUrl</code> or <code>AnyUrl</code>, Pydantic rigorously validates the incoming string against a set of URL formatting rules. If the string fails this validation, Pydantic raises this specific error.</p>
+<p>In the context of a FastAPI application, this typically means a client has sent data (e.g., in a JSON request body or a URL query parameter) that includes a string intended to be a URL, but that string is malformed according to Pydantic's strict interpretation.</p>
 <h2 id="why-it-happens">Why It Happens</h2>
-<p>The core reason this error occurs is a mismatch between the string provided as input and the expected format for a URL as defined by Pydantic's URL types. Pydantic's <code>HttpUrl</code> (and <code>AnyUrl</code> to a lesser extent) is quite strict. It expects a well-formed URL that typically includes a scheme (like <code>http://</code> or <code>https://</code>), a hostname, and potentially a port, path, query parameters, and fragment identifier. It often leverages standard libraries or internal regexes that align closely with RFC 3986, the URI Generic Syntax specification.</p>
-<p>When <code>HttpUrl</code> or <code>AnyUrl</code> is used, Pydantic attempts to parse the input string into a structured URL object. If this parsing fails at any stage – for instance, if a required component is missing or an invalid character is present where it shouldn't be – the <code>ValidationError</code> is raised.</p>
+<p>Pydantic's URL validation is robust by design. It leverages the <code>url_validator</code> provided by <code>pydantic.networks</code> which checks for several key components of a URL:<br />
+1.  <strong>Scheme:</strong> The protocol (e.g., <code>http://</code>, <code>https://</code>, <code>ftp://</code>). <code>HttpUrl</code> specifically requires <code>http</code> or <code>https</code>. <code>AnyUrl</code> is more lenient.<br />
+2.  <strong>Authority:</strong> Includes the domain name (e.g., <code>www.example.com</code>), potentially a port (e.g., <code>:8080</code>), and sometimes user credentials.<br />
+3.  <strong>Path:</strong> The resource path (e.g., <code>/api/resource</code>).<br />
+4.  <strong>Query String:</strong> Parameters passed to the resource (e.g., <code>?param=value</code>).<br />
+5.  <strong>Fragment:</strong> An anchor within the resource (e.g., <code>#section</code>).</p>
+<p>The error occurs when one or more of these essential components are missing or incorrectly formatted. Pydantic is not just checking for the presence of "www." or ".com"; it's ensuring the entire structure adheres to a recognized URL standard. In my experience, this strictness is invaluable for maintaining data integrity, even if it occasionally catches seemingly benign inputs.</p>
 <h2 id="common-causes">Common Causes</h2>
-<p>In my experience, this error usually boils down to a few common mistakes or misunderstandings about what constitutes a "valid" URL for Pydantic:</p>
-<ol>
-<li><strong>Missing Scheme:</strong> This is by far the most frequent cause. Users often provide URLs like <code>www.example.com</code> or <code>example.com</code> without the crucial <code>http://</code> or <code>https://</code> prefix. Pydantic's <code>HttpUrl</code> strictly requires a scheme.</li>
-<li><strong>Invalid Characters:</strong> Spaces, unencoded special characters, or other non-URL-safe characters in the input string. While browsers often forgive or auto-correct these, Pydantic's validators do not. For example, <code>http://my site.com</code> is invalid; it should be <code>http://my%20site.com</code>.</li>
-<li><strong>Malformed Host/Domain:</strong> A domain name that doesn't look like a domain name, e.g., <code>example</code> instead of <code>example.com</code> or <code>example.net</code>. While <code>example</code> <em>could</em> be a valid hostname in some contexts, <code>HttpUrl</code> expects a more complete internet domain or IP address format.</li>
-<li><strong>Localhost Without Scheme:</strong> Similar to the missing scheme, <code>localhost:8000</code> will typically fail if typed as <code>HttpUrl</code>. It needs to be <code>http://localhost:8000</code>.</li>
-<li><strong>Empty Strings or <code>None</code>:</strong> If the field is defined as <code>website: HttpUrl</code> (not <code>Optional[HttpUrl]</code>), an empty string <code>""</code> or <code>None</code> will cause this validation error, as neither is a valid URL format.</li>
-<li><strong>Incorrect Pydantic Type:</strong> Sometimes, a developer might use <code>HttpUrl</code> when they actually want to accept a more general string that <em>might</em> be a URL but also could be a custom identifier or a path. If the data isn't <em>always</em> a strict web URL, <code>HttpUrl</code> is too restrictive.</li>
-<li><strong>External API Data:</strong> When consuming data from external APIs, it's possible that their definition of a "URL" is more lenient or differs from Pydantic's, leading to issues if you directly pass their output into your models.</li>
-</ol>
+<p>I've seen this <code>ValidationError</code> crop up for a few recurring reasons in production and development:</p>
+<ul>
+<li><strong>Missing Scheme:</strong> This is by far the most common culprit. Users often input <code>example.com</code> or <code>www.example.com</code> when the validator expects <code>http://example.com</code> or <code>https://www.example.com</code>. Pydantic's <code>HttpUrl</code> and <code>AnyUrl</code> types require an explicit scheme.</li>
+<li><strong>Incorrect Scheme:</strong> A typo like <code>htt://example.com</code> instead of <code>http://example.com</code>, or providing an <code>ftp://</code> URL when the model expects <code>HttpUrl</code> (which only accepts <code>http</code> or <code>https</code>).</li>
+<li><strong>Invalid Characters or Encoding:</strong> URLs can contain specific characters, and others must be URL-encoded (e.g., spaces become <code>%20</code>). If raw, invalid characters are present, Pydantic will flag it.</li>
+<li><strong>Malformed Domain or Path:</strong> Typos in the domain, missing dots, or paths that start incorrectly can also trigger the error.</li>
+<li><strong>Empty String or Non-String Input:</strong> If an empty string <code>""</code> or a non-string value (like <code>None</code> or an integer) is sent to a field typed as <code>HttpUrl</code> or <code>AnyUrl</code> without proper <code>Optional</code> handling, it can lead to validation issues. While Pydantic usually gives a different error for type mismatches, an empty string might sometimes be caught by the URL regex.</li>
+<li><strong>Client-Side Inconsistencies:</strong> The frontend application might not be performing adequate URL validation before sending data to the API, leading to user-input errors reaching the backend.</li>
+<li><strong>Copy-Paste Errors:</strong> Sometimes, a URL copied from a text document or an email might include hidden characters or malformed components.</li>
+</ul>
 <h2 id="step-by-step-fix">Step-by-Step Fix</h2>
-<p>Addressing this error typically involves a clear diagnosis of the input and a corresponding adjustment to either the client-side data or the server-side Pydantic model.</p>
-<ol>
-<li>
-<p><strong>Identify the Failing Field:</strong><br />
-    When the <code>ValidationError</code> occurs, FastAPI will return a <code>422 Unprocessable Entity</code> response. The response body will contain details, including the <code>loc</code> (location) field which pinpoints exactly which field in your Pydantic model failed validation. For example:<br />
-<code>json
-    {
-      "detail": [
-        {
-          "loc": ["body", "website"],
-          "msg": "field is not a valid URL",
-          "type": "value_error.url"
-        }
-      ]
-    }</code><br />
-    This tells you the <code>website</code> field in the request body is the problem.</p>
-</li>
-<li>
-<p><strong>Inspect the Input Data:</strong><br />
-    Once you know the problematic field, the next step is to examine the exact string value being sent for that field.</p>
-<ul>
-<li>
-<p><strong>During development:</strong> Use print statements in your endpoint or a debugger to log the incoming <code>item</code> object or the specific field value just before Pydantic validates it.<br />
-    ```python<br />
-    from fastapi import FastAPI<br />
-    from pydantic import BaseModel, HttpUrl</p>
-<p>app = FastAPI()</p>
-<p>class Item(BaseModel):<br />
-    name: str<br />
-    website: HttpUrl</p>
-<p>@app.post("/items/")<br />
-async def create_item(item: Item):<br />
-    print(f"Received item: {item.dict()}") # Inspect the whole item<br />
-    print(f"Website field received: {item.website}") # Or just the problematic field<br />
-    # ... rest of your logic<br />
-    return {"message": "Item created", "item": item}<br />
-```<br />
-    *   <strong>In production/staging:</strong> Rely on your application's logging infrastructure. Ensure request bodies or at least the problematic field values are logged (with due care for sensitive information).</p>
-</li>
-</ul>
-</li>
-<li>
-<p><strong>Validate the URL Manually:</strong><br />
-    With the actual problematic string in hand, try to validate it using a tool or Python's <code>urlparse</code> from <code>urllib.parse</code>.<br />
-    ```python<br />
-    from urllib.parse import urlparse</p>
-<h1 id="example-problematic-url">Example problematic URL</h1>
-<p>bad_url = "example.com"<br />
-parsed_bad = urlparse(bad_url)<br />
-print(f"Bad URL scheme: {parsed_bad.scheme}, netloc: {parsed_bad.netloc}")</p>
-<h1 id="output-bad-url-scheme-netloc-examplecom">Output: Bad URL scheme: , netloc: example.com</h1>
-<h1 id="example-good-url">Example good URL</h1>
-<p>good_url = "https://example.com"<br />
-parsed_good = urlparse(good_url)<br />
-print(f"Good URL scheme: {parsed_good.scheme}, netloc: {parsed_good.netloc}")</p>
-<h1 id="output-good-url-scheme-https-netloc-examplecom">Output: Good URL scheme: https, netloc: example.com</h1>
-<p><code>``
-Notice how</code>parsed_bad.scheme<code>is empty. Pydantic's</code>HttpUrl` requires a scheme.</p>
-</li>
-<li>
-<p><strong>Correct the Input (Client-Side First):</strong><br />
-    The most robust and often simplest fix is to ensure the client (web browser, mobile app, another service) sends a properly formatted URL.</p>
-<ul>
-<li>Instruct users to include <code>http://</code> or <code>https://</code>.</li>
-<li>Implement client-side validation using JavaScript or other mechanisms to guide users or automatically prepend schemes.</li>
-<li>For API clients, ensure they are constructing URLs correctly.</li>
-</ul>
-<p><em>Example <code>curl</code> fix:</em><br />
-Instead of:<br />
-<code>bash
-curl -X POST -H "Content-Type: application/json" -d '{"name": "My Site", "website": "example.com"}' http://127.0.0.1:8000/items/</code><br />
-Use:<br />
-<code>bash
-curl -X POST -H "Content-Type: application/json" -d '{"name": "My Site", "website": "https://example.com"}' http://127.0.0.1:8000/items/</code><br />
-Or for localhost:<br />
-<code>bash
-curl -X POST -H "Content-Type: application/json" -d '{"name": "My Local App", "website": "http://localhost:8000"}' http://127.0.0.1:8000/items/</code></p>
-</li>
-<li>
-<p><strong>Refine Pydantic Model / Server-Side Pre-processing (If Client-Side Fix is Not Possible or Desirable):</strong><br />
-    If you have specific reasons to accept slightly less strict inputs and then normalize them, you can adjust your Pydantic model:</p>
-<ul>
-<li>
-<p><strong>Use <code>Optional[HttpUrl]</code>:</strong> If the field might sometimes be empty or <code>null</code>, make it optional.<br />
-    ```python<br />
-    from typing import Optional<br />
-    from pydantic import BaseModel, HttpUrl</p>
-<p>class Item(BaseModel):<br />
-    name: str<br />
-    website: Optional[HttpUrl] # Allows None<br />
-<code>*   **Custom Validator for Normalization:** If you want to automatically prepend `http://` for inputs missing a scheme, you can use a Pydantic `@validator`. However, exercise caution: this might hide actual client errors and could lead to unintended behavior if not thoroughly tested. I generally prefer client-side fixes for data format issues.</code>python<br />
-from pydantic import BaseModel, HttpUrl, validator<br />
-from typing import Optional</p>
-<p>class Item(BaseModel):<br />
-    name: str<br />
-    website: HttpUrl</p>
-<div class="highlight"><pre><span></span><code>@validator('website', pre=True) # `pre=True` means run before Pydantic's own validation
-def add_scheme_if_missing(cls, v):
-    if isinstance(v, str) and not v.startswith(('http://', 'https://')):
-        return f"http://{v}" # Default to http if no scheme
-    return v
+<p>Addressing this <code>ValidationError</code> involves inspecting both your input data and your Pydantic model definition.</p>
+<h3 id="step-1-understand-the-expected-url-format">Step 1: Understand the Expected URL Format</h3>
+<p>First, clarify what your Pydantic model is <em>actually</em> expecting.<br />
+*   If you're using <code>pydantic.HttpUrl</code>, it strictly requires <code>http://</code> or <code>https://</code>.<br />
+*   If you're using <code>pydantic.AnyUrl</code>, it's more flexible and accepts other schemes like <code>ftp://</code>, <code>sftp://</code>, <code>ws://</code>, etc.</p>
+<p><strong>Action:</strong> Identify the specific Pydantic type used in your model definition.</p>
+<h3 id="step-2-inspect-the-incoming-data">Step 2: Inspect the Incoming Data</h3>
+<p>The next step is to pinpoint the exact string causing the error. This means looking at the data sent by the client.</p>
+<p><strong>Action:</strong><br />
+*   <strong>Local Development:</strong> Use print statements, your IDE's debugger, or tools like Postman/Insomnia to review the request body or query parameters.<br />
+*   <strong>Production:</strong> Check your API logs. FastAPI's <code>RequestValidationError</code> (which wraps Pydantic's <code>ValidationError</code>) usually provides details about which field failed and why.<br />
+*   <strong>Example (using <code>curl</code>):</strong><br />
+    ```bash<br />
+    # This will likely cause the error if model expects HttpUrl<br />
+    curl -X POST -H "Content-Type: application/json" -d '{"site_url": "example.com"}' http://localhost:8000/items</p>
+<div class="highlight"><pre><span></span><code># This will work
+curl -X POST -H "Content-Type: application/json" -d '{"site_url": "https://example.com"}' http://localhost:8000/items
+```
 </code></pre></div>
 
-<p><code>*   **Use `str` with custom validation:** If `HttpUrl` is simply too strict for your use case and the field only *sometimes* contains a URL, or if you need to support highly unusual URL formats, consider using `str` and implementing your own validation logic using regex or `urlparse` within your endpoint logic or a custom Pydantic validator. This gives you maximum control but shifts the burden of validation to your code.</code>python<br />
-from pydantic import BaseModel<br />
-from typing import Optional<br />
-import re</p>
-<p>class ItemFlexible(BaseModel):<br />
-    name: str<br />
-    website_candidate: Optional[str] # Now just a string</p>
-<div class="highlight"><pre><span></span><code>@validator('website_candidate')
-def validate_custom_url(cls, v):
-    if v is None:
+<h3 id="step-3-correct-the-input-data">Step 3: Correct the Input Data</h3>
+<p>Once you've identified the malformed URL, correct it to conform to the expected format.</p>
+<p><strong>Action:</strong><br />
+*   <strong>Add Scheme:</strong> If the scheme is missing (e.g., <code>google.com</code>), add <code>http://</code> or <code>https://</code> to the beginning: <code>https://google.com</code>.<br />
+*   <strong>Verify Scheme:</strong> Ensure the scheme matches the Pydantic type (e.g., don't send <code>ftp://</code> to an <code>HttpUrl</code> field).<br />
+*   <strong>Check for Typos:</strong> Correct any spelling errors in the scheme or domain.<br />
+*   <strong>URL Encoding:</strong> Ensure any special characters (like spaces, <code>&amp;</code>, <code>=</code>, etc., if they are part of the URL path or query parameter <em>value</em> and not separators) are properly URL-encoded. Most HTTP clients and browser forms handle this automatically, but it's worth checking manually if you're constructing URLs programmatically.</p>
+<h3 id="step-4-adjust-pydantic-model-if-necessary">Step 4: Adjust Pydantic Model (If Necessary)</h3>
+<p>Sometimes, the client's input is "valid" for <em>its</em> context, but your Pydantic model is too strict.</p>
+<p><strong>Action:</strong><br />
+*   <strong>Loosen Validation:</strong> If you genuinely need to accept URLs without a scheme (e.g., <code>example.com</code>), consider changing the field type from <code>HttpUrl</code> to <code>str</code>. You would then need to implement your <em>own</em> validation or normalization logic in your endpoint handler or as a custom Pydantic validator.<br />
+    ```python<br />
+    from pydantic import BaseModel, Field, validator<br />
+    from typing import Optional</p>
+<div class="highlight"><pre><span></span><code>class Item(BaseModel):
+    name: str
+    site_url: Optional[str] = None # Changed from HttpUrl
+
+    @validator('site_url')
+    def add_http_scheme_if_missing(cls, v):
+        if v and not v.startswith(('http://', 'https://')):
+            return f"https://{v}" # Default to HTTPS if missing
         return v
-    # A very basic regex, consider more robust solutions or urlparse
-    if not re.match(r'^(http|https)://[^\s/$.?#].[^\s]*$', v):
-        raise ValueError('Custom validation: Not a recognized URL format')
-    return v
+```
 </code></pre></div>
 
-<p>```</p>
-</li>
+<ul>
+<li><strong>Broaden Validation:</strong> If you need to accept schemes beyond <code>http</code> and <code>https</code> (e.g., <code>ftp</code>, <code>sftp</code>, <code>ws</code>), use <code>pydantic.AnyUrl</code> instead of <code>pydantic.HttpUrl</code>.</li>
+<li><strong>Tighten Validation:</strong> If you need an <em>even more</em> specific URL format not covered by Pydantic's defaults, you can use <code>str</code> combined with <code>Field(..., pattern="...")</code> or a custom <code>@validator</code> using regular expressions.</li>
 </ul>
-</li>
-</ol>
+<h3 id="step-5-implement-client-side-validation">Step 5: Implement Client-Side Validation</h3>
+<p>Catching these errors at the source (the client application) provides a much better user experience than waiting for an API error.</p>
+<p><strong>Action:</strong><br />
+*   <strong>Frontend Forms:</strong> Use HTML5 <code>type="url"</code> attributes or JavaScript validation libraries to check URL formats before submission.<br />
+*   <strong>Mobile Apps:</strong> Implement robust client-side validation logic within your mobile application.</p>
+<h3 id="step-6-graceful-error-handling-in-fastapi">Step 6: Graceful Error Handling in FastAPI</h3>
+<p>While fixing the input is paramount, your API should always respond gracefully to invalid input. FastAPI's integration with Pydantic does this automatically by returning a <code>422 Unprocessable Entity</code> status code with a detailed JSON response.</p>
+<p><strong>Action:</strong><br />
+*   <strong>Custom Error Handling:</strong> For a more user-friendly error message or to log specific details, you can catch <code>RequestValidationError</code> globally in FastAPI.<br />
+    ```python<br />
+    from fastapi import FastAPI, Request, status<br />
+    from fastapi.responses import JSONResponse<br />
+    from fastapi.exceptions import RequestValidationError</p>
+<div class="highlight"><pre><span></span><code>app = FastAPI()
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content={"message": "Invalid input provided. Please check URL formats.", "details": exc.errors()}
+    )
+```
+</code></pre></div>
+
 <h2 id="code-examples">Code Examples</h2>
-<p>Here are some concise, copy-paste ready examples demonstrating the issue and potential fixes.</p>
-<p><strong>Problematic Setup (Causes the Error)</strong></p>
-<div class="highlight"><pre><span></span><code><span class="c1"># main.py</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">fastapi</span><span class="w"> </span><span class="kn">import</span> <span class="n">FastAPI</span><span class="p">,</span> <span class="n">HTTPException</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">pydantic</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseModel</span><span class="p">,</span> <span class="n">HttpUrl</span><span class="p">,</span> <span class="n">ValidationError</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Optional</span>
+<p>Here are some concise, copy-paste ready examples:</p>
+<h3 id="1-fastapi-model-with-httpurl-causes-error">1. FastAPI Model with <code>HttpUrl</code> (Causes Error)</h3>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">fastapi</span><span class="w"> </span><span class="kn">import</span> <span class="n">FastAPI</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pydantic</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseModel</span><span class="p">,</span> <span class="n">HttpUrl</span>
 
 <span class="n">app</span> <span class="o">=</span> <span class="n">FastAPI</span><span class="p">()</span>
 
 <span class="k">class</span><span class="w"> </span><span class="nc">Item</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
     <span class="n">name</span><span class="p">:</span> <span class="nb">str</span>
-    <span class="n">website</span><span class="p">:</span> <span class="n">HttpUrl</span> <span class="c1"># This field expects a full URL, e.g., "https://example.com"</span>
+    <span class="n">website</span><span class="p">:</span> <span class="n">HttpUrl</span> <span class="c1"># Pydantic expects http:// or https://</span>
 
 <span class="nd">@app</span><span class="o">.</span><span class="n">post</span><span class="p">(</span><span class="s2">"/items/"</span><span class="p">)</span>
 <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">create_item</span><span class="p">(</span><span class="n">item</span><span class="p">:</span> <span class="n">Item</span><span class="p">):</span>
-    <span class="c1"># If validation passes, item.website will be a pydantic.networks.HttpUrl object</span>
-    <span class="c1"># which can be cast back to str if needed</span>
-    <span class="k">return</span> <span class="p">{</span><span class="s2">"message"</span><span class="p">:</span> <span class="s2">"Item created successfully"</span><span class="p">,</span> <span class="s2">"item_data"</span><span class="p">:</span> <span class="n">item</span><span class="o">.</span><span class="n">dict</span><span class="p">()}</span>
-
-<span class="c1"># Run with: uvicorn main:app --reload</span>
+    <span class="k">return</span> <span class="p">{</span><span class="s2">"message"</span><span class="p">:</span> <span class="s2">"Item created successfully"</span><span class="p">,</span> <span class="s2">"item"</span><span class="p">:</span> <span class="n">item</span><span class="p">}</span>
 </code></pre></div>
 
-<p><strong>How to trigger the error:</strong></p>
-<div class="highlight"><pre><span></span><code><span class="c1"># Missing scheme</span>
-curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span>-H<span class="w"> </span><span class="s2">"Content-Type: application/json"</span><span class="w"> </span>-d<span class="w"> </span><span class="s1">'{"name": "My Example", "website": "example.com"}'</span><span class="w"> </span>http://127.0.0.1:8000/items/
-
-<span class="c1"># Localhost without scheme</span>
-curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span>-H<span class="w"> </span><span class="s2">"Content-Type: application/json"</span><span class="w"> </span>-d<span class="w"> </span><span class="s1">'{"name": "Local Test", "website": "localhost:8080"}'</span><span class="w"> </span>http://127.0.0.1:8000/items/
-
-<span class="c1"># Empty string (if website is not Optional)</span>
-curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span>-H<span class="w"> </span><span class="s2">"Content-Type: application/json"</span><span class="w"> </span>-d<span class="w"> </span><span class="s1">'{"name": "Empty Test", "website": ""}'</span><span class="w"> </span>http://127.0.0.1:8000/items/
+<p><strong>To cause the error:</strong></p>
+<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span>-H<span class="w"> </span><span class="s2">"Content-Type: application/json"</span><span class="w"> </span>-d<span class="w"> </span><span class="s1">'{"name": "My Product", "website": "example.com"}'</span><span class="w"> </span>http://localhost:8000/items
+<span class="c1"># Expected output: 422 Unprocessable Entity with error detail</span>
 </code></pre></div>
 
-<p><strong>Correct Client-Side Input (Fixing the Error)</strong></p>
-<p>No Python code change needed, just send valid data.</p>
-<div class="highlight"><pre><span></span><code><span class="c1"># Valid URL with scheme</span>
-curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span>-H<span class="w"> </span><span class="s2">"Content-Type: application/json"</span><span class="w"> </span>-d<span class="w"> </span><span class="s1">'{"name": "My Example", "website": "https://www.example.com"}'</span><span class="w"> </span>http://127.0.0.1:8000/items/
-
-<span class="c1"># Valid localhost URL with scheme</span>
-curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span>-H<span class="w"> </span><span class="s2">"Content-Type: application/json"</span><span class="w"> </span>-d<span class="w"> </span><span class="s1">'{"name": "Local Test", "website": "http://localhost:8080"}'</span><span class="w"> </span>http://127.0.0.1:8000/items/
+<p><strong>To fix the error:</strong></p>
+<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span>-H<span class="w"> </span><span class="s2">"Content-Type: application/json"</span><span class="w"> </span>-d<span class="w"> </span><span class="s1">'{"name": "My Product", "website": "https://example.com"}'</span><span class="w"> </span>http://localhost:8000/items
+<span class="c1"># Expected output: 200 OK</span>
 </code></pre></div>
 
-<p><strong>Server-Side Fix: Using <code>@validator</code> for Automatic Scheme Prepending (Use with Caution)</strong></p>
+<h3 id="2-using-anyurl-for-broader-scheme-acceptance">2. Using <code>AnyUrl</code> for Broader Scheme Acceptance</h3>
 <div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">fastapi</span><span class="w"> </span><span class="kn">import</span> <span class="n">FastAPI</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">pydantic</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseModel</span><span class="p">,</span> <span class="n">HttpUrl</span><span class="p">,</span> <span class="n">validator</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pydantic</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseModel</span><span class="p">,</span> <span class="n">AnyUrl</span>
+
+<span class="n">app</span> <span class="o">=</span> <span class="n">FastAPI</span><span class="p">()</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">Document</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+    <span class="n">title</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">resource_url</span><span class="p">:</span> <span class="n">AnyUrl</span> <span class="c1"># Accepts http, https, ftp, ws, etc.</span>
+
+<span class="nd">@app</span><span class="o">.</span><span class="n">post</span><span class="p">(</span><span class="s2">"/documents/"</span><span class="p">)</span>
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">create_document</span><span class="p">(</span><span class="n">doc</span><span class="p">:</span> <span class="n">Document</span><span class="p">):</span>
+    <span class="k">return</span> <span class="p">{</span><span class="s2">"message"</span><span class="p">:</span> <span class="s2">"Document link saved"</span><span class="p">,</span> <span class="s2">"document"</span><span class="p">:</span> <span class="n">doc</span><span class="p">}</span>
+</code></pre></div>
+
+<p><strong>Example request that would work with <code>AnyUrl</code> but not <code>HttpUrl</code>:</strong></p>
+<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span>-H<span class="w"> </span><span class="s2">"Content-Type: application/json"</span><span class="w"> </span>-d<span class="w"> </span><span class="s1">'{"title": "FTP Archive", "resource_url": "ftp://files.example.com/archive.zip"}'</span><span class="w"> </span>http://localhost:8000/documents
+<span class="c1"># Expected output: 200 OK</span>
+</code></pre></div>
+
+<h3 id="3-custom-validation-for-optional-scheme">3. Custom Validation for Optional Scheme</h3>
+<p>When you need to be flexible and automatically add a scheme if it's missing.</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">fastapi</span><span class="w"> </span><span class="kn">import</span> <span class="n">FastAPI</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pydantic</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseModel</span><span class="p">,</span> <span class="n">Field</span><span class="p">,</span> <span class="n">validator</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Optional</span>
 
 <span class="n">app</span> <span class="o">=</span> <span class="n">FastAPI</span><span class="p">()</span>
 
-<span class="k">class</span><span class="w"> </span><span class="nc">ItemWithAutoScheme</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
-    <span class="n">name</span><span class="p">:</span> <span class="nb">str</span>
-    <span class="n">website</span><span class="p">:</span> <span class="n">HttpUrl</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">UserProfile</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+    <span class="n">username</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">homepage</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="kc">None</span><span class="p">,</span> <span class="n">description</span><span class="o">=</span><span class="s2">"User's homepage URL, scheme is optional"</span><span class="p">)</span>
 
-    <span class="nd">@validator</span><span class="p">(</span><span class="s1">'website'</span><span class="p">,</span> <span class="n">pre</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-    <span class="k">def</span><span class="w"> </span><span class="nf">add_scheme_if_missing</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">v</span><span class="p">):</span>
-        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">v</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">v</span><span class="o">.</span><span class="n">startswith</span><span class="p">((</span><span class="s1">'http://'</span><span class="p">,</span> <span class="s1">'https://'</span><span class="p">)):</span>
-            <span class="c1"># Prepend 'http://' by default if no scheme is present</span>
-            <span class="k">return</span> <span class="sa">f</span><span class="s2">"http://</span><span class="si">{</span><span class="n">v</span><span class="si">}</span><span class="s2">"</span>
+    <span class="nd">@validator</span><span class="p">(</span><span class="s1">'homepage'</span><span class="p">)</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">normalize_homepage_url</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">v</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">v</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">v</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">v</span><span class="o">.</span><span class="n">startswith</span><span class="p">((</span><span class="s1">'http://'</span><span class="p">,</span> <span class="s1">'https://'</span><span class="p">)):</span>
+            <span class="c1"># Prepend a default scheme if missing</span>
+            <span class="k">return</span> <span class="sa">f</span><span class="s2">"https://</span><span class="si">{</span><span class="n">v</span><span class="si">}</span><span class="s2">"</span>
         <span class="k">return</span> <span class="n">v</span>
 
-<span class="nd">@app</span><span class="o">.</span><span class="n">post</span><span class="p">(</span><span class="s2">"/items-auto-scheme/"</span><span class="p">)</span>
-<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">create_item_auto_scheme</span><span class="p">(</span><span class="n">item</span><span class="p">:</span> <span class="n">ItemWithAutoScheme</span><span class="p">):</span>
-    <span class="k">return</span> <span class="p">{</span><span class="s2">"message"</span><span class="p">:</span> <span class="s2">"Item created successfully with auto-scheme"</span><span class="p">,</span> <span class="s2">"item_data"</span><span class="p">:</span> <span class="n">item</span><span class="o">.</span><span class="n">dict</span><span class="p">()}</span>
+<span class="nd">@app</span><span class="o">.</span><span class="n">post</span><span class="p">(</span><span class="s2">"/users/"</span><span class="p">)</span>
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">create_user</span><span class="p">(</span><span class="n">user</span><span class="p">:</span> <span class="n">UserProfile</span><span class="p">):</span>
+    <span class="k">return</span> <span class="p">{</span><span class="s2">"message"</span><span class="p">:</span> <span class="s2">"User profile created"</span><span class="p">,</span> <span class="s2">"user"</span><span class="p">:</span> <span class="n">user</span><span class="p">}</span>
 </code></pre></div>
 
-<p><strong>Server-Side Fix: Making the Field Optional</strong></p>
-<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">fastapi</span><span class="w"> </span><span class="kn">import</span> <span class="n">FastAPI</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">pydantic</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseModel</span><span class="p">,</span> <span class="n">HttpUrl</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Optional</span>
+<p><strong>Example usage for custom validation:</strong></p>
+<div class="highlight"><pre><span></span><code><span class="c1"># Input with missing scheme</span>
+curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span>-H<span class="w"> </span><span class="s2">"Content-Type: application/json"</span><span class="w"> </span>-d<span class="w"> </span><span class="s1">'{"username": "johndoe", "homepage": "johndoe.com"}'</span><span class="w"> </span>http://localhost:8000/users
+<span class="c1"># Expected output: 200 OK, homepage will be "https://johndoe.com" in the response</span>
 
-<span class="n">app</span> <span class="o">=</span> <span class="n">FastAPI</span><span class="p">()</span>
-
-<span class="k">class</span><span class="w"> </span><span class="nc">ItemWithOptionalWebsite</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
-    <span class="n">name</span><span class="p">:</span> <span class="nb">str</span>
-    <span class="n">website</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">HttpUrl</span><span class="p">]</span> <span class="c1"># Now accepts None or a valid URL</span>
-
-<span class="nd">@app</span><span class="o">.</span><span class="n">post</span><span class="p">(</span><span class="s2">"/items-optional/"</span><span class="p">)</span>
-<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">create_item_optional</span><span class="p">(</span><span class="n">item</span><span class="p">:</span> <span class="n">ItemWithOptionalWebsite</span><span class="p">):</span>
-    <span class="k">return</span> <span class="p">{</span><span class="s2">"message"</span><span class="p">:</span> <span class="s2">"Item created successfully (website optional)"</span><span class="p">,</span> <span class="s2">"item_data"</span><span class="p">:</span> <span class="n">item</span><span class="o">.</span><span class="n">dict</span><span class="p">()}</span>
-</code></pre></div>
-
-<p><strong>How to use the optional field:</strong></p>
-<div class="highlight"><pre><span></span><code><span class="c1"># Send with a valid URL</span>
-curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span>-H<span class="w"> </span><span class="s2">"Content-Type: application/json"</span><span class="w"> </span>-d<span class="w"> </span><span class="s1">'{"name": "Optional Test", "website": "https://optional.com"}'</span><span class="w"> </span>http://127.0.0.1:8000/items-optional/
-
-<span class="c1"># Send with null (Python None)</span>
-curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span>-H<span class="w"> </span><span class="s2">"Content-Type: application/json"</span><span class="w"> </span>-d<span class="w"> </span><span class="s1">'{"name": "Optional Test", "website": null}'</span><span class="w"> </span>http://127.0.0.1:8000/items-optional/
-
-<span class="c1"># Omit the field entirely (also results in None)</span>
-curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span>-H<span class="w"> </span><span class="s2">"Content-Type: application/json"</span><span class="w"> </span>-d<span class="w"> </span><span class="s1">'{"name": "Optional Test"}'</span><span class="w"> </span>http://127.0.0.1:8000/items-optional/
+<span class="c1"># Input with explicit scheme</span>
+curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span>-H<span class="w"> </span><span class="s2">"Content-Type: application/json"</span><span class="w"> </span>-d<span class="w"> </span><span class="s1">'{"username": "johndoe", "homepage": "http://blog.johndoe.com"}'</span><span class="w"> </span>http://localhost:8000/users
+<span class="c1"># Expected output: 200 OK, homepage will be "http://blog.johndoe.com"</span>
 </code></pre></div>
 
 <h2 id="environment-specific-notes">Environment-Specific Notes</h2>
-<p>The fundamental cause of this error remains the same across environments, but how you detect, debug, and mitigate it can differ.</p>
+<p>The troubleshooting process often differs slightly depending on your deployment environment.</p>
 <ul>
-<li>
-<p><strong>Local Development:</strong> This is where you'll most easily encounter and fix this error. <code>uvicorn</code> (FastAPI's default server) provides detailed console output, including the <code>422 Unprocessable Entity</code> response and the <code>ValidationError</code> traceback if you're running in debug mode or watching the server logs. Use print statements, IDE debuggers, and direct <code>curl</code> commands to quickly iterate on fixes.</p>
-</li>
-<li>
-<p><strong>Docker/Containerized Environments:</strong> When your FastAPI app is running in Docker, the standard output of your application container is key. Ensure your Docker setup correctly captures and forwards <code>stdout</code>/<code>stderr</code> to a log aggregation service. Use <code>docker logs &lt;container_id&gt;</code> to check for validation errors. Configuration issues can sometimes lead to malformed URLs in a containerized setup, for example, if an environment variable providing a base URL is incorrect or missing a scheme. I've seen this when an application tries to construct a callback URL using an improperly formatted <code>EXTERNAL_HOST</code> env var.</p>
-</li>
-<li>
-<p><strong>Cloud (AWS Lambda, Google Cloud Run, Azure Functions, Kubernetes):</strong> In cloud environments, centralized logging and monitoring become crucial.</p>
-<ul>
-<li><strong>AWS Lambda/API Gateway:</strong> Check CloudWatch logs for your Lambda function. API Gateway logs can also show detailed request/response data (if configured) that helps pinpoint the malformed input. Ensure your API Gateway request/response models match your Pydantic models.</li>
-<li><strong>Google Cloud Run/Kubernetes:</strong> Stackdriver Logging (Google Cloud) or your Kubernetes logging solution (e.g., Fluentd/Loki/Prometheus) will contain the <code>ValidationError</code> messages. Distributed tracing (like OpenTelemetry) can help track requests through various services and identify which service is sending malformed URLs to your FastAPI endpoint.</li>
-<li><strong>Configuration Inconsistencies:</strong> A common culprit in cloud environments is a difference in environment variables or configuration maps between development, staging, and production. A URL that works perfectly locally might be malformed in production because a required prefix or scheme from an environment variable is suddenly missing or incorrect. Always double-check deployment configurations.</li>
-</ul>
-</li>
+<li><strong>Local Development:</strong> This is where you typically catch most of these issues. Use your IDE's debugger to step through the code and inspect the raw incoming request data. Tools like Postman, Insomnia, or even <code>curl</code> are invaluable for crafting specific requests to test your API's validation. Debugging is usually straightforward with detailed stack traces.</li>
+<li><strong>Docker/Containerized Deployments:</strong> In a Dockerized FastAPI app, ensure that your application logs are accessible. If the Pydantic error occurs, it will be outputted to <code>stdout</code>/<code>stderr</code> within the container. You'll need to use <code>docker logs &lt;container_id&gt;</code> or your container orchestration platform's logging mechanism (e.g., Kubernetes logs) to see the full <code>RequestValidationError</code> traceback. Sometimes, networking configurations (proxies, load balancers) can subtly alter incoming requests, though this is less common for simple URL validation failures.</li>
+<li><strong>Cloud Deployments (AWS, GCP, Azure, etc.):</strong> When running FastAPI in a cloud environment (e.g., AWS Lambda, Google Cloud Run, Azure App Service), logging becomes critical. Ensure your application's logs are directed to your cloud provider's logging service (CloudWatch, Cloud Logging, Azure Monitor). These services allow you to filter and search for <code>ValidationError</code> messages. I've often found that issues manifesting in cloud environments are due to differences in how client applications (mobile, other services) are configured to send data, or subtle environment variable discrepancies that might affect URL generation. Also, remember that API Gateways in front of your FastAPI service might have their own (usually less strict) validation layers that can obscure the original request or transform it.</li>
 </ul>
 <h2 id="frequently-asked-questions">Frequently Asked Questions</h2>
-<p><strong>Q: Can I make Pydantic less strict for URLs?</strong><br />
-A: Yes, but with trade-offs. You can use the <code>str</code> type and implement a custom <code>@validator</code> with more lenient regex or logic, or even no validation if the field truly isn't a URL. Alternatively, <code>pydantic.AnyUrl</code> is slightly more forgiving than <code>pydantic.HttpUrl</code> as it allows for arbitrary schemes (like <code>ftp://</code> or custom <code>myapp://</code>), but still expects a generally well-formed URI. Generally, it's better to get the input correct on the client-side.</p>
-<p><strong>Q: Why does <code>localhost:8000</code> fail but <code>http://localhost:8000</code> pass?</strong><br />
-A: Pydantic's <code>HttpUrl</code> type expects a full URL, which, by definition, includes a scheme (e.g., <code>http://</code> or <code>https://</code>). <code>localhost:8000</code> lacks this scheme, making it an incomplete URL according to strict validation rules.</p>
-<p><strong>Q: What about relative URLs? Does Pydantic's <code>HttpUrl</code> support them?</strong><br />
-A: No, <code>pydantic.HttpUrl</code> is designed for absolute URLs. If you need to handle relative paths (e.g., <code>/api/users</code>), you should typically use the <code>str</code> type in your Pydantic model, as these are not considered full URLs. You would then validate their "relativeness" or structure in your application logic.</p>
-<p><strong>Q: Does Pydantic validate if the URL actually exists or is reachable?</strong><br />
-A: No, Pydantic only checks the <em>syntactic validity</em> of the URL string. It ensures the string <em>looks</em> like a URL according to its internal rules. It does not perform an HTTP request to verify if the server at that URL is online or if the resource exists. That kind of validation would require making an actual network call and is outside the scope of data parsing and validation.</p>
-<p><strong>Q: I'm sending <code>null</code> in my JSON for a URL field, but it still fails. Why?</strong><br />
-A: If your Pydantic model defines a field as <code>website: HttpUrl</code>, it means a valid <code>HttpUrl</code> object is <em>required</em>. <code>null</code> (which translates to Python's <code>None</code>) is not a valid <code>HttpUrl</code> instance. To allow <code>null</code> for a URL field, you must explicitly mark it as optional using <code>typing.Optional</code>, like this: <code>website: Optional[HttpUrl]</code>.</p>
+<p><strong>Q: Can I disable URL validation in Pydantic?</strong><br />
+A: Not directly for <code>HttpUrl</code> or <code>AnyUrl</code> types – their purpose <em>is</em> to validate. If you don't want strict URL validation, simply use <code>str</code> as the field type. You can then implement your own custom, less strict validation, or no validation at all, depending on your requirements.</p>
+<p><strong>Q: What if I need to accept URLs without a scheme (e.g., <code>example.com</code>)?</strong><br />
+A: As shown in the "Custom Validation" example, you should type the field as <code>str</code> and use a Pydantic <code>@validator</code> to prepend a default scheme (<code>http://</code> or <code>https://</code>) if one is missing. This ensures the URL is canonicalized before being used.</p>
+<p><strong>Q: Does Pydantic's <code>HttpUrl</code> or <code>AnyUrl</code> check if the URL actually exists or is reachable?</strong><br />
+A: No. Pydantic's validation is purely structural. It checks if the string <em>looks like</em> a valid URL based on syntax rules. It does not perform any network requests to verify if the domain is resolvable or if the resource exists. For that, you'd need to implement custom logic using libraries like <code>requests</code> in your application code.</p>
+<p><strong>Q: What's the difference between <code>HttpUrl</code> and <code>AnyUrl</code>?</strong><br />
+A: <code>HttpUrl</code> is a specialized <code>AnyUrl</code> that strictly enforces the <code>http</code> or <code>https</code> scheme. <code>AnyUrl</code> is broader and accepts any valid URL scheme (e.g., <code>ftp://</code>, <code>ws://</code>, <code>sftp://</code>, etc.). Choose <code>HttpUrl</code> when you specifically expect web URLs, and <code>AnyUrl</code> when your application might handle a wider range of internet resource identifiers.</p>
+<p><strong>Q: How do I handle URLs with query parameters or fragments?</strong><br />
+A: Pydantic's <code>HttpUrl</code> and <code>AnyUrl</code> types are designed to handle query parameters (e.g., <code>?key=value&amp;foo=bar</code>) and URL fragments (e.g., <code>#section</code>) correctly, as long as they are properly formatted and encoded according to URL standards. The error typically arises from issues with the scheme or hostname, not valid query/fragment components.</p>
 <h2 id="related-errors">Related Errors</h2>
     </div>
 
@@ -445,7 +377,7 @@ A: If your Pydantic model defines a field as <code>website: HttpUrl</code>, it m
     <div class="container">
       <p class="footer-logo">⚡ ErrorFix.dev</p>
       <p>Practical, engineer-written guides for real-world software errors.</p>
-      <p style="margin-top:.5rem">Last updated: <time>November 20, 2026</time>.</p>
+      <p style="margin-top:.5rem">Last updated: <time>November 21, 2026</time>.</p>
       <p class="footer-links" style="margin-top:.75rem">
         <!-- ╔══════════════════════════════════════════════════════════════╗ -->
         <!-- ║  AFFILIATE LINKS – replace the href values below            ║ -->
