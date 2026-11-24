@@ -1,197 +1,216 @@
 # NotImplementedError: X
-> Encountering `NotImplementedError: X` means you've hit a placeholder for missing code; this guide explains how to implement it correctly.
+> Encountering `NotImplementedError` means you've invoked an abstract method or a placeholder function that needs concrete implementation; this guide explains how to fix it.
 
-As a Cloud & DevOps Engineer, I've spent countless hours debugging Python applications, from local development to production environments spanning serverless functions and containerized microservices. The `NotImplementedError: X` is one of those errors that, while seemingly straightforward, can occasionally trip up even experienced developers due to misunderstandings of inheritance, abstract base classes, or even just work-in-progress code. This guide aims to demystify it and provide a clear path to resolution.
+As a Cloud & DevOps Engineer, I've spent countless hours troubleshooting Python applications, from small scripts to large-scale microservices running on Kubernetes and serverless platforms. One error that frequently pops up during development and, occasionally, in production (usually due to an incomplete deployment or rushed feature) is `NotImplementedError`. It's a clear signal from your code that a piece of functionality, while expected, isn't actually there yet.
+
+Understanding and resolving `NotImplementedError` is straightforward once you grasp its purpose. It's not a bug in the traditional sense; rather, it's a deliberate design choice or a development placeholder.
 
 ## What This Error Means
 
-`NotImplementedError` is a built-in Python exception. It’s raised when an abstract method or function is called, but its concrete implementation is missing in the subclass or the current context. Think of it as a clear signal from the code's author: "This method *should* be implemented by you, the user of this class or interface, but you haven't done it yet."
+`NotImplementedError` is a built-in Python exception that signifies that an operation or method is, quite literally, not implemented. Unlike `NameError` (where a variable or function is not found) or `AttributeError` (where an object doesn't have a certain attribute), `NotImplementedError` is raised when the method or function *exists*, but its body contains a placeholder indicating that the actual logic is missing.
 
-It's not a bug in Python itself. Rather, it's an intentional design choice by a developer to enforce an API contract. When you see `NotImplementedError: X`, `X` typically refers to the method or operation that was expected to be implemented. For instance, if you define a base `Shape` class with an `area()` method that raises this error, it means any class inheriting from `Shape` *must* provide its own `area()` calculation.
+Its primary purpose is to:
+1.  **Enforce Interface Contracts:** In object-oriented programming, especially when working with Abstract Base Classes (ABCs) using Python's `abc` module, `NotImplementedError` is used to define methods that *must* be overridden by any concrete (non-abstract) subclass. If a subclass fails to provide an implementation for such a method and an instance of that subclass tries to call it, this error is raised.
+2.  **Mark Placeholders During Development:** Developers often use `raise NotImplementedError` in functions or methods that are planned but not yet written. This acts as a clear reminder and prevents incomplete code paths from silently failing or producing incorrect results. If such a path is hit, the application crashes, forcing the developer to address the missing implementation.
 
-In essence, this error tells you that your code has attempted to use functionality that exists only as a conceptual placeholder, not as a working piece of logic.
+In essence, when you see `NotImplementedError`, your Python interpreter is telling you: "I expected a specific action here, but all I found was a 'come back later' sign."
 
 ## Why It Happens
 
-This error primarily arises from design patterns that require subclasses to provide specific implementations for methods defined in their parent or abstract classes. Here are the most common scenarios:
+This error arises from one of two main scenarios, both centered around missing code:
 
-*   **Abstract Base Classes (ABCs):** Python's `abc` module allows you to define abstract classes and methods using the `@abstractmethod` decorator. If a class inherits from an ABC and fails to implement all abstract methods, attempting to instantiate that class or call one of the unimplemented abstract methods will result in `NotImplementedError`. This enforces a clear interface.
-*   **Interface Definitions (Conceptual):** Even without Python's `abc` module, developers often create "interface-like" base classes where methods are explicitly defined to raise `NotImplementedError`. This serves the same purpose as ABCs: to signal that a method *must* be overridden by inheriting classes.
-*   **Placeholders for Future Work:** During development, a team might sketch out a class or module structure, including method stubs that aren't yet implemented. To prevent accidental calls to incomplete logic, a developer might intentionally put `raise NotImplementedError` in these methods. This acts as a clear reminder and safeguards against using unfinished features.
-*   **Incorrect Inheritance or Usage:** Sometimes, the error occurs because you're trying to instantiate an abstract class directly, or you've inherited from a base class but overlooked implementing one of its required methods. It could also mean you're using a library class that's intended to be a base, not directly instantiated.
+*   **Abstract Method Not Implemented:** This is the most common and intended use case. You might be working with a class hierarchy where a parent class or an interface defines a method that *must* be implemented by its children. If a subclass doesn't override this method with its own concrete logic, calling that method on an instance of the subclass will result in `NotImplementedError`. Python's `abc` module often prevents the instantiation of abstract classes that still have unimplemented abstract methods, but the error can still surface if an abstract method is explicitly called on an abstract class instance (or if the subclass somehow bypasses ABC's checks, which is rare).
+*   **Development Placeholder Invoked:** During the software development lifecycle, it's common to scaffold out functions or methods with just a `raise NotImplementedError`. This allows you to define the structure of your code before filling in all the details. If a code path that leads to one of these placeholders is executed before the actual implementation is provided, the error occurs. I've definitely done this when quickly scaffolding out a new service's API endpoints and forgetting to fill in a crucial handler function.
 
 ## Common Causes
 
-Let's get more specific about the typical scenarios that lead to `NotImplementedError`:
+Based on my experience across various projects, here are the most frequent situations leading to a `NotImplementedError`:
 
-*   **Forgetting to Override a Method:** This is by far the most frequent cause. You define a `Dog` class inheriting from an `Animal` base class, and `Animal` has an abstract `make_sound()` method. If `Dog` doesn't implement its own `make_sound()` and you call it, `NotImplementedError` appears.
-*   **Typos or Incorrect Signatures:** You *think* you've overridden a method, but you've made a typo in the method name or changed its parameters, so Python doesn't recognize it as an override. The base class's unimplemented method is then called instead. For example, implementing `make_s0und()` instead of `make_sound()`.
-*   **Instantiating an Abstract Class Directly:** Python's `abc` module prevents this. If you try `my_shape = Shape()` where `Shape` is an abstract class, you'll get a `TypeError` first, stating "Can't instantiate abstract class Shape with abstract method area". However, if you're using a class that *conceptually* uses `NotImplementedError` without `abc` to enforce it, you might successfully instantiate the "abstract" class, only to hit `NotImplementedError` when you call one of its placeholder methods.
-*   **Using a Library Component Incorrectly:** Third-party libraries often use abstract classes or interfaces. If you're using such a library, you must follow its documentation to create concrete implementations of its components, not just use the abstract ones directly. In my experience, I've seen this in production when integrating a new plugin architecture for a service; developers would sometimes try to register the abstract plugin class instead of a custom-built concrete implementation.
-*   **Incomplete Feature Deployment:** You or a colleague might have committed code where a new feature's core logic is still marked with `raise NotImplementedError`. If this code makes its way to a development or staging environment and is invoked, the error will surface. This is a good guardrail, but can be surprising if not anticipated.
+1.  **Forgetting to Override an Abstract Method:** This is almost always the case when inheriting from an Abstract Base Class (ABC). You define `BaseClass` with an `@abc.abstractmethod` decorated method, then create `MySubClass(BaseClass)` but neglect to define `my_abstract_method` within `MySubClass`.
+2.  **Using a Third-Party Library Incorrectly:** Some libraries expose abstract interfaces or expect you to subclass their components and provide specific implementations. If you use such a library and don't fulfill its interface requirements, you'll hit this error.
+3.  **Calling an Unfinished Feature:** During active development, a developer might stub out a future feature using `raise NotImplementedError`. If you (or another part of the system) then try to use that feature, it will crash. This is a good thing – it prevents you from relying on incomplete logic.
+4.  **Misunderstanding Inheritance:** Occasionally, developers might mistakenly believe that a method in a parent class (that raises `NotImplementedError`) has a default implementation, when in fact, it's meant solely as a contract for subclasses. Calling the parent's method directly in such a case will trigger the error.
 
 ## Step-by-Step Fix
 
-Fixing `NotImplementedError` usually involves identifying the missing piece of code and implementing it. Follow these steps:
+Addressing `NotImplementedError` is usually a process of identifying the missing piece and then implementing it.
 
-1.  **Examine the Traceback:** When you encounter the error, Python provides a traceback. Look for the line number and method where `NotImplementedError` was raised. This will tell you exactly which method (`X`) is the culprit.
-    ```python
+1.  **Locate the Stack Trace:** The first and most critical step is to examine the full stack trace provided by Python. This trace will pinpoint the exact file, line number, and function where the `NotImplementedError` was raised. In my experience, the stack trace is your best friend here. Don't just look at the top; trace it back to understand *why* that specific `NotImplementedError` was triggered. It will show you the call path leading to the error.
+
+    ```bash
     Traceback (most recent call last):
-      File "my_app.py", line 15, in <module>
-        my_animal.make_sound()
-      File "my_app.py", line 6, in make_sound
-        raise NotImplementedError("Subclasses must implement 'make_sound' method")
-    NotImplementedError: Subclasses must implement 'make_sound' method
+      File "/path/to/your_script.py", line 25, in <module>
+        result = my_instance.process_data(some_input)
+      File "/path/to/library_or_base_class.py", line 10, in process_data
+        raise NotImplementedError("Subclasses must implement process_data")
+    NotImplementedError: Subclasses must implement process_data
     ```
-    In this example, `make_sound` on line 6 is the problem. I always start by looking at the deepest part of the traceback – that's usually where the `NotImplementedError` originates.
 
-2.  **Locate the Class and Method Definition:** Go to the file and line number indicated in the traceback. Identify the base class or interface that defines the method containing `raise NotImplementedError`. This is your contract.
+2.  **Identify the Responsible Class or Function:** From the stack trace, identify the method or function that explicitly raised `NotImplementedError`. Is it a method in a class you inherited from, or a standalone function you're calling? Pay close attention to the message passed with the error; it often provides valuable context (e.g., "Subclasses must implement...").
 
-3.  **Identify Your Subclass/Caller:** Determine which class is inheriting from this base class or which object is calling this unimplemented method. This is the code that needs to provide the concrete implementation.
+3.  **Check for Missing Implementations (Subclasses):**
+    *   **If it's an abstract method:** If the error originates from a method in a parent class marked as abstract (e.g., `@abc.abstractmethod`), then your subclass is responsible for providing its own concrete implementation of that method.
+        *   **Action:** Add the missing method to your subclass, ensuring its signature matches that of the abstract method (same name, parameters).
+    *   **If it's a placeholder:** If the error is from a function or method you (or a teammate) explicitly stubbed out with `raise NotImplementedError`, then the actual business logic for that function needs to be written.
+        *   **Action:** Replace `raise NotImplementedError(...)` with the functional code.
 
-4.  **Implement the Missing Logic:** In your subclass, create a method with the *exact same name and signature* (parameters) as the one in the base class. Replace the `raise NotImplementedError` with your actual business logic.
+4.  **Implement the Missing Logic:** Write the actual code for the method or function. This typically involves overriding a method from a parent class or filling in the functional body of a placeholder.
 
-    *   **Original (Base Class):**
-        ```python
-        class Animal:
-            def make_sound(self):
-                raise NotImplementedError("Subclasses must implement 'make_sound' method")
-        ```
-    *   **Incorrect (Subclass, causes error):**
-        ```python
-        class Dog(Animal):
-            # Missing make_sound implementation
+    ```python
+    # Before: (leading to NotImplementedError)
+    class MyProcessor(BaseProcessor):
+        # Oops, forgot to implement 'process'
+        def some_other_method(self):
             pass
 
-        my_animal = Dog()
-        my_animal.make_sound() # Raises NotImplementedError
-        ```
-    *   **Correct (Subclass, fixes error):**
-        ```python
-        class Dog(Animal):
-            def make_sound(self):
-                return "Woof!"
+    # After: (the fix)
+    class MyProcessor(BaseProcessor):
+        def process(self, data):  # This is the missing implementation
+            # Your concrete logic here
+            print(f"Processing data: {data}")
+            return f"Processed: {data}"
 
-        my_animal = Dog()
-        print(my_animal.make_sound()) # Output: Woof!
-        ```
+        def some_other_method(self):
+            pass
+    ```
 
-5.  **Test Thoroughly:** After implementing the method, run your tests or the application logic again. Ensure the `NotImplementedError` is gone and that your newly added functionality works as expected. This also validates that your method signature correctly overrides the base method.
+5.  **Review Inheritance Hierarchy (if complex):** If you're dealing with multiple levels of inheritance or complex class structures, ensure you're instantiating the correct concrete class (one that has all abstract methods implemented) and that Python's Method Resolution Order (MRO) is behaving as expected.
+
+6.  **Test Thoroughly:** After implementing the fix, run your unit tests, integration tests, and manual tests to confirm that the `NotImplementedError` is gone and the new logic behaves as expected without introducing new issues.
 
 ## Code Examples
 
-Here are a couple of concise, copy-paste ready examples to illustrate the problem and its solution.
-
-**Example 1: Abstract Base Class Enforcement**
-
-This shows how `abc` module methods enforce implementation.
+Here are a couple of concise, copy-paste ready examples demonstrating how `NotImplementedError` occurs and how to fix it.
 
 ```python
 import abc
 
-# Base abstract class with an abstract method
-class Vehicle(abc.ABC):
+# Example 1: Abstract Base Class - Missing Implementation
+
+class DataSource(abc.ABC):
+    """
+    An abstract base class for data sources.
+    Subclasses MUST implement the 'fetch_data' method.
+    """
     @abc.abstractmethod
-    def start_engine(self):
-        """Abstract method: Start the vehicle's engine."""
-        pass
+    def fetch_data(self, query):
+        """Abstract method to fetch data based on a query."""
+        # This will be raised if a subclass does not implement fetch_data
+        raise NotImplementedError("Subclasses must implement fetch_data(query)")
 
-# Incorrect subclass: Does not implement start_engine
-class Car(Vehicle):
-    def drive(self):
-        return "Car is driving."
+    def connect(self):
+        """A common method that doesn't need overriding."""
+        print("Connecting to data source...")
+        return True
 
-# Correct subclass: Implements start_engine
-class Truck(Vehicle):
-    def start_engine(self):
-        return "Truck engine rumbles to life!"
-
-    def haul_cargo(self):
-        return "Truck is hauling cargo."
-
-if __name__ == "__main__":
-    # This would raise TypeError: Can't instantiate abstract class Car with abstract method 'start_engine'
-    # my_car = Car()
-    # print(my_car.drive())
-    # my_car.start_engine() # Would trigger NotImplementedError if instantiated
-
-    # This works because Truck implements start_engine
-    my_truck = Truck()
-    print(my_truck.start_engine())
-    print(my_truck.haul_cargo())
-```
-
-**Example 2: Placeholder for Future Development**
-
-This illustrates using `NotImplementedError` as a placeholder for incomplete features.
-
-```python
-# Function stub for future feature
-def process_user_data(data):
+# --- Problematic Code ---
+class MyDatabaseSource(DataSource):
     """
-    Processes user data according to specific business rules.
-    TODO: Implement actual data processing logic.
+    A concrete data source, but it forgot to implement fetch_data!
     """
-    raise NotImplementedError("Data processing logic is not yet implemented.")
+    def connect(self):
+        print("Connecting to database...")
+        return True
 
-# Feature implemented later
-def send_notification(user_id, message):
+# This will fail when fetch_data is called.
+# Note: Python's ABCs usually prevent instantiation if abstract methods are missing,
+# but if the check is bypassed or you explicitly call a base method that raises it,
+# the error manifests.
+try:
+    db_source = MyDatabaseSource()
+    db_source.connect()
+    # Calling the unimplemented abstract method
+    db_source.fetch_data("SELECT * FROM users")
+except NotImplementedError as e:
+    print(f"\n--- Error Caught (Expected) ---")
+    print(f"Error: {e}")
+    print("Fix: MyDatabaseSource needs to implement fetch_data().")
+except TypeError as e: # This is often what ABCs will raise on instantiation
+    print(f"\n--- Error Caught (Expected Type Error from ABC) ---")
+    print(f"Error: {e}")
+    print("Fix: MyDatabaseSource needs to implement fetch_data() before it can be instantiated.")
+
+
+# --- Corrected Code ---
+class MyCorrectDatabaseSource(DataSource):
     """
-    Sends a notification to the specified user.
+    A concrete data source with 'fetch_data' implemented.
     """
-    # Simulate sending a notification
-    if user_id > 100:
-        return f"Notification '{message}' sent to user {user_id}."
-    else:
-        raise NotImplementedError(f"Notification for user {user_id} is not implemented for this user type.")
+    def fetch_data(self, query):
+        """
+        Concrete implementation for fetching data from a database.
+        """
+        print(f"Executing database query: {query}")
+        # In a real app, this would query a DB and return results
+        return [f"Row1 for {query}", f"Row2 for {query}"]
+
+    def connect(self):
+        print("Connecting to database securely...")
+        return True
+
+print("\n--- Corrected Example ---")
+correct_db_source = MyCorrectDatabaseSource()
+correct_db_source.connect()
+data = correct_db_source.fetch_data("SELECT name FROM products")
+print(f"Fetched data: {data}")
 
 
-if __name__ == "__main__":
-    try:
-        process_user_data({"name": "Alice"}) # This will raise NotImplementedError
-    except NotImplementedError as e:
-        print(f"Caught expected error: {e}")
+# Example 2: Development Placeholder
 
-    try:
-        print(send_notification(200, "Your order has shipped!")) # This works
-        print(send_notification(50, "Welcome!")) # This will raise NotImplementedError based on business logic
-    except NotImplementedError as e:
-        print(f"Caught expected error: {e}")
+def calculate_complex_metric(input_data):
+    """
+    Calculates a complex metric. This feature is still under development.
+    """
+    raise NotImplementedError("Complex metric calculation logic not yet implemented!")
 
-    # To fix process_user_data:
-    # def process_user_data(data):
-    #     print(f"Processing data for {data['name']}...")
-    #     return "Data processed successfully."
-    # print(process_user_data({"name": "Bob"}))
+# --- Problematic Code ---
+print("\n--- Placeholder Example ---")
+try:
+    result = calculate_complex_metric({"user_id": 123, "session_time": 300})
+except NotImplementedError as e:
+    print(f"Error caught (expected): {e}")
+    print("Fix: The calculate_complex_metric function needs its actual logic.")
+
+# --- Corrected Code ---
+def calculate_complex_metric_fixed(input_data):
+    """
+    Actual implementation for calculating a complex metric.
+    """
+    user_id = input_data.get("user_id")
+    session_time = input_data.get("session_time", 0)
+    metric_value = (session_time * 0.5) + (user_id % 100) # Dummy calculation
+    print(f"Calculated metric for user {user_id}: {metric_value}")
+    return metric_value
+
+print("\n--- Corrected Placeholder Example ---")
+metric = calculate_complex_metric_fixed({"user_id": 123, "session_time": 300})
+print(f"Final metric: {metric}")
 ```
 
 ## Environment-Specific Notes
 
-The fundamental fix for `NotImplementedError` remains the same across environments, but how you encounter and debug it can differ significantly.
+The fundamental solution to `NotImplementedError` remains the same regardless of your deployment environment: implement the missing code. However, the debugging process and deployment considerations can vary.
 
-*   **Local Development:** This is generally the easiest environment for debugging. Your IDE (like VS Code or PyCharm) will highlight potential issues with abstract methods, and the traceback is immediately visible in your terminal. You have direct access to the code, can add breakpoints, and step through execution.
+*   **Local Development:** This is where you'll most frequently encounter this error. Debugging is usually straightforward. Your IDE will highlight the error, and the stack trace is immediately visible in your console. You can set breakpoints and step through the code to quickly identify the call path leading to the unimplemented method.
 
-*   **Cloud (AWS Lambda, Azure Functions, Google Cloud Functions):** In serverless environments, `NotImplementedError` will typically lead to a function invocation failure.
-    *   **Debugging:** The traceback won't appear directly on your console. You'll need to check the respective cloud logging service (e.g., AWS CloudWatch Logs, Azure Monitor, Google Cloud Logging). Look for the function's logs associated with the failed invocation. The `NotImplementedError` and its traceback will be there.
-    *   **Impact:** I've seen this in production serverless functions where a new feature was partially deployed, and an unimplemented method was unexpectedly called, leading to HTTP 500 errors until we dug into the cloud logs. The key here is proactive logging and monitoring.
-    *   **Deployment:** Ensure your deployment package (ZIP file for Lambda, container image for others) contains the *fixed* and correctly implemented code. Stale deployment packages are a common culprit.
+*   **Cloud Environments (AWS Lambda, Google Cloud Functions, Azure Functions, Kubernetes):**
+    *   **Visibility:** The error will manifest as a failed execution, a crash, or an unhealthy container. Debugging means relying heavily on logs. For AWS Lambda, check CloudWatch logs. For Google Cloud Functions, use Stackdriver. Azure Functions use Azure Monitor. For Kubernetes, `kubectl logs <pod-name>` is your command.
+    *   **Stack Trace:** The stack trace in the logs is paramount. It will provide the same crucial information as a local traceback.
+    *   **Deployment Concerns:** I've definitely chased this error in Lambda logs after a hurried deployment, only to realize the implementation commit hadn't fully propagated or the build pipeline was using an older version of the code. Ensure your deployment process correctly builds and deploys the *latest* version of your application code, including the fix.
 
-*   **Docker/Containerized Environments:** When running Python applications in Docker containers, the error will manifest as a crash within the container.
-    *   **Debugging:** You'll typically find the traceback in the container's logs, accessible via `docker logs <container_id_or_name>`. If your containers are part of a Kubernetes cluster, you'd use `kubectl logs <pod_name>`.
-    *   **Deployment:** The most common issue here is using an old Docker image. Ensure your CI/CD pipeline is building and pushing a fresh image after you've committed the fix. `docker pull` on the host might be necessary if the orchestration system doesn't force a fresh pull. I've been burned by this several times where a fix was merged, but the staging environment was still running an older, cached image without the `NotImplementedError` resolved. Always verify the image tag and build process.
+*   **Docker Containers:**
+    *   **Logs:** The error will occur *inside* the container. You'll need to check the container logs using `docker logs <container_id_or_name>`. If running orchestrated (e.g., Docker Compose), you might use `docker-compose logs <service-name>`.
+    *   **Dockerfile Review:** Verify your `Dockerfile`. Ensure that the correct source code (with the implementation) is being copied into the container. Pay attention to `COPY` commands and multi-stage builds. If your build process involves intermediate steps, ensure the final image receives the completed application.
 
 ## Frequently Asked Questions
 
-**Q: Is `NotImplementedError` a bug in my Python interpreter or libraries?**
-**A:** No, absolutely not. It's an intentional exception raised by the code itself (either by Python's `abc` module or by a developer) to indicate that a method or function *should* be implemented but hasn't been yet. It's a design choice, not a runtime flaw.
-
-**Q: What's the difference between `NotImplementedError` and `AttributeError`?**
-**A:** `NotImplementedError` means the method *exists* but is explicitly marked as requiring implementation. It's a conceptual placeholder. `AttributeError` means the method or attribute *does not exist at all* on the object or in its method resolution order (MRO). You'd get `AttributeError` if you tried to call `my_object.non_existent_method()`, whereas `NotImplementedError` implies `my_object.existent_but_unimplemented_method()` was called.
-
-**Q: Can I catch `NotImplementedError` using a `try...except` block?**
-**A:** Yes, you can catch it, just like any other Python exception. However, in most cases, catching it is usually an anti-pattern. The error signifies a missing implementation, and the correct approach is almost always to provide that implementation, not to work around the missing code. Catching it might hide a fundamental design flaw or an incomplete feature.
-
-**Q: Should I use `NotImplementedError` for all my interfaces or abstract methods?**
-**A:** For formal interfaces and abstract methods, Python's `abc` module and its `@abstractmethod` decorator are the preferred way to enforce this, as they will raise a `TypeError` on instantiation if methods are missing. If you're creating a base class without using `abc` but still want to signal that certain methods *must* be overridden, `raise NotImplementedError` is a perfectly valid and explicit way to communicate that contract to future developers.
+*   **Q: Is `NotImplementedError` the same as `AttributeError` or `NameError`?**
+    *   A: No, they are distinct. `NotImplementedError` means the method/function *exists* but is intentionally empty or designed for subclasses to override. `AttributeError` means you tried to access an attribute that doesn't exist on an object (e.g., `my_object.non_existent_attribute`). `NameError` means the variable or function name itself isn't recognized in the current scope (e.g., calling an undeclared function).
+*   **Q: Should I use `NotImplementedError` for methods that are just not finished yet?**
+    *   A: Yes, it's a perfectly valid and recommended practice during development to mark unimplemented features. It acts as a helpful "to-do" marker that ensures completeness; if you forget to implement it, your code will loudly fail, preventing you from shipping incomplete functionality. Just remember to remove or replace it with actual logic before deploying to production.
+*   **Q: Can `NotImplementedError` be raised by Python itself, or only by developers?**
+    *   A: Both. Developers explicitly raise it for abstract methods or placeholders. Python's `abc` module, when defining Abstract Base Classes, effectively uses this mechanism internally to enforce that abstract methods must be implemented by concrete subclasses.
+*   **Q: What if I *want* a method to be called from the parent class, but it raises this error?**
+    *   A: If the parent method explicitly raises `NotImplementedError`, it means it's designed to *force* subclasses to provide their own implementation. You should not be calling the parent's `NotImplementedError` version directly. Instead, ensure your subclass has an overridden method and call that. If you need shared logic, factor it into a separate, non-abstract method within the parent class, or into a helper function, that the subclasses can then call from their own implementations.
 
 ## Related Errors
